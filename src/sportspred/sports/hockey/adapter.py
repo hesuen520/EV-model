@@ -67,7 +67,6 @@ _PBP_COLUMNS = ["game_id", "event_type", "event_team_type", "period_type", "seco
                 "away_goalie_in"]
 _SHOT_EVENTS = ("SHOT", "MISSED_SHOT", "GOAL")     # unblocked attempts; a blocked shot is located at the block
 _END_RANK = {"REG": 0, "REGULAR": 0, "OT": 1, "OVERTIME": 1, "SO": 2, "SHOOTOUT": 2}
-_END_NAME = np.array(["REG", "OT", "SO"])
 
 
 def current_season_label(today: Optional[pd.Timestamp] = None) -> int:
@@ -123,55 +122,60 @@ def flag_neutral_sites(sched: pd.DataFrame, min_home_games: int = 5) -> pd.Serie
     """1 where a game is not played in the home club's regular arena, 0 where
     it is, missing where the venue is unknown.
 
-    An arena counts as regular when it hosts at least ``min_home_games`` of
-    the club's regular-season home games that season, so outdoor games,
-    games abroad and the 2020 playoff bubble are flagged while a mid-season
-    arena renaming is not.  Only the published schedule is used."""
-    keyed = pd.DataFrame({"season": sched["season"], "home": sched["home_abbr"],
+    An arena counts as a club's regular arena when it hosted at least
+    ``min_home_games`` of the club's regular-season home games in some season
+    on file.  Outdoor games, games abroad and the 2020 playoff bubble are
+    flagged; a renamed arena, or a playoff game the source lists under the
+    arena's earlier name, is not.  Only published schedules are used."""
+    keyed = pd.DataFrame({"season": sched["season"], "home": sched["home_abbr"].map(canonical_code),
                           "venue": sched["venue_name"].astype("string").str.casefold()})
     counts = keyed[sched["stage"] == "regular"].value_counts()
-    regular = set(counts[counts >= min_home_games].index)
-    flags = [np.nan if key[2] is pd.NA else float(key not in regular)
-             for key in keyed.itertuples(index=False, name=None)]
+    regular = {(home, venue) for _, home, venue in counts[counts >= min_home_games].index}
+    flags = [np.nan if venue is pd.NA else float((home, venue) not in regular)
+             for home, venue in zip(keyed["home"], keyed["venue"])]
     return pd.Series(flags, index=sched.index)
 
 
 def game_end_types(periods: pd.DataFrame, pbp: Optional[pd.DataFrame] = None) -> pd.DataFrame:
-    """How each game ended: ``REG``, ``OT`` or ``SO``, indexed by game key.
+    """Whether each game went past regulation, indexed by game key.
 
-    The per-period shot table is the primary source; play-by-play period
-    types fill games it lacks.  ``sources_agree`` is false where both exist
-    and differ (such a game's regulation result is not trusted)."""
+    Two independent sources are compared: the per-period shot table and the
+    play-by-play period types.  ``went_overtime`` (overtime or shootout) is 1
+    or 0 where the sources on file agree and missing where they differ;
+    ``went_shootout`` likewise, and missing whenever ``went_overtime`` is."""
     def latest(frame: Optional[pd.DataFrame]) -> pd.Series:
         if frame is None or frame.empty:
             return pd.Series(dtype="float64")
         rank = frame["period_type"].astype(str).str.upper().map(_END_RANK)
         return rank.groupby(_game_key(frame["game_id"])).max()
 
-    both = pd.concat([latest(periods).rename("periods"), latest(pbp).rename("pbp")], axis=1)
-    rank = both["periods"].fillna(both["pbp"])
-    out = pd.DataFrame({
-        "end_type": np.where(rank.notna(), _END_NAME[rank.fillna(0).astype(int)], None),
-        "sources_agree": ~(both["periods"].notna() & both["pbp"].notna() & (both["periods"] != both["pbp"])),
-    }, index=both.index)
-    return out[rank.notna()]
+    both = pd.concat([latest(periods).rename("a"), latest(pbp).rename("b")], axis=1)
+    both = both[both.notna().any(axis=1)]
+
+    def agreed(level: int) -> pd.Series:
+        a = (both["a"] >= level).astype(float).where(both["a"].notna())
+        b = (both["b"] >= level).astype(float).where(both["b"].notna())
+        return a.fillna(b).where(a.isna() | b.isna() | (a == b))
+
+    extra = agreed(1)
+    return pd.DataFrame({"went_overtime": extra, "went_shootout": agreed(2).where(extra.notna())})
 
 
 def regulation_results(final: pd.DataFrame) -> pd.DataFrame:
-    """Add the regulation result to final games that carry ``end_type``.
+    """Regulation scores for final games carrying ``went_overtime``.
 
     Overtime and shootouts are sudden death, so a game that needed either was
     level after regulation and its final margin is exactly one goal (the
-    shootout winner is credited one goal).  A game whose end type is unknown,
-    disputed between sources, or inconsistent with that rule gets a missing
-    regulation result rather than a guess."""
+    shootout winner is credited one goal).  Where the overtime flag is missing
+    or contradicts that rule, the regulation result is left missing rather
+    than guessed."""
     out = final.copy()
-    extra = out["end_type"].isin(["OT", "SO"])
+    extra = out["went_overtime"] == 1
     one_goal = (out["home_score"] - out["away_score"]).abs() == 1
-    trusted = out["end_type"].notna() & out["sources_agree"].eq(True) & (~extra | one_goal)
+    trusted = out["went_overtime"].notna() & (~extra | one_goal)
     level = out[["home_score", "away_score"]].min(axis=1)
-    out["went_overtime"] = np.where(trusted, extra.astype(float), np.nan)
-    out["went_shootout"] = np.where(trusted, (out["end_type"] == "SO").astype(float), np.nan)
+    out["went_overtime"] = out["went_overtime"].where(trusted)
+    out["went_shootout"] = out["went_shootout"].where(trusted)
     out["reg_home_score"] = np.where(trusted, np.where(extra, level, out["home_score"]), np.nan)
     out["reg_away_score"] = np.where(trusted, np.where(extra, level, out["away_score"]), np.nan)
     return out
@@ -305,14 +309,15 @@ def ingest_nhl(store, league: str = "nhl", *, seasons: Optional[Sequence[int]] =
     for _, row in final[~scored].iterrows():
         store.log_issue("final_without_valid_score", f"{row['provider_event_id']} {row['home_abbr']} v {row['away_abbr']}",
                         league=league, event_id=row["event_id"])
-    ends = pd.concat(parts["ends"]) if parts["ends"] else pd.DataFrame(columns=["end_type", "sources_agree"])
+    ends = pd.concat(parts["ends"]) if parts["ends"] else pd.DataFrame(columns=["went_overtime", "went_shootout"])
     final = regulation_results(final[scored].join(ends[~ends.index.duplicated(keep="last")], on="provider_event_id"))
-    unknown = int(final["went_overtime"].isna().sum())
-    if unknown:
-        report.warnings.append(f"{unknown} final games have no trusted regulation result (excluded from winner_3way)")
-        for _, row in final[final["went_overtime"].isna()].iterrows():
-            store.log_issue("regulation_result_unknown", f"{row['provider_event_id']} end type {row['end_type']}",
-                            league=league, event_id=row["event_id"])
+    for column, label in (("went_overtime", "regulation result"), ("went_shootout", "shootout flag")):
+        unknown = final[final[column].isna()]
+        if len(unknown):
+            report.warnings.append(f"{len(unknown)} final games have no trusted {label}")
+    for _, row in final[final["went_overtime"].isna()].iterrows():
+        store.log_issue("regulation_result_unknown", f"{row['provider_event_id']} {row['home_abbr']} v {row['away_abbr']}",
+                        league=league, event_id=row["event_id"])
     store.upsert_results(final[["event_id", "home_score", "away_score", "went_overtime", "went_shootout",
                                 "reg_home_score", "reg_away_score", "source_id"]])
 

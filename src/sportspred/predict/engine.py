@@ -86,6 +86,23 @@ def _class_labels(frame: FeatureFrame, row: Mapping[str, Any], names: Mapping[st
     return out
 
 
+def _unresolved_past_events(store: Any, league: str, now_ts: pd.Timestamp) -> Tuple[Dict[str, int], str]:
+    """Per participant: events that should have been played by ``now`` but
+    have no result on file (postponed and cancelled events excluded), and the
+    date of the latest result in the store."""
+    ev = store.events(league, with_results=True, include_synthetic=True)
+    past = ev[(ev["start_time_utc"] < now_ts) & ev["status"].isin(["scheduled", "live", "unknown"])]
+    # A date-only event stored at 00:00Z of today may simply not have started yet.
+    past = past[(past["time_precision"] == "datetime") | (past["start_time_utc"] < now_ts - pd.Timedelta(hours=36))]
+    counts: Dict[str, int] = {}
+    for col in ("home_id", "away_id"):
+        for team, n in past[col].dropna().value_counts().items():
+            counts[team] = counts.get(team, 0) + int(n)
+    done = ev[ev["status"] == "final"]
+    through = "none" if done.empty else done["start_time_utc"].max().strftime("%Y-%m-%d")
+    return counts, through
+
+
 def _entropy(p: Sequence[float]) -> float:
     return float(-sum(x * math.log(x) for x in p if x > 0) / math.log(len(p)))
 
@@ -145,6 +162,7 @@ def predict_league(
     min_prob = settings.min_prob(league, market, str(frame.outcome))
     check_log = store.checks_as_of(league, now_dt, include_synthetic=True)
     specs = plugin.required_checks(league, market)
+    unresolved, results_through = _unresolved_past_events(store, league, now_ts)
     events = store.events(event_ids=rows["event_id"].tolist(), with_results=False, include_synthetic=True)
     events = events.set_index("event_id")
     feature_names = model.candidate.feature_names() or frame.feature_cols
@@ -182,6 +200,17 @@ def predict_league(
             probs["push"] = p_push
 
         checks = evaluate_checks(specs, row, check_log, now=now_ts, settings=settings, names=names)
+        # Built in for every league: ratings are only current if every earlier
+        # event of both sides has a result on file.
+        behind = unresolved.get(row["side_a_id"], 0) + unresolved.get(row["side_b_id"], 0)
+        checks.append({
+            "key": "results_current", "label": "results on file are up to date", "subject": "event",
+            "state": (CheckState.COMPLETE if behind == 0 else CheckState.MISSING).value,
+            "detail": ("every earlier event of both sides has a result on file" if behind == 0 else
+                       f"{behind} earlier event(s) of these sides have no result on file (latest result in the "
+                       f"store: {results_through}); ratings are out of date until results are refreshed"),
+            "checked_at_utc": iso_z(now_dt), "published_at_utc": None, "source_id": None,
+        })
         missing = [c for c in feature_names if c in row.index and row[c] != row[c]]
         quality = _data_quality(row, frame, checks, missing)
 

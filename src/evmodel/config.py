@@ -152,8 +152,6 @@ class ScanConfig:
     min_minutes_to_start: Optional[float] = None
     #: DFS pick'em books and their per-leg break-even probability
     dfs_books: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_DFS_BOOKS))
-    #: assumed overround for one-sided markets when a reference only posts one side
-    one_sided_hold: float = 0.07
 
 
 @dataclass

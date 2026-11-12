@@ -267,7 +267,8 @@ class TestExpectedLogGrowth:
 
     @pytest.mark.parametrize("stake", [1.0, 1.5, -0.01, NAN])
     def test_invalid_stake_raises(self, stake: float) -> None:
-        with pytest.raises(ValueError):
+        """Rejected by the argument check itself, not by a math domain error further down."""
+        with pytest.raises(ValueError, match="stake_fraction"):
             expected_log_growth(stake, 0.55, 2.0)
 
 

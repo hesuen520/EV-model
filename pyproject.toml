@@ -7,7 +7,7 @@ name = "evmodel"
 version = "0.1.0"
 description = "Find +EV player-prop bets: sharp-book devigging, statistical projections, Kelly staking, CLV tracking."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
     "numpy>=1.26",
@@ -15,6 +15,7 @@ dependencies = [
     "scipy>=1.11",
     "requests>=2.31",
     "click>=8.1",
+    "pyarrow>=14",
 ]
 
 [project.optional-dependencies]
@@ -27,7 +28,7 @@ evmodel = "evmodel.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-evmodel = ["data/*.json", "data/*.csv", "templates/*.html"]
+evmodel = ["data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

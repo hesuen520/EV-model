@@ -1,0 +1,45 @@
+# Example configuration for `evmodel scan --config examples/config.toml`.
+# Every option is optional; anything you leave out keeps its default.
+
+[consensus]
+# How the vig is removed from each reference book's price:
+# multiplicative | additive | power | shin | odds_ratio | probit
+devig_method = "shin"
+# A fair price needs at least this many reference books (not counting the
+# book whose price is being judged) with at least this much total weight.
+min_ref_books = 1
+min_ref_weight = 0.6
+
+# How much each book counts towards the fair price.  Sharper = heavier.
+# Books you leave out get weight 0: they are scanned for value but never
+# define the fair price.  This table replaces the default one entirely.
+[consensus.book_weights]
+pinnacle = 1.0
+circasports = 1.0
+bookmaker = 0.9
+novig = 0.8
+prophetx = 0.8
+fanduel = 0.7
+betonlineag = 0.6
+draftkings = 0.4
+
+[scan]
+min_ev = 0.03                      # report bets with at least +3% expected value
+min_ev_low_confidence = 0.05       # ...or +5% when the fair price is less certain
+min_price_american = -250
+max_price_american = 250
+# target_books = ["draftkings", "betmgm", "williamhill_us", "espnbet"]
+model_weight = 0.2                 # share of the projection model in the blend
+allow_model_only = false           # never bet on the model alone
+
+[scan.dfs_books]
+# Pick'em apps: per-leg break-even of the entry you play (see `evmodel dfs`).
+prizepicks = 0.5425                # 5-pick flex
+underdog = 0.5475                  # 5-pick flex
+
+[staking]
+kelly_fraction = 0.25              # quarter Kelly
+unit_size = 0.01                   # one unit = 1% of bankroll
+max_units = 2.0
+max_units_per_player = 2.0
+max_units_per_event = 4.0

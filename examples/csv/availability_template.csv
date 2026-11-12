@@ -1,0 +1,4 @@
+# status: out | doubtful | questionable | probable | uncertain | available
+team,player,status,role,detail,published_at,collected_at
+Example Kings,Example Player,out,,hamstring,2026-04-03T08:00:00Z,2026-04-03T09:15:00Z
+Example Royals,Example Keeper,available,starting_goalie,confirmed starter,,2026-04-03T12:30:00Z

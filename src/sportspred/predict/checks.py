@@ -36,7 +36,10 @@ def _latest(log: pd.DataFrame, key: str, *, event_id: Optional[str], team_id: Op
     part = part[mask]
     if part.empty:
         return None
-    return part.sort_values("checked_at_utc").iloc[-1]
+    # The newest information wins: by publication time when the source states
+    # one, otherwise by the time the check was made.
+    info_time = part["published_at_utc"].where(part["published_at_utc"].notna(), part["checked_at_utc"])
+    return part.assign(_info=info_time).sort_values(["_info", "checked_at_utc"]).iloc[-1]
 
 
 def evaluate_checks(

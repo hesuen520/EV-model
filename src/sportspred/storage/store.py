@@ -965,7 +965,7 @@ class Store:
             raise StoreError("a check must refer to an event or a team")
         checked = iso_z(checked_at)
         published = None if published_at is None else iso_z(published_at)
-        cid = stable_id("chk", league, check_key, event_id or "", team_id or "", outcome, checked)
+        cid = stable_id("chk", league, check_key, event_id or "", team_id or "", outcome, checked, published or "")
         with self.conn() as con:
             con.execute(
                 """INSERT OR IGNORE INTO check_log

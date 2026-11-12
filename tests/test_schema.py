@@ -610,7 +610,8 @@ class TestGamelogsCoercion:
             assert df[col].dtype == np.float64, col
         assert df["points"].tolist() == [30.0, 25.0, 12.0]
         assert df["double_double"].tolist()[0] == 1.0 and np.isnan(df["double_double"].iloc[1])
-        assert df["started"].tolist() == [True, False, True]   # flags are not stats
+        assert df["started"].dtype == bool                      # flags are not stats
+        assert df["started"].tolist() == [True, False, True]
         assert df["position"].tolist() == ["C", "F", "G"]      # text is left alone
 
     @pytest.mark.parametrize("values", [["30", "25", "12"], ["30", 25, None], [" 7 ", "", None], ["1e1", "2.5", "3"]])
@@ -669,19 +670,22 @@ class TestGamelogsRows:
         assert df.index.tolist() == [0]
 
     def test_sorted_by_player_then_date_then_game(self) -> None:
+        """Game ids deliberately run against the dates, so each sort key is observable."""
         raw = _gamelogs(
             6,
             player=["B B", "B B", "A A", "A A", "B B", "Á A"],
             game_date=["2025-01-02", "2025-01-01", "2025-01-01", "2025-01-03", "2025-01-01", "2025-01-02"],
-            game_id=["g3", "g2", "g1", "g9", "g1", "g5"],
+            game_id=["g1", "g7", "g9", "g2", "g4", "g5"],
             points=[1, 2, 3, 4, 5, 6],
         )
         df = normalize_gamelogs(raw)
         assert df["player_key"].tolist() == ["a a", "a a", "a a", "b b", "b b", "b b"]
+        assert df["game_id"].tolist() == ["g9", "g5", "g2", "g4", "g7", "g1"]
         assert df["points"].tolist() == [3.0, 6.0, 4.0, 5.0, 2.0, 1.0]
-        assert df["game_date"].is_monotonic_increasing is False  # sorted within player, not globally
-        for _, group in df.groupby("player_key"):
-            assert group["game_date"].is_monotonic_increasing
+        assert df["game_date"].tolist() == [
+            pd.Timestamp("2025-01-01"), pd.Timestamp("2025-01-02"), pd.Timestamp("2025-01-03"),
+            pd.Timestamp("2025-01-01"), pd.Timestamp("2025-01-01"), pd.Timestamp("2025-01-02"),
+        ]
 
     def test_sort_is_stable_for_full_ties(self) -> None:
         raw = _gamelogs(3, game_date=["2025-01-01"] * 3, game_id=["g", "g", "g"], points=[7, 8, 9])

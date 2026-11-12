@@ -111,7 +111,7 @@ CASE_IDS = sorted(CASES)
 
 #: Clamped normals (exact moments of the clamped variable are documented) and
 #: small-mean gammas (documented to report the latent gamma's moments).
-LATENT_CASES: Dict[str, Case] = {
+CLAMPED_AND_SMALL_CASES: Dict[str, Case] = {
     "normal_clamped_20_5": Case(DiscretizedNormal(20.0, 5.0, lower=0), -5, 100, "exact"),
     "normal_clamped_2_5": Case(DiscretizedNormal(2.0, 5.0, lower=0), -5, 70, "exact"),
     "normal_clamped_-3_2": Case(DiscretizedNormal(-3.0, 2.0, lower=0), -5, 30, "exact"),
@@ -135,7 +135,7 @@ SCALED_CASES: Dict[str, Case] = {
     "zi_scaled_negbin": Case(ZeroInflated(ScaledNegBinDist(24.0, 60.0, 2.2), 0.1), -3, 260, "target"),
 }
 
-ALL_CASES: Dict[str, Case] = {**CASES, **LATENT_CASES, **SCALED_CASES}
+ALL_CASES: Dict[str, Case] = {**CASES, **CLAMPED_AND_SMALL_CASES, **SCALED_CASES}
 ALL_IDS = sorted(ALL_CASES)
 
 
@@ -397,7 +397,7 @@ class TestMoments:
         DiscretizedGamma(0.5, 0.5) has a true mean of 0.438 (-12%) and
         DiscretizedGamma(5, 25) of 4.992 (-0.2%).
         """
-        dist = LATENT_CASES[name].dist
+        dist = CLAMPED_AND_SMALL_CASES[name].dist
         mean, _ = _brute_moments(name)
         assert mean < dist.mean
         assert mean == pytest.approx(dist.mean, rel=tolerance)

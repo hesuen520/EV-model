@@ -588,14 +588,23 @@ def test_add_override_that_restates_the_row_keeps_its_probability(ledger: BetLed
     bet_id = ledger.add(resolved, stake=10, player="A. St. Brown", price=2.0)
     row = ledger.to_frame().set_index("bet_id").loc[bet_id]
     assert row["player_key"] == "amonra st brown" and row["fair_prob"] == 0.55
+    # ... and the name being written out in full, which is the key's own name.
+    bet_id = ledger.add(dict(resolved, book="fanduel"), stake=10, player="Amon-Ra St. Brown")
+    row = ledger.to_frame().set_index("bet_id").loc[bet_id]
+    assert row["player"] == "Amon-Ra St. Brown" and row["player_key"] == "amonra st brown"
+    assert row["fair_prob"] == 0.55
 
 
 def test_add_override_of_the_player_replaces_name_and_key(ledger: BetLedger) -> None:
     by_name = ledger.add(_opportunity(), stake=10, player="Jamal Murray")
     by_key = ledger.add(_opportunity(book="fanduel"), stake=10, player_key="jamal murray")
+    keyed_row = ledger.add(_opportunity(player=None, book="betmgm"), stake=10, player="Jamal Murray")
     rows = ledger.to_frame().set_index("bet_id")
+    # Never one player's name stored next to another player's key.
     assert (rows.loc[by_name, "player"], rows.loc[by_name, "player_key"]) == ("Jamal Murray", "jamal murray")
     assert (rows.loc[by_key, "player"], rows.loc[by_key, "player_key"]) == ("", "jamal murray")
+    assert (rows.loc[keyed_row, "player"], rows.loc[keyed_row, "player_key"]) == ("Jamal Murray", "jamal murray")
+    assert rows["fair_prob"].isna().all()  # and Jokic's probability does not travel with them
 
 
 def test_add_converts_an_ev_only_row_to_the_price_obtained(ledger: BetLedger) -> None:

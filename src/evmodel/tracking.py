@@ -80,13 +80,14 @@ One row per placed bet, in this order (:data:`LEDGER_COLUMNS`):
 
 The file is ordinary CSV and may be inspected or edited by hand: blank cells
 mean "unknown", extra columns are preserved, and a settled row whose ``pnl``
-cell is blank gets it recomputed on the next read.  If you change a
-``result``, ``stake`` or ``price`` by hand, clear the row's ``pnl`` cell too
-(or re-settle with ``overwrite=True``).  A ``pnl`` that the result rules out
-(a profit on a loss, a loss larger than the stake, anything but zero on a
-push or void) is reported as an error with its line number rather than
-summed, as is a probability outside its range; a ``pnl`` that differs from
-the standard payout in an allowed direction (a profit boost) is kept.
+cell is blank gets it recomputed on the next read.  To change a result,
+re-settle the bet with ``overwrite=True``; if you change a ``result``,
+``stake`` or ``price`` in the file instead, clear the row's ``pnl`` cell too.
+A ``pnl`` that the result rules out (a profit on a loss, a loss larger than
+the stake, anything but zero on a push or void) is reported as an error with
+its line number rather than summed, as is a probability outside its range.
+Within those bounds a ``pnl`` that differs from the standard payout (a profit
+boost, a partial refund) is kept as entered.
 """
 
 from __future__ import annotations
@@ -618,10 +619,11 @@ def _override(row: Mapping[str, object], given: Mapping[str, object]) -> Dict[st
         values.pop("price", None)
     old_name, old_key = canonical_player_key(row.get("player")), _key_of(row)
     if "player" in given and "player_key" not in given:
-        if old_name and canonical_player_key(given["player"]) != old_name:
+        # The row's key may differ from its name's (a matched abbreviation); either means the same player.
+        if canonical_player_key(given["player"]) not in (old_name, old_key):
             values.pop("player_key", None)
     if "player_key" in given and "player" not in given:
-        if old_key and canonical_player_key(given["player_key"]) != old_key:
+        if canonical_player_key(given["player_key"]) != old_key:
             values.pop("player", None)
     values.update(given)
     return values

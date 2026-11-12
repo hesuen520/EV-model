@@ -167,10 +167,41 @@ def _roster_features(ev: pd.DataFrame, player_box: Optional[pd.DataFrame], batch
     def rating(p: int) -> float:
         return (gs_sum[p] + prior * league_rate) / (min_sum[p] + prior)
 
-    for i in range(n):
-        if i and batch[i] != batch[i - 1] and rate_den > 0:
+    # Results of a slate are applied only when the slate is over.  A player's
+    # rating is shared by every team that still carries him in its rotation
+    # state (after a trade, say), so applying a game's box score at once would
+    # let it reach other games of the same slate - including its own opponent.
+    pending: List[Tuple[str, np.ndarray, np.ndarray, np.ndarray]] = []
+
+    def flush() -> None:
+        nonlocal league_rate, rate_num, rate_den
+        for team, players, mins, scores in pending:
+            st = state[team]
+            played = dict(zip(players.tolist(), mins.tolist()))
+            for p in list(st):
+                m = played.pop(p, 0.0)
+                v = st[p]
+                v[0] += lr_f * (m - v[0])
+                v[1] += lr_s * (m - v[1])
+                if m == 0.0 and v[0] < 0.2 and v[1] < 0.2:
+                    del st[p]
+            for p, m in played.items():
+                if m > 0:
+                    st[p] = [lr_f * m, lr_s * m]
+            for p, m, g in zip(players, mins, scores):
+                if m > 0:
+                    gs_sum[p] = decay * gs_sum[p] + g
+                    min_sum[p] = decay * min_sum[p] + m
+                    rate_num += g
+                    rate_den += m
+        pending.clear()
+        if rate_den > 0:
             league_rate += 0.05 * (rate_num / rate_den - league_rate)
             rate_num = rate_den = 0.0
+
+    for i in range(n):
+        if i and batch[i] != batch[i - 1]:
+            flush()
         for side, team in (("a", homes[i]), ("b", aways[i])):
             if team_season.get(team) != season_idx[i]:
                 state[team] = {}            # rosters change between seasons: start again
@@ -191,23 +222,8 @@ def _roster_features(ev: pd.DataFrame, player_box: Optional[pd.DataFrame], batch
                 continue
             players = pidx[rows]
             out[f"roster_q_actual_{side}"][i] = float(sum(m * rating(p) for p, m in zip(players, mins)) / total)
-            played = dict(zip(players.tolist(), mins.tolist()))
-            for p in list(st):
-                m = played.pop(p, 0.0)
-                v = st[p]
-                v[0] += lr_f * (m - v[0])
-                v[1] += lr_s * (m - v[1])
-                if m == 0.0 and v[0] < 0.2 and v[1] < 0.2:
-                    del st[p]
-            for p, m in played.items():
-                if m > 0:
-                    st[p] = [lr_f * m, lr_s * m]
-            for p, m, g in zip(players, mins, gs[rows]):
-                if m > 0:
-                    gs_sum[p] = decay * gs_sum[p] + g
-                    min_sum[p] = decay * min_sum[p] + m
-                    rate_num += g
-                    rate_den += m
+            pending.append((team, players, mins, gs[rows]))
+    flush()
     names = dict(zip(pidx.tolist(), pb["player_name"].tolist()))
     ids = dict(zip(pidx.tolist(), pb["player_id"].tolist()))
     rosters = {
@@ -245,12 +261,16 @@ def build_winner_frame(store: Any, league: str, *, now: Any = None,
     now_ts = pd.Timestamp(utcnow() if now is None else parse_ts(now))
     ev = store.events(league, with_results=True)
     ev = ev[~ev["stage"].isin(EXCLUDED_STAGES)]
+    # "As of now": an event that starts after ``now`` is upcoming whatever the
+    # store knows about it today, and its result and statistics are ignored.
+    # That makes a historical rebuild (now = some past instant) see exactly
+    # what was knowable then, which the leakage tests rely on.
     completed_mask = (ev["status"] == "final") & ev["winner_id"].notna() & (ev["start_time_utc"] < now_ts)
-    upcoming_mask = (ev["status"] == "scheduled") & (ev["start_time_utc"] > now_ts)
+    upcoming_mask = ev["status"].isin(["scheduled", "final"]) & (ev["start_time_utc"] > now_ts)
     ev = ev[completed_mask | upcoming_mask].sort_values(["start_time_utc", "event_id"]).reset_index(drop=True)
     if ev.empty:
         raise ValueError(f"no events on file for {league}; run `sportspred ingest --league {league}` first")
-    completed = ((ev["status"] == "final") & ev["winner_id"].notna()).to_numpy()
+    completed = ((ev["status"] == "final") & ev["winner_id"].notna() & (ev["start_time_utc"] < now_ts)).to_numpy()
 
     teams = pd.Index(pd.unique(pd.concat([ev["home_id"], ev["away_id"]])))
     a_idx = teams.get_indexer(ev["home_id"])

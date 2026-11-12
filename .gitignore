@@ -20,3 +20,7 @@ data/cache/
 # Generated outputs
 out/
 reports/
+
+# sportspred local data (store, raw downloads, reports); never committed
+data/
+!examples/data/

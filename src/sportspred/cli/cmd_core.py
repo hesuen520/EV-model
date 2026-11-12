@@ -73,7 +73,10 @@ def print_validation(report: dict) -> None:
     click.echo("\n  Gates:")
     for g in report["gates"]:
         click.echo(f"    [{'x' if g['passed'] else ' '}] {g['gate']}: {g['detail']}")
-    click.echo(f"  => {'VALIDATED' if report['gates_passed'] else 'EXPERIMENTAL'}")
+    if report.get("is_synthetic"):
+        click.echo("  => DEMO-ONLY (synthetic data can never be validated)")
+    else:
+        click.echo(f"  => {'VALIDATED' if report['gates_passed'] else 'EXPERIMENTAL'}")
     for lim in report.get("limitations", []):
         click.echo(f"  limitation: {lim}")
 

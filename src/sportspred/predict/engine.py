@@ -296,7 +296,7 @@ def predict_league(
             "stage": ev["stage"],
             "side_a": names.get(row["side_a_id"], row["side_a_id"]),
             "side_b": names.get(row["side_b_id"], row["side_b_id"]),
-            "side_a_role": "home" if ev["home_id"] == row["side_a_id"] else "a",
+            "side_a_role": "home" if ev["home_id"] == row["side_a_id"] and ev["neutral_site"] != 1 else "a",
             "start_hst": fmt_hst(ev["start_time_utc"], date_only=precision_date),
             "start_utc": iso_z(ev["start_time_utc"]),
             "venue": ev["venue_name"], "venue_city": ev["venue_city"],

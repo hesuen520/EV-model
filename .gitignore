@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+build/
+dist/
+
+# Local data caches and secrets (never commit API keys or bulk raw data)
+data/raw/
+data/cache/
+.env
+*.sqlite
+*.db
+
+# Generated outputs
+out/
+reports/

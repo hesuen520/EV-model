@@ -1,0 +1,6527 @@
+{
+ "meta": {
+  "generated_by": "make_golden.py (research thread devig-math)",
+  "precision": "mpmath 50 significant digits; values rounded to 12 decimals; test at 1e-10",
+  "conventions": {
+   "american": "integer American odds; |a| >= 100; -100 == +100 == decimal 2.0",
+   "raw_implied": "1/decimal",
+   "fair": "devigged probabilities in the same order as `american`",
+   "power": "p_i = q_i^k, sum = 1",
+   "shin": "p_i = (sqrt(z^2 + 4(1-z) q_i^2/B) - z) / (2(1-z)), B = sum q, sum p = 1",
+   "odds_ratio": "p_i = q_i / (c + q_i - c q_i), sum = 1; logit_shift is the same method with delta = ln c",
+   "probit": "p_i = Phi(Phi^-1(q_i) - delta), sum = 1",
+   "worst_case": "per-outcome min over valid methods among [multiplicative, additive, power, shin, odds_ratio, probit]; not normalised",
+   "kelly": "f* = (p_win*b - p_lose) / (b*(p_win + p_lose)), b = decimal - 1; stake = max(f*, 0)",
+   "ev": "ev_per_unit = p_win*(decimal-1) - p_lose, push refunds stake",
+   "line_translation": "integer-valued stat X. half-integer line L: over = X >= floor(L)+1. integer line L: over = X > L, push = X == L. sharp_fair_p_over_excl_push = P(over)/(P(over)+P(under)). nb2: var = mu + mu^2/r. nb1: var = phi*mu (r = mu/(phi-1)). normal: continuity-corrected, integer k <-> (k-0.5, k+0.5)."
+  }
+ },
+ "conversions": {
+  "american_to_decimal_prob": [
+   {
+    "american": 100,
+    "decimal": 2.0,
+    "implied_prob": 0.5,
+    "implied_prob_fraction": "1/2",
+    "canonical_american": 100.0
+   },
+   {
+    "american": -100,
+    "decimal": 2.0,
+    "implied_prob": 0.5,
+    "implied_prob_fraction": "1/2",
+    "canonical_american": 100.0
+   },
+   {
+    "american": 101,
+    "decimal": 2.01,
+    "implied_prob": 0.497512437811,
+    "implied_prob_fraction": "100/201",
+    "canonical_american": 101.0
+   },
+   {
+    "american": -101,
+    "decimal": 1.990099009901,
+    "implied_prob": 0.502487562189,
+    "implied_prob_fraction": "101/201",
+    "canonical_american": -101.0
+   },
+   {
+    "american": 105,
+    "decimal": 2.05,
+    "implied_prob": 0.487804878049,
+    "implied_prob_fraction": "20/41",
+    "canonical_american": 105.0
+   },
+   {
+    "american": -105,
+    "decimal": 1.952380952381,
+    "implied_prob": 0.512195121951,
+    "implied_prob_fraction": "21/41",
+    "canonical_american": -105.0
+   },
+   {
+    "american": 110,
+    "decimal": 2.1,
+    "implied_prob": 0.47619047619,
+    "implied_prob_fraction": "10/21",
+    "canonical_american": 110.0
+   },
+   {
+    "american": -110,
+    "decimal": 1.909090909091,
+    "implied_prob": 0.52380952381,
+    "implied_prob_fraction": "11/21",
+    "canonical_american": -110.0
+   },
+   {
+    "american": 150,
+    "decimal": 2.5,
+    "implied_prob": 0.4,
+    "implied_prob_fraction": "2/5",
+    "canonical_american": 150.0
+   },
+   {
+    "american": -150,
+    "decimal": 1.666666666667,
+    "implied_prob": 0.6,
+    "implied_prob_fraction": "3/5",
+    "canonical_american": -150.0
+   },
+   {
+    "american": 250,
+    "decimal": 3.5,
+    "implied_prob": 0.285714285714,
+    "implied_prob_fraction": "2/7",
+    "canonical_american": 250.0
+   },
+   {
+    "american": -250,
+    "decimal": 1.4,
+    "implied_prob": 0.714285714286,
+    "implied_prob_fraction": "5/7",
+    "canonical_american": -250.0
+   },
+   {
+    "american": 1000,
+    "decimal": 11.0,
+    "implied_prob": 0.090909090909,
+    "implied_prob_fraction": "1/11",
+    "canonical_american": 1000.0
+   },
+   {
+    "american": -1000,
+    "decimal": 1.1,
+    "implied_prob": 0.909090909091,
+    "implied_prob_fraction": "10/11",
+    "canonical_american": -1000.0
+   },
+   {
+    "american": 10000,
+    "decimal": 101.0,
+    "implied_prob": 0.009900990099,
+    "implied_prob_fraction": "1/101",
+    "canonical_american": 10000.0
+   },
+   {
+    "american": -10000,
+    "decimal": 1.01,
+    "implied_prob": 0.990099009901,
+    "implied_prob_fraction": "100/101",
+    "canonical_american": -10000.0
+   },
+   {
+    "american": 100000,
+    "decimal": 1001.0,
+    "implied_prob": 0.000999000999,
+    "implied_prob_fraction": "1/1001",
+    "canonical_american": 100000.0
+   },
+   {
+    "american": -100000,
+    "decimal": 1.001,
+    "implied_prob": 0.999000999001,
+    "implied_prob_fraction": "1000/1001",
+    "canonical_american": -100000.0
+   }
+  ],
+  "invalid_american": [
+   0,
+   1,
+   -1,
+   50,
+   -50,
+   99,
+   -99,
+   99.99,
+   -99.99
+  ],
+  "decimal_to_american": [
+   {
+    "decimal": 1.001,
+    "american": -100000.000000011
+   },
+   {
+    "decimal": 1.01,
+    "american": -10000.0
+   },
+   {
+    "decimal": 1.5,
+    "american": -200.0
+   },
+   {
+    "decimal": 1.909090909090909,
+    "american": -110.0
+   },
+   {
+    "decimal": 1.999,
+    "american": -100.1001001
+   },
+   {
+    "decimal": 2.0,
+    "american": 100.0
+   },
+   {
+    "decimal": 2.001,
+    "american": 100.1
+   },
+   {
+    "decimal": 2.5,
+    "american": 150.0
+   },
+   {
+    "decimal": 3.0,
+    "american": 200.0
+   },
+   {
+    "decimal": 11.0,
+    "american": 1000.0
+   },
+   {
+    "decimal": 101.0,
+    "american": 10000.0
+   },
+   {
+    "decimal": 1001.0,
+    "american": 100000.0
+   }
+  ]
+ },
+ "devig": [
+  {
+   "id": "two_way_symmetric_-110__multiplicative",
+   "market": "two_way_symmetric_-110",
+   "method": "multiplicative",
+   "american": [
+    -110,
+    -110
+   ],
+   "decimal": [
+    1.909090909091,
+    1.909090909091
+   ],
+   "raw_implied": [
+    0.52380952381,
+    0.52380952381
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_symmetric_-110__additive",
+   "market": "two_way_symmetric_-110",
+   "method": "additive",
+   "american": [
+    -110,
+    -110
+   ],
+   "decimal": [
+    1.909090909091,
+    1.909090909091
+   ],
+   "raw_implied": [
+    0.52380952381,
+    0.52380952381
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_symmetric_-110__power",
+   "market": "two_way_symmetric_-110",
+   "method": "power",
+   "american": [
+    -110,
+    -110
+   ],
+   "decimal": [
+    1.909090909091,
+    1.909090909091
+   ],
+   "raw_implied": [
+    0.52380952381,
+    0.52380952381
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.071942563131
+   }
+  },
+  {
+   "id": "two_way_symmetric_-110__shin",
+   "market": "two_way_symmetric_-110",
+   "method": "shin",
+   "american": [
+    -110,
+    -110
+   ],
+   "decimal": [
+    1.909090909091,
+    1.909090909091
+   ],
+   "raw_implied": [
+    0.52380952381,
+    0.52380952381
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.047619047619
+   }
+  },
+  {
+   "id": "two_way_symmetric_-110__odds_ratio",
+   "market": "two_way_symmetric_-110",
+   "method": "odds_ratio",
+   "american": [
+    -110,
+    -110
+   ],
+   "decimal": [
+    1.909090909091,
+    1.909090909091
+   ],
+   "raw_implied": [
+    0.52380952381,
+    0.52380952381
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.1
+   }
+  },
+  {
+   "id": "two_way_symmetric_-110__logit_shift",
+   "market": "two_way_symmetric_-110",
+   "method": "logit_shift",
+   "american": [
+    -110,
+    -110
+   ],
+   "decimal": [
+    1.909090909091,
+    1.909090909091
+   ],
+   "raw_implied": [
+    0.52380952381,
+    0.52380952381
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.095310179804
+   }
+  },
+  {
+   "id": "two_way_symmetric_-110__probit",
+   "market": "two_way_symmetric_-110",
+   "method": "probit",
+   "american": [
+    -110,
+    -110
+   ],
+   "decimal": [
+    1.909090909091,
+    1.909090909091
+   ],
+   "raw_implied": [
+    0.52380952381,
+    0.52380952381
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.059717099785
+   }
+  },
+  {
+   "id": "two_way_symmetric_-110__worst_case",
+   "market": "two_way_symmetric_-110",
+   "method": "worst_case",
+   "american": [
+    -110,
+    -110
+   ],
+   "decimal": [
+    1.909090909091,
+    1.909090909091
+   ],
+   "raw_implied": [
+    0.52380952381,
+    0.52380952381
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative",
+      "additive",
+      "power",
+      "shin",
+      "odds_ratio",
+      "probit"
+     ],
+     [
+      "multiplicative",
+      "additive",
+      "power",
+      "shin",
+      "odds_ratio",
+      "probit"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_-115_-105__multiplicative",
+   "market": "two_way_-115_-105",
+   "method": "multiplicative",
+   "american": [
+    -115,
+    -105
+   ],
+   "decimal": [
+    1.869565217391,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.53488372093,
+    0.512195121951
+   ],
+   "booksum": 1.047078842881,
+   "fair": [
+    0.510834236186,
+    0.489165763814
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-115_-105__additive",
+   "market": "two_way_-115_-105",
+   "method": "additive",
+   "american": [
+    -115,
+    -105
+   ],
+   "decimal": [
+    1.869565217391,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.53488372093,
+    0.512195121951
+   ],
+   "booksum": 1.047078842881,
+   "fair": [
+    0.51134429949,
+    0.48865570051
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-115_-105__power",
+   "market": "two_way_-115_-105",
+   "method": "power",
+   "american": [
+    -115,
+    -105
+   ],
+   "decimal": [
+    1.869565217391,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.53488372093,
+    0.512195121951
+   ],
+   "booksum": 1.047078842881,
+   "fair": [
+    0.511604454498,
+    0.488395545502
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.07111584304
+   }
+  },
+  {
+   "id": "two_way_-115_-105__shin",
+   "market": "two_way_-115_-105",
+   "method": "shin",
+   "american": [
+    -115,
+    -105
+   ],
+   "decimal": [
+    1.869565217391,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.53488372093,
+    0.512195121951
+   ],
+   "booksum": 1.047078842881,
+   "fair": [
+    0.51134429949,
+    0.48865570051
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.047079933094
+   }
+  },
+  {
+   "id": "two_way_-115_-105__odds_ratio",
+   "market": "two_way_-115_-105",
+   "method": "odds_ratio",
+   "american": [
+    -115,
+    -105
+   ],
+   "decimal": [
+    1.869565217391,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.53488372093,
+    0.512195121951
+   ],
+   "booksum": 1.047078842881,
+   "fair": [
+    0.511369512082,
+    0.488630487918
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.098863048792
+   }
+  },
+  {
+   "id": "two_way_-115_-105__logit_shift",
+   "market": "two_way_-115_-105",
+   "method": "logit_shift",
+   "american": [
+    -115,
+    -105
+   ],
+   "decimal": [
+    1.869565217391,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.53488372093,
+    0.512195121951
+   ],
+   "booksum": 1.047078842881,
+   "fair": [
+    0.511369512082,
+    0.488630487918
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.094276053272
+   }
+  },
+  {
+   "id": "two_way_-115_-105__probit",
+   "market": "two_way_-115_-105",
+   "method": "probit",
+   "american": [
+    -115,
+    -105
+   ],
+   "decimal": [
+    1.869565217391,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.53488372093,
+    0.512195121951
+   ],
+   "booksum": 1.047078842881,
+   "fair": [
+    0.511364098218,
+    0.488635901782
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.059062823154
+   }
+  },
+  {
+   "id": "two_way_-115_-105__worst_case",
+   "market": "two_way_-115_-105",
+   "method": "worst_case",
+   "american": [
+    -115,
+    -105
+   ],
+   "decimal": [
+    1.869565217391,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.53488372093,
+    0.512195121951
+   ],
+   "booksum": 1.047078842881,
+   "fair": [
+    0.510834236186,
+    0.488395545502
+   ],
+   "fair_sum": 0.999229781688,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_-120_+100__multiplicative",
+   "market": "two_way_-120_+100",
+   "method": "multiplicative",
+   "american": [
+    -120,
+    100
+   ],
+   "decimal": [
+    1.833333333333,
+    2.0
+   ],
+   "raw_implied": [
+    0.545454545455,
+    0.5
+   ],
+   "booksum": 1.045454545455,
+   "fair": [
+    0.521739130435,
+    0.478260869565
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-120_+100__additive",
+   "market": "two_way_-120_+100",
+   "method": "additive",
+   "american": [
+    -120,
+    100
+   ],
+   "decimal": [
+    1.833333333333,
+    2.0
+   ],
+   "raw_implied": [
+    0.545454545455,
+    0.5
+   ],
+   "booksum": 1.045454545455,
+   "fair": [
+    0.522727272727,
+    0.477272727273
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-120_+100__power",
+   "market": "two_way_-120_+100",
+   "method": "power",
+   "american": [
+    -120,
+    100
+   ],
+   "decimal": [
+    1.833333333333,
+    2.0
+   ],
+   "raw_implied": [
+    0.545454545455,
+    0.5
+   ],
+   "booksum": 1.045454545455,
+   "fair": [
+    0.523229046152,
+    0.476770953848
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.068631749221
+   }
+  },
+  {
+   "id": "two_way_-120_+100__shin",
+   "market": "two_way_-120_+100",
+   "method": "shin",
+   "american": [
+    -120,
+    100
+   ],
+   "decimal": [
+    1.833333333333,
+    2.0
+   ],
+   "raw_implied": [
+    0.545454545455,
+    0.5
+   ],
+   "booksum": 1.045454545455,
+   "fair": [
+    0.522727272727,
+    0.477272727273
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.045458637141
+   }
+  },
+  {
+   "id": "two_way_-120_+100__odds_ratio",
+   "market": "two_way_-120_+100",
+   "method": "odds_ratio",
+   "american": [
+    -120,
+    100
+   ],
+   "decimal": [
+    1.833333333333,
+    2.0
+   ],
+   "raw_implied": [
+    0.545454545455,
+    0.5
+   ],
+   "booksum": 1.045454545455,
+   "fair": [
+    0.522774424948,
+    0.477225575052
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.09544511501
+   }
+  },
+  {
+   "id": "two_way_-120_+100__logit_shift",
+   "market": "two_way_-120_+100",
+   "method": "logit_shift",
+   "american": [
+    -120,
+    100
+   ],
+   "decimal": [
+    1.833333333333,
+    2.0
+   ],
+   "raw_implied": [
+    0.545454545455,
+    0.5
+   ],
+   "booksum": 1.045454545455,
+   "fair": [
+    0.522774424948,
+    0.477225575052
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.091160778397
+   }
+  },
+  {
+   "id": "two_way_-120_+100__probit",
+   "market": "two_way_-120_+100",
+   "method": "probit",
+   "american": [
+    -120,
+    100
+   ],
+   "decimal": [
+    1.833333333333,
+    2.0
+   ],
+   "raw_implied": [
+    0.545454545455,
+    0.5
+   ],
+   "booksum": 1.045454545455,
+   "fair": [
+    0.522764303207,
+    0.477235696793
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.057092647161
+   }
+  },
+  {
+   "id": "two_way_-120_+100__worst_case",
+   "market": "two_way_-120_+100",
+   "method": "worst_case",
+   "american": [
+    -120,
+    100
+   ],
+   "decimal": [
+    1.833333333333,
+    2.0
+   ],
+   "raw_implied": [
+    0.545454545455,
+    0.5
+   ],
+   "booksum": 1.045454545455,
+   "fair": [
+    0.521739130435,
+    0.476770953848
+   ],
+   "fair_sum": 0.998510084283,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_-125_-105__multiplicative",
+   "market": "two_way_-125_-105",
+   "method": "multiplicative",
+   "american": [
+    -125,
+    -105
+   ],
+   "decimal": [
+    1.8,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.555555555556,
+    0.512195121951
+   ],
+   "booksum": 1.067750677507,
+   "fair": [
+    0.520304568528,
+    0.479695431472
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-125_-105__additive",
+   "market": "two_way_-125_-105",
+   "method": "additive",
+   "american": [
+    -125,
+    -105
+   ],
+   "decimal": [
+    1.8,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.555555555556,
+    0.512195121951
+   ],
+   "booksum": 1.067750677507,
+   "fair": [
+    0.521680216802,
+    0.478319783198
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-125_-105__power",
+   "market": "two_way_-125_-105",
+   "method": "power",
+   "american": [
+    -125,
+    -105
+   ],
+   "decimal": [
+    1.8,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.555555555556,
+    0.512195121951
+   ],
+   "booksum": 1.067750677507,
+   "fair": [
+    0.522425819657,
+    0.477574180343
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.10460532016
+   }
+  },
+  {
+   "id": "two_way_-125_-105__shin",
+   "market": "two_way_-125_-105",
+   "method": "shin",
+   "american": [
+    -125,
+    -105
+   ],
+   "decimal": [
+    1.8,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.555555555556,
+    0.512195121951
+   ],
+   "booksum": 1.067750677507,
+   "fair": [
+    0.521680216802,
+    0.478319783198
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.067758775212
+   }
+  },
+  {
+   "id": "two_way_-125_-105__odds_ratio",
+   "market": "two_way_-125_-105",
+   "method": "odds_ratio",
+   "american": [
+    -125,
+    -105
+   ],
+   "decimal": [
+    1.8,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.555555555556,
+    0.512195121951
+   ],
+   "booksum": 1.067750677507,
+   "fair": [
+    0.521780381305,
+    0.478219618695
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.145643923739
+   }
+  },
+  {
+   "id": "two_way_-125_-105__logit_shift",
+   "market": "two_way_-125_-105",
+   "method": "logit_shift",
+   "american": [
+    -125,
+    -105
+   ],
+   "decimal": [
+    1.8,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.555555555556,
+    0.512195121951
+   ],
+   "booksum": 1.067750677507,
+   "fair": [
+    0.521780381305,
+    0.478219618695
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.135966857742
+   }
+  },
+  {
+   "id": "two_way_-125_-105__probit",
+   "market": "two_way_-125_-105",
+   "method": "probit",
+   "american": [
+    -125,
+    -105
+   ],
+   "decimal": [
+    1.8,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.555555555556,
+    0.512195121951
+   ],
+   "booksum": 1.067750677507,
+   "fair": [
+    0.52175886254,
+    0.47824113746
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.085141849351
+   }
+  },
+  {
+   "id": "two_way_-125_-105__worst_case",
+   "market": "two_way_-125_-105",
+   "method": "worst_case",
+   "american": [
+    -125,
+    -105
+   ],
+   "decimal": [
+    1.8,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.555555555556,
+    0.512195121951
+   ],
+   "booksum": 1.067750677507,
+   "fair": [
+    0.520304568528,
+    0.477574180343
+   ],
+   "fair_sum": 0.997878748871,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_-135_+105__multiplicative",
+   "market": "two_way_-135_+105",
+   "method": "multiplicative",
+   "american": [
+    -135,
+    105
+   ],
+   "decimal": [
+    1.740740740741,
+    2.05
+   ],
+   "raw_implied": [
+    0.574468085106,
+    0.487804878049
+   ],
+   "booksum": 1.062272963155,
+   "fair": [
+    0.540791402052,
+    0.459208597948
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-135_+105__additive",
+   "market": "two_way_-135_+105",
+   "method": "additive",
+   "american": [
+    -135,
+    105
+   ],
+   "decimal": [
+    1.740740740741,
+    2.05
+   ],
+   "raw_implied": [
+    0.574468085106,
+    0.487804878049
+   ],
+   "booksum": 1.062272963155,
+   "fair": [
+    0.543331603529,
+    0.456668396471
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-135_+105__power",
+   "market": "two_way_-135_+105",
+   "method": "power",
+   "american": [
+    -135,
+    105
+   ],
+   "decimal": [
+    1.740740740741,
+    2.05
+   ],
+   "raw_implied": [
+    0.574468085106,
+    0.487804878049
+   ],
+   "booksum": 1.062272963155,
+   "fair": [
+    0.544688605983,
+    0.455311394017
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.096029670083
+   }
+  },
+  {
+   "id": "two_way_-135_+105__shin",
+   "market": "two_way_-135_+105",
+   "method": "shin",
+   "american": [
+    -135,
+    105
+   ],
+   "decimal": [
+    1.740740740741,
+    2.05
+   ],
+   "raw_implied": [
+    0.574468085106,
+    0.487804878049
+   ],
+   "booksum": 1.062272963155,
+   "fair": [
+    0.543331603529,
+    0.456668396471
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.062300588425
+   }
+  },
+  {
+   "id": "two_way_-135_+105__odds_ratio",
+   "market": "two_way_-135_+105",
+   "method": "odds_ratio",
+   "american": [
+    -135,
+    105
+   ],
+   "decimal": [
+    1.740740740741,
+    2.05
+   ],
+   "raw_implied": [
+    0.574468085106,
+    0.487804878049
+   ],
+   "booksum": 1.062272963155,
+   "fair": [
+    0.543501580888,
+    0.456498419112
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.133893419028
+   }
+  },
+  {
+   "id": "two_way_-135_+105__logit_shift",
+   "market": "two_way_-135_+105",
+   "method": "logit_shift",
+   "american": [
+    -135,
+    105
+   ],
+   "decimal": [
+    1.740740740741,
+    2.05
+   ],
+   "raw_implied": [
+    0.574468085106,
+    0.487804878049
+   ],
+   "booksum": 1.062272963155,
+   "fair": [
+    0.543501580888,
+    0.456498419112
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.12565721414
+   }
+  },
+  {
+   "id": "two_way_-135_+105__probit",
+   "market": "two_way_-135_+105",
+   "method": "probit",
+   "american": [
+    -135,
+    105
+   ],
+   "decimal": [
+    1.740740740741,
+    2.05
+   ],
+   "raw_implied": [
+    0.574468085106,
+    0.487804878049
+   ],
+   "booksum": 1.062272963155,
+   "fair": [
+    0.543465107708,
+    0.456534892292
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.078593914678
+   }
+  },
+  {
+   "id": "two_way_-135_+105__worst_case",
+   "market": "two_way_-135_+105",
+   "method": "worst_case",
+   "american": [
+    -135,
+    105
+   ],
+   "decimal": [
+    1.740740740741,
+    2.05
+   ],
+   "raw_implied": [
+    0.574468085106,
+    0.487804878049
+   ],
+   "booksum": 1.062272963155,
+   "fair": [
+    0.540791402052,
+    0.455311394017
+   ],
+   "fair_sum": 0.996102796069,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_dog_first_+120_-150__multiplicative",
+   "market": "two_way_dog_first_+120_-150",
+   "method": "multiplicative",
+   "american": [
+    120,
+    -150
+   ],
+   "decimal": [
+    2.2,
+    1.666666666667
+   ],
+   "raw_implied": [
+    0.454545454545,
+    0.6
+   ],
+   "booksum": 1.054545454545,
+   "fair": [
+    0.431034482759,
+    0.568965517241
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_dog_first_+120_-150__additive",
+   "market": "two_way_dog_first_+120_-150",
+   "method": "additive",
+   "american": [
+    120,
+    -150
+   ],
+   "decimal": [
+    2.2,
+    1.666666666667
+   ],
+   "raw_implied": [
+    0.454545454545,
+    0.6
+   ],
+   "booksum": 1.054545454545,
+   "fair": [
+    0.427272727273,
+    0.572727272727
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_dog_first_+120_-150__power",
+   "market": "two_way_dog_first_+120_-150",
+   "method": "power",
+   "american": [
+    120,
+    -150
+   ],
+   "decimal": [
+    2.2,
+    1.666666666667
+   ],
+   "raw_implied": [
+    0.454545454545,
+    0.6
+   ],
+   "booksum": 1.054545454545,
+   "fair": [
+    0.425301390668,
+    0.574698609332
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.084341715678
+   }
+  },
+  {
+   "id": "two_way_dog_first_+120_-150__shin",
+   "market": "two_way_dog_first_+120_-150",
+   "method": "shin",
+   "american": [
+    120,
+    -150
+   ],
+   "decimal": [
+    2.2,
+    1.666666666667
+   ],
+   "raw_implied": [
+    0.454545454545,
+    0.6
+   ],
+   "booksum": 1.054545454545,
+   "fair": [
+    0.427272727273,
+    0.572727272727
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.054606435384
+   }
+  },
+  {
+   "id": "two_way_dog_first_+120_-150__odds_ratio",
+   "market": "two_way_dog_first_+120_-150",
+   "method": "odds_ratio",
+   "american": [
+    120,
+    -150
+   ],
+   "decimal": [
+    2.2,
+    1.666666666667
+   ],
+   "raw_implied": [
+    0.454545454545,
+    0.6
+   ],
+   "booksum": 1.054545454545,
+   "fair": [
+    0.427050983125,
+    0.572949016875
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.11803398875
+   }
+  },
+  {
+   "id": "two_way_dog_first_+120_-150__logit_shift",
+   "market": "two_way_dog_first_+120_-150",
+   "method": "logit_shift",
+   "american": [
+    120,
+    -150
+   ],
+   "decimal": [
+    2.2,
+    1.666666666667
+   ],
+   "raw_implied": [
+    0.454545454545,
+    0.6
+   ],
+   "booksum": 1.054545454545,
+   "fair": [
+    0.427050983125,
+    0.572949016875
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.111571775657
+   }
+  },
+  {
+   "id": "two_way_dog_first_+120_-150__probit",
+   "market": "two_way_dog_first_+120_-150",
+   "method": "probit",
+   "american": [
+    120,
+    -150
+   ],
+   "decimal": [
+    2.2,
+    1.666666666667
+   ],
+   "raw_implied": [
+    0.454545454545,
+    0.6
+   ],
+   "booksum": 1.054545454545,
+   "fair": [
+    0.427098437005,
+    0.572901562995
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.069580904407
+   }
+  },
+  {
+   "id": "two_way_dog_first_+120_-150__worst_case",
+   "market": "two_way_dog_first_+120_-150",
+   "method": "worst_case",
+   "american": [
+    120,
+    -150
+   ],
+   "decimal": [
+    2.2,
+    1.666666666667
+   ],
+   "raw_implied": [
+    0.454545454545,
+    0.6
+   ],
+   "booksum": 1.054545454545,
+   "fair": [
+    0.425301390668,
+    0.568965517241
+   ],
+   "fair_sum": 0.994266907909,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "power"
+     ],
+     [
+      "multiplicative"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_-200_+160__multiplicative",
+   "market": "two_way_-200_+160",
+   "method": "multiplicative",
+   "american": [
+    -200,
+    160
+   ],
+   "decimal": [
+    1.5,
+    2.6
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.384615384615
+   ],
+   "booksum": 1.051282051282,
+   "fair": [
+    0.634146341463,
+    0.365853658537
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-200_+160__additive",
+   "market": "two_way_-200_+160",
+   "method": "additive",
+   "american": [
+    -200,
+    160
+   ],
+   "decimal": [
+    1.5,
+    2.6
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.384615384615
+   ],
+   "booksum": 1.051282051282,
+   "fair": [
+    0.641025641026,
+    0.358974358974
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-200_+160__power",
+   "market": "two_way_-200_+160",
+   "method": "power",
+   "american": [
+    -200,
+    160
+   ],
+   "decimal": [
+    1.5,
+    2.6
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.384615384615
+   ],
+   "booksum": 1.051282051282,
+   "fair": [
+    0.644649937534,
+    0.355350062466
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.082825212933
+   }
+  },
+  {
+   "id": "two_way_-200_+160__shin",
+   "market": "two_way_-200_+160",
+   "method": "shin",
+   "american": [
+    -200,
+    160
+   ],
+   "decimal": [
+    1.5,
+    2.6
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.384615384615
+   ],
+   "booksum": 1.051282051282,
+   "fair": [
+    0.641025641026,
+    0.358974358974
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.05149825784
+   }
+  },
+  {
+   "id": "two_way_-200_+160__odds_ratio",
+   "market": "two_way_-200_+160",
+   "method": "odds_ratio",
+   "american": [
+    -200,
+    160
+   ],
+   "decimal": [
+    1.5,
+    2.6
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.384615384615
+   ],
+   "booksum": 1.051282051282,
+   "fair": [
+    0.641429826364,
+    0.358570173636
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.11803398875
+   }
+  },
+  {
+   "id": "two_way_-200_+160__logit_shift",
+   "market": "two_way_-200_+160",
+   "method": "logit_shift",
+   "american": [
+    -200,
+    160
+   ],
+   "decimal": [
+    1.5,
+    2.6
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.384615384615
+   ],
+   "booksum": 1.051282051282,
+   "fair": [
+    0.641429826364,
+    0.358570173636
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.111571775657
+   }
+  },
+  {
+   "id": "two_way_-200_+160__probit",
+   "market": "two_way_-200_+160",
+   "method": "probit",
+   "american": [
+    -200,
+    160
+   ],
+   "decimal": [
+    1.5,
+    2.6
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.384615384615
+   ],
+   "booksum": 1.051282051282,
+   "fair": [
+    0.64134426046,
+    0.35865573954
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.068673033587
+   }
+  },
+  {
+   "id": "two_way_-200_+160__worst_case",
+   "market": "two_way_-200_+160",
+   "method": "worst_case",
+   "american": [
+    -200,
+    160
+   ],
+   "decimal": [
+    1.5,
+    2.6
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.384615384615
+   ],
+   "booksum": 1.051282051282,
+   "fair": [
+    0.634146341463,
+    0.355350062466
+   ],
+   "fair_sum": 0.989496403929,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_-300_+240__multiplicative",
+   "market": "two_way_-300_+240",
+   "method": "multiplicative",
+   "american": [
+    -300,
+    240
+   ],
+   "decimal": [
+    1.333333333333,
+    3.4
+   ],
+   "raw_implied": [
+    0.75,
+    0.294117647059
+   ],
+   "booksum": 1.044117647059,
+   "fair": [
+    0.718309859155,
+    0.281690140845
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-300_+240__additive",
+   "market": "two_way_-300_+240",
+   "method": "additive",
+   "american": [
+    -300,
+    240
+   ],
+   "decimal": [
+    1.333333333333,
+    3.4
+   ],
+   "raw_implied": [
+    0.75,
+    0.294117647059
+   ],
+   "booksum": 1.044117647059,
+   "fair": [
+    0.727941176471,
+    0.272058823529
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-300_+240__power",
+   "market": "two_way_-300_+240",
+   "method": "power",
+   "american": [
+    -300,
+    240
+   ],
+   "decimal": [
+    1.333333333333,
+    3.4
+   ],
+   "raw_implied": [
+    0.75,
+    0.294117647059
+   ],
+   "booksum": 1.044117647059,
+   "fair": [
+    0.73308383015,
+    0.26691616985
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.07929985057
+   }
+  },
+  {
+   "id": "two_way_-300_+240__shin",
+   "market": "two_way_-300_+240",
+   "method": "shin",
+   "american": [
+    -300,
+    240
+   ],
+   "decimal": [
+    1.333333333333,
+    3.4
+   ],
+   "raw_implied": [
+    0.75,
+    0.294117647059
+   ],
+   "booksum": 1.044117647059,
+   "fair": [
+    0.727941176471,
+    0.272058823529
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.044606706579
+   }
+  },
+  {
+   "id": "two_way_-300_+240__odds_ratio",
+   "market": "two_way_-300_+240",
+   "method": "odds_ratio",
+   "american": [
+    -300,
+    240
+   ],
+   "decimal": [
+    1.333333333333,
+    3.4
+   ],
+   "raw_implied": [
+    0.75,
+    0.294117647059
+   ],
+   "booksum": 1.044117647059,
+   "fair": [
+    0.728502972097,
+    0.271497027903
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.11803398875
+   }
+  },
+  {
+   "id": "two_way_-300_+240__logit_shift",
+   "market": "two_way_-300_+240",
+   "method": "logit_shift",
+   "american": [
+    -300,
+    240
+   ],
+   "decimal": [
+    1.333333333333,
+    3.4
+   ],
+   "raw_implied": [
+    0.75,
+    0.294117647059
+   ],
+   "booksum": 1.044117647059,
+   "fair": [
+    0.728502972097,
+    0.271497027903
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.111571775657
+   }
+  },
+  {
+   "id": "two_way_-300_+240__probit",
+   "market": "two_way_-300_+240",
+   "method": "probit",
+   "american": [
+    -300,
+    240
+   ],
+   "decimal": [
+    1.333333333333,
+    3.4
+   ],
+   "raw_implied": [
+    0.75,
+    0.294117647059
+   ],
+   "booksum": 1.044117647059,
+   "fair": [
+    0.728387167359,
+    0.271612832641
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.066547332533
+   }
+  },
+  {
+   "id": "two_way_-300_+240__worst_case",
+   "market": "two_way_-300_+240",
+   "method": "worst_case",
+   "american": [
+    -300,
+    240
+   ],
+   "decimal": [
+    1.333333333333,
+    3.4
+   ],
+   "raw_implied": [
+    0.75,
+    0.294117647059
+   ],
+   "booksum": 1.044117647059,
+   "fair": [
+    0.718309859155,
+    0.26691616985
+   ],
+   "fair_sum": 0.985226029005,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_-500_+350__multiplicative",
+   "market": "two_way_-500_+350",
+   "method": "multiplicative",
+   "american": [
+    -500,
+    350
+   ],
+   "decimal": [
+    1.2,
+    4.5
+   ],
+   "raw_implied": [
+    0.833333333333,
+    0.222222222222
+   ],
+   "booksum": 1.055555555556,
+   "fair": [
+    0.789473684211,
+    0.210526315789
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-500_+350__additive",
+   "market": "two_way_-500_+350",
+   "method": "additive",
+   "american": [
+    -500,
+    350
+   ],
+   "decimal": [
+    1.2,
+    4.5
+   ],
+   "raw_implied": [
+    0.833333333333,
+    0.222222222222
+   ],
+   "booksum": 1.055555555556,
+   "fair": [
+    0.805555555556,
+    0.194444444444
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-500_+350__power",
+   "market": "two_way_-500_+350",
+   "method": "power",
+   "american": [
+    -500,
+    350
+   ],
+   "decimal": [
+    1.2,
+    4.5
+   ],
+   "raw_implied": [
+    0.833333333333,
+    0.222222222222
+   ],
+   "booksum": 1.055555555556,
+   "fair": [
+    0.815012558921,
+    0.184987441079
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.121928529667
+   }
+  },
+  {
+   "id": "two_way_-500_+350__shin",
+   "market": "two_way_-500_+350",
+   "method": "shin",
+   "american": [
+    -500,
+    350
+   ],
+   "decimal": [
+    1.2,
+    4.5
+   ],
+   "raw_implied": [
+    0.833333333333,
+    0.222222222222
+   ],
+   "booksum": 1.055555555556,
+   "fair": [
+    0.805555555556,
+    0.194444444444
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.05729841846
+   }
+  },
+  {
+   "id": "two_way_-500_+350__odds_ratio",
+   "market": "two_way_-500_+350",
+   "method": "odds_ratio",
+   "american": [
+    -500,
+    350
+   ],
+   "decimal": [
+    1.2,
+    4.5
+   ],
+   "raw_implied": [
+    0.833333333333,
+    0.222222222222
+   ],
+   "booksum": 1.055555555556,
+   "fair": [
+    0.807072719232,
+    0.192927280768
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.195228609334
+   }
+  },
+  {
+   "id": "two_way_-500_+350__logit_shift",
+   "market": "two_way_-500_+350",
+   "method": "logit_shift",
+   "american": [
+    -500,
+    350
+   ],
+   "decimal": [
+    1.2,
+    4.5
+   ],
+   "raw_implied": [
+    0.833333333333,
+    0.222222222222
+   ],
+   "booksum": 1.055555555556,
+   "fair": [
+    0.807072719232,
+    0.192927280768
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.178337471969
+   }
+  },
+  {
+   "id": "two_way_-500_+350__probit",
+   "market": "two_way_-500_+350",
+   "method": "probit",
+   "american": [
+    -500,
+    350
+   ],
+   "decimal": [
+    1.2,
+    4.5
+   ],
+   "raw_implied": [
+    0.833333333333,
+    0.222222222222
+   ],
+   "booksum": 1.055555555556,
+   "fair": [
+    0.806772911241,
+    0.193227088759
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.101355946158
+   }
+  },
+  {
+   "id": "two_way_-500_+350__worst_case",
+   "market": "two_way_-500_+350",
+   "method": "worst_case",
+   "american": [
+    -500,
+    350
+   ],
+   "decimal": [
+    1.2,
+    4.5
+   ],
+   "raw_implied": [
+    0.833333333333,
+    0.222222222222
+   ],
+   "booksum": 1.055555555556,
+   "fair": [
+    0.789473684211,
+    0.184987441079
+   ],
+   "fair_sum": 0.974461125289,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_-1000_+600__multiplicative",
+   "market": "two_way_-1000_+600",
+   "method": "multiplicative",
+   "american": [
+    -1000,
+    600
+   ],
+   "decimal": [
+    1.1,
+    7.0
+   ],
+   "raw_implied": [
+    0.909090909091,
+    0.142857142857
+   ],
+   "booksum": 1.051948051948,
+   "fair": [
+    0.864197530864,
+    0.135802469136
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-1000_+600__additive",
+   "market": "two_way_-1000_+600",
+   "method": "additive",
+   "american": [
+    -1000,
+    600
+   ],
+   "decimal": [
+    1.1,
+    7.0
+   ],
+   "raw_implied": [
+    0.909090909091,
+    0.142857142857
+   ],
+   "booksum": 1.051948051948,
+   "fair": [
+    0.883116883117,
+    0.116883116883
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-1000_+600__power",
+   "market": "two_way_-1000_+600",
+   "method": "power",
+   "american": [
+    -1000,
+    600
+   ],
+   "decimal": [
+    1.1,
+    7.0
+   ],
+   "raw_implied": [
+    0.909090909091,
+    0.142857142857
+   ],
+   "booksum": 1.051948051948,
+   "fair": [
+    0.89534163346,
+    0.10465836654
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.159896250378
+   }
+  },
+  {
+   "id": "two_way_-1000_+600__shin",
+   "market": "two_way_-1000_+600",
+   "method": "shin",
+   "american": [
+    -1000,
+    600
+   ],
+   "decimal": [
+    1.1,
+    7.0
+   ],
+   "raw_implied": [
+    0.909090909091,
+    0.142857142857
+   ],
+   "booksum": 1.051948051948,
+   "fair": [
+    0.883116883117,
+    0.116883116883
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.055595900912
+   }
+  },
+  {
+   "id": "two_way_-1000_+600__odds_ratio",
+   "market": "two_way_-1000_+600",
+   "method": "odds_ratio",
+   "american": [
+    -1000,
+    600
+   ],
+   "decimal": [
+    1.1,
+    7.0
+   ],
+   "raw_implied": [
+    0.909090909091,
+    0.142857142857
+   ],
+   "booksum": 1.051948051948,
+   "fair": [
+    0.885661581484,
+    0.114338418516
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.290994448736
+   }
+  },
+  {
+   "id": "two_way_-1000_+600__logit_shift",
+   "market": "two_way_-1000_+600",
+   "method": "logit_shift",
+   "american": [
+    -1000,
+    600
+   ],
+   "decimal": [
+    1.1,
+    7.0
+   ],
+   "raw_implied": [
+    0.909090909091,
+    0.142857142857
+   ],
+   "booksum": 1.051948051948,
+   "fair": [
+    0.885661581484,
+    0.114338418516
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.255412811883
+   }
+  },
+  {
+   "id": "two_way_-1000_+600__probit",
+   "market": "two_way_-1000_+600",
+   "method": "probit",
+   "american": [
+    -1000,
+    600
+   ],
+   "decimal": [
+    1.1,
+    7.0
+   ],
+   "raw_implied": [
+    0.909090909091,
+    0.142857142857
+   ],
+   "booksum": 1.051948051948,
+   "fair": [
+    0.885196946698,
+    0.114803053302
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.13380360612
+   }
+  },
+  {
+   "id": "two_way_-1000_+600__worst_case",
+   "market": "two_way_-1000_+600",
+   "method": "worst_case",
+   "american": [
+    -1000,
+    600
+   ],
+   "decimal": [
+    1.1,
+    7.0
+   ],
+   "raw_implied": [
+    0.909090909091,
+    0.142857142857
+   ],
+   "booksum": 1.051948051948,
+   "fair": [
+    0.864197530864,
+    0.10465836654
+   ],
+   "fair_sum": 0.968855897404,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_-2500_+900__multiplicative",
+   "market": "two_way_-2500_+900",
+   "method": "multiplicative",
+   "american": [
+    -2500,
+    900
+   ],
+   "decimal": [
+    1.04,
+    10.0
+   ],
+   "raw_implied": [
+    0.961538461538,
+    0.1
+   ],
+   "booksum": 1.061538461538,
+   "fair": [
+    0.905797101449,
+    0.094202898551
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-2500_+900__additive",
+   "market": "two_way_-2500_+900",
+   "method": "additive",
+   "american": [
+    -2500,
+    900
+   ],
+   "decimal": [
+    1.04,
+    10.0
+   ],
+   "raw_implied": [
+    0.961538461538,
+    0.1
+   ],
+   "booksum": 1.061538461538,
+   "fair": [
+    0.930769230769,
+    0.069230769231
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_-2500_+900__power",
+   "market": "two_way_-2500_+900",
+   "method": "power",
+   "american": [
+    -2500,
+    900
+   ],
+   "decimal": [
+    1.04,
+    10.0
+   ],
+   "raw_implied": [
+    0.961538461538,
+    0.1
+   ],
+   "booksum": 1.061538461538,
+   "fair": [
+    0.950190817661,
+    0.049809182339
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.302690587534
+   }
+  },
+  {
+   "id": "two_way_-2500_+900__shin",
+   "market": "two_way_-2500_+900",
+   "method": "shin",
+   "american": [
+    -2500,
+    900
+   ],
+   "decimal": [
+    1.04,
+    10.0
+   ],
+   "raw_implied": [
+    0.961538461538,
+    0.1
+   ],
+   "booksum": 1.061538461538,
+   "fair": [
+    0.930769230769,
+    0.069230769231
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.071811660744
+   }
+  },
+  {
+   "id": "two_way_-2500_+900__odds_ratio",
+   "market": "two_way_-2500_+900",
+   "method": "odds_ratio",
+   "american": [
+    -2500,
+    900
+   ],
+   "decimal": [
+    1.04,
+    10.0
+   ],
+   "raw_implied": [
+    0.961538461538,
+    0.1
+   ],
+   "booksum": 1.061538461538,
+   "fair": [
+    0.9375,
+    0.0625
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.666666666667
+   }
+  },
+  {
+   "id": "two_way_-2500_+900__logit_shift",
+   "market": "two_way_-2500_+900",
+   "method": "logit_shift",
+   "american": [
+    -2500,
+    900
+   ],
+   "decimal": [
+    1.04,
+    10.0
+   ],
+   "raw_implied": [
+    0.961538461538,
+    0.1
+   ],
+   "booksum": 1.061538461538,
+   "fair": [
+    0.9375,
+    0.0625
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.510825623766
+   }
+  },
+  {
+   "id": "two_way_-2500_+900__probit",
+   "market": "two_way_-2500_+900",
+   "method": "probit",
+   "american": [
+    -2500,
+    900
+   ],
+   "decimal": [
+    1.04,
+    10.0
+   ],
+   "raw_implied": [
+    0.961538461538,
+    0.1
+   ],
+   "booksum": 1.061538461538,
+   "fair": [
+    0.936393931256,
+    0.063606068744
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.243636736487
+   }
+  },
+  {
+   "id": "two_way_-2500_+900__worst_case",
+   "market": "two_way_-2500_+900",
+   "method": "worst_case",
+   "american": [
+    -2500,
+    900
+   ],
+   "decimal": [
+    1.04,
+    10.0
+   ],
+   "raw_implied": [
+    0.961538461538,
+    0.1
+   ],
+   "booksum": 1.061538461538,
+   "fair": [
+    0.905797101449,
+    0.049809182339
+   ],
+   "fair_sum": 0.955606283788,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_extreme_-10000_+2000__multiplicative",
+   "market": "two_way_extreme_-10000_+2000",
+   "method": "multiplicative",
+   "american": [
+    -10000,
+    2000
+   ],
+   "decimal": [
+    1.01,
+    21.0
+   ],
+   "raw_implied": [
+    0.990099009901,
+    0.047619047619
+   ],
+   "booksum": 1.03771805752,
+   "fair": [
+    0.954111767378,
+    0.045888232622
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_extreme_-10000_+2000__additive",
+   "market": "two_way_extreme_-10000_+2000",
+   "method": "additive",
+   "american": [
+    -10000,
+    2000
+   ],
+   "decimal": [
+    1.01,
+    21.0
+   ],
+   "raw_implied": [
+    0.990099009901,
+    0.047619047619
+   ],
+   "booksum": 1.03771805752,
+   "fair": [
+    0.971239981141,
+    0.028760018859
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_extreme_-10000_+2000__power",
+   "market": "two_way_extreme_-10000_+2000",
+   "method": "power",
+   "american": [
+    -10000,
+    2000
+   ],
+   "decimal": [
+    1.01,
+    21.0
+   ],
+   "raw_implied": [
+    0.990099009901,
+    0.047619047619
+   ],
+   "booksum": 1.03771805752,
+   "fair": [
+    0.986118257451,
+    0.013881742549
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.404877407024
+   }
+  },
+  {
+   "id": "two_way_extreme_-10000_+2000__shin",
+   "market": "two_way_extreme_-10000_+2000",
+   "method": "shin",
+   "american": [
+    -10000,
+    2000
+   ],
+   "decimal": [
+    1.01,
+    21.0
+   ],
+   "raw_implied": [
+    0.990099009901,
+    0.047619047619
+   ],
+   "booksum": 1.03771805752,
+   "fair": [
+    0.971239981141,
+    0.028760018859
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.048617086427
+   }
+  },
+  {
+   "id": "two_way_extreme_-10000_+2000__odds_ratio",
+   "market": "two_way_extreme_-10000_+2000",
+   "method": "odds_ratio",
+   "american": [
+    -10000,
+    2000
+   ],
+   "decimal": [
+    1.01,
+    21.0
+   ],
+   "raw_implied": [
+    0.990099009901,
+    0.047619047619
+   ],
+   "booksum": 1.03771805752,
+   "fair": [
+    0.978128384417,
+    0.021871615583
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 2.2360679775
+   }
+  },
+  {
+   "id": "two_way_extreme_-10000_+2000__logit_shift",
+   "market": "two_way_extreme_-10000_+2000",
+   "method": "logit_shift",
+   "american": [
+    -10000,
+    2000
+   ],
+   "decimal": [
+    1.01,
+    21.0
+   ],
+   "raw_implied": [
+    0.990099009901,
+    0.047619047619
+   ],
+   "booksum": 1.03771805752,
+   "fair": [
+    0.978128384417,
+    0.021871615583
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.804718956217
+   }
+  },
+  {
+   "id": "two_way_extreme_-10000_+2000__probit",
+   "market": "two_way_extreme_-10000_+2000",
+   "method": "probit",
+   "american": [
+    -10000,
+    2000
+   ],
+   "decimal": [
+    1.01,
+    21.0
+   ],
+   "raw_implied": [
+    0.990099009901,
+    0.047619047619
+   ],
+   "booksum": 1.03771805752,
+   "fair": [
+    0.97720853651,
+    0.02279146349
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.33084386442
+   }
+  },
+  {
+   "id": "two_way_extreme_-10000_+2000__worst_case",
+   "market": "two_way_extreme_-10000_+2000",
+   "method": "worst_case",
+   "american": [
+    -10000,
+    2000
+   ],
+   "decimal": [
+    1.01,
+    21.0
+   ],
+   "raw_implied": [
+    0.990099009901,
+    0.047619047619
+   ],
+   "booksum": 1.03771805752,
+   "fair": [
+    0.954111767378,
+    0.013881742549
+   ],
+   "fair_sum": 0.967993509927,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_symmetric_-105__multiplicative",
+   "market": "two_way_symmetric_-105",
+   "method": "multiplicative",
+   "american": [
+    -105,
+    -105
+   ],
+   "decimal": [
+    1.952380952381,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.512195121951,
+    0.512195121951
+   ],
+   "booksum": 1.024390243902,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_symmetric_-105__additive",
+   "market": "two_way_symmetric_-105",
+   "method": "additive",
+   "american": [
+    -105,
+    -105
+   ],
+   "decimal": [
+    1.952380952381,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.512195121951,
+    0.512195121951
+   ],
+   "booksum": 1.024390243902,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_symmetric_-105__power",
+   "market": "two_way_symmetric_-105",
+   "method": "power",
+   "american": [
+    -105,
+    -105
+   ],
+   "decimal": [
+    1.952380952381,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.512195121951,
+    0.512195121951
+   ],
+   "booksum": 1.024390243902,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.036017584549
+   }
+  },
+  {
+   "id": "two_way_symmetric_-105__shin",
+   "market": "two_way_symmetric_-105",
+   "method": "shin",
+   "american": [
+    -105,
+    -105
+   ],
+   "decimal": [
+    1.952380952381,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.512195121951,
+    0.512195121951
+   ],
+   "booksum": 1.024390243902,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.024390243902
+   }
+  },
+  {
+   "id": "two_way_symmetric_-105__odds_ratio",
+   "market": "two_way_symmetric_-105",
+   "method": "odds_ratio",
+   "american": [
+    -105,
+    -105
+   ],
+   "decimal": [
+    1.952380952381,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.512195121951,
+    0.512195121951
+   ],
+   "booksum": 1.024390243902,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.05
+   }
+  },
+  {
+   "id": "two_way_symmetric_-105__logit_shift",
+   "market": "two_way_symmetric_-105",
+   "method": "logit_shift",
+   "american": [
+    -105,
+    -105
+   ],
+   "decimal": [
+    1.952380952381,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.512195121951,
+    0.512195121951
+   ],
+   "booksum": 1.024390243902,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.048790164169
+   }
+  },
+  {
+   "id": "two_way_symmetric_-105__probit",
+   "market": "two_way_symmetric_-105",
+   "method": "probit",
+   "american": [
+    -105,
+    -105
+   ],
+   "decimal": [
+    1.952380952381,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.512195121951,
+    0.512195121951
+   ],
+   "booksum": 1.024390243902,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.030573399821
+   }
+  },
+  {
+   "id": "two_way_symmetric_-105__worst_case",
+   "market": "two_way_symmetric_-105",
+   "method": "worst_case",
+   "american": [
+    -105,
+    -105
+   ],
+   "decimal": [
+    1.952380952381,
+    1.952380952381
+   ],
+   "raw_implied": [
+    0.512195121951,
+    0.512195121951
+   ],
+   "booksum": 1.024390243902,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative",
+      "additive",
+      "power",
+      "shin",
+      "odds_ratio",
+      "probit"
+     ],
+     [
+      "multiplicative",
+      "additive",
+      "power",
+      "shin",
+      "odds_ratio",
+      "probit"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_zero_vig_-200_+200__multiplicative",
+   "market": "two_way_zero_vig_-200_+200",
+   "method": "multiplicative",
+   "american": [
+    -200,
+    200
+   ],
+   "decimal": [
+    1.5,
+    3.0
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_-200_+200__additive",
+   "market": "two_way_zero_vig_-200_+200",
+   "method": "additive",
+   "american": [
+    -200,
+    200
+   ],
+   "decimal": [
+    1.5,
+    3.0
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_-200_+200__power",
+   "market": "two_way_zero_vig_-200_+200",
+   "method": "power",
+   "american": [
+    -200,
+    200
+   ],
+   "decimal": [
+    1.5,
+    3.0
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_-200_+200__shin",
+   "market": "two_way_zero_vig_-200_+200",
+   "method": "shin",
+   "american": [
+    -200,
+    200
+   ],
+   "decimal": [
+    1.5,
+    3.0
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_-200_+200__odds_ratio",
+   "market": "two_way_zero_vig_-200_+200",
+   "method": "odds_ratio",
+   "american": [
+    -200,
+    200
+   ],
+   "decimal": [
+    1.5,
+    3.0
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_-200_+200__logit_shift",
+   "market": "two_way_zero_vig_-200_+200",
+   "method": "logit_shift",
+   "american": [
+    -200,
+    200
+   ],
+   "decimal": [
+    1.5,
+    3.0
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_-200_+200__probit",
+   "market": "two_way_zero_vig_-200_+200",
+   "method": "probit",
+   "american": [
+    -200,
+    200
+   ],
+   "decimal": [
+    1.5,
+    3.0
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_-200_+200__worst_case",
+   "market": "two_way_zero_vig_-200_+200",
+   "method": "worst_case",
+   "american": [
+    -200,
+    200
+   ],
+   "decimal": [
+    1.5,
+    3.0
+   ],
+   "raw_implied": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.666666666667,
+    0.333333333333
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative",
+      "additive",
+      "power",
+      "shin",
+      "odds_ratio",
+      "probit"
+     ],
+     [
+      "multiplicative",
+      "additive",
+      "power",
+      "shin",
+      "odds_ratio",
+      "probit"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "two_way_zero_vig_even__multiplicative",
+   "market": "two_way_zero_vig_even",
+   "method": "multiplicative",
+   "american": [
+    100,
+    100
+   ],
+   "decimal": [
+    2.0,
+    2.0
+   ],
+   "raw_implied": [
+    0.5,
+    0.5
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_even__additive",
+   "market": "two_way_zero_vig_even",
+   "method": "additive",
+   "american": [
+    100,
+    100
+   ],
+   "decimal": [
+    2.0,
+    2.0
+   ],
+   "raw_implied": [
+    0.5,
+    0.5
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_even__power",
+   "market": "two_way_zero_vig_even",
+   "method": "power",
+   "american": [
+    100,
+    100
+   ],
+   "decimal": [
+    2.0,
+    2.0
+   ],
+   "raw_implied": [
+    0.5,
+    0.5
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_even__shin",
+   "market": "two_way_zero_vig_even",
+   "method": "shin",
+   "american": [
+    100,
+    100
+   ],
+   "decimal": [
+    2.0,
+    2.0
+   ],
+   "raw_implied": [
+    0.5,
+    0.5
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_even__odds_ratio",
+   "market": "two_way_zero_vig_even",
+   "method": "odds_ratio",
+   "american": [
+    100,
+    100
+   ],
+   "decimal": [
+    2.0,
+    2.0
+   ],
+   "raw_implied": [
+    0.5,
+    0.5
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_even__logit_shift",
+   "market": "two_way_zero_vig_even",
+   "method": "logit_shift",
+   "american": [
+    100,
+    100
+   ],
+   "decimal": [
+    2.0,
+    2.0
+   ],
+   "raw_implied": [
+    0.5,
+    0.5
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_even__probit",
+   "market": "two_way_zero_vig_even",
+   "method": "probit",
+   "american": [
+    100,
+    100
+   ],
+   "decimal": [
+    2.0,
+    2.0
+   ],
+   "raw_implied": [
+    0.5,
+    0.5
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "two_way_zero_vig_even__worst_case",
+   "market": "two_way_zero_vig_even",
+   "method": "worst_case",
+   "american": [
+    100,
+    100
+   ],
+   "decimal": [
+    2.0,
+    2.0
+   ],
+   "raw_implied": [
+    0.5,
+    0.5
+   ],
+   "booksum": 1.0,
+   "fair": [
+    0.5,
+    0.5
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative",
+      "additive",
+      "power",
+      "shin",
+      "odds_ratio",
+      "probit"
+     ],
+     [
+      "multiplicative",
+      "additive",
+      "power",
+      "shin",
+      "odds_ratio",
+      "probit"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "three_way_+130_+240_+210__multiplicative",
+   "market": "three_way_+130_+240_+210",
+   "method": "multiplicative",
+   "american": [
+    130,
+    240,
+    210
+   ],
+   "decimal": [
+    2.3,
+    3.4,
+    3.1
+   ],
+   "raw_implied": [
+    0.434782608696,
+    0.294117647059,
+    0.322580645161
+   ],
+   "booksum": 1.051480900916,
+   "fair": [
+    0.413495488427,
+    0.279717536289,
+    0.306786975284
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "three_way_+130_+240_+210__additive",
+   "market": "three_way_+130_+240_+210",
+   "method": "additive",
+   "american": [
+    130,
+    240,
+    210
+   ],
+   "decimal": [
+    2.3,
+    3.4,
+    3.1
+   ],
+   "raw_implied": [
+    0.434782608696,
+    0.294117647059,
+    0.322580645161
+   ],
+   "booksum": 1.051480900916,
+   "fair": [
+    0.41762230839,
+    0.276957346754,
+    0.305420344856
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "three_way_+130_+240_+210__power",
+   "market": "three_way_+130_+240_+210",
+   "method": "power",
+   "american": [
+    130,
+    240,
+    210
+   ],
+   "decimal": [
+    2.3,
+    3.4,
+    3.1
+   ],
+   "raw_implied": [
+    0.434782608696,
+    0.294117647059,
+    0.322580645161
+   ],
+   "booksum": 1.051480900916,
+   "fair": [
+    0.417537281337,
+    0.277137768216,
+    0.305324950447
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.048591518587
+   }
+  },
+  {
+   "id": "three_way_+130_+240_+210__shin",
+   "market": "three_way_+130_+240_+210",
+   "method": "shin",
+   "american": [
+    130,
+    240,
+    210
+   ],
+   "decimal": [
+    2.3,
+    3.4,
+    3.1
+   ],
+   "raw_implied": [
+    0.434782608696,
+    0.294117647059,
+    0.322580645161
+   ],
+   "booksum": 1.051480900916,
+   "fair": [
+    0.416556755174,
+    0.277673834309,
+    0.305769410516
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.025761966561
+   }
+  },
+  {
+   "id": "three_way_+130_+240_+210__odds_ratio",
+   "market": "three_way_+130_+240_+210",
+   "method": "odds_ratio",
+   "american": [
+    130,
+    240,
+    210
+   ],
+   "decimal": [
+    2.3,
+    3.4,
+    3.1
+   ],
+   "raw_implied": [
+    0.434782608696,
+    0.294117647059,
+    0.322580645161
+   ],
+   "booksum": 1.051480900916,
+   "fair": [
+    0.41583736365,
+    0.278283972275,
+    0.305878664075
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.080604855156
+   }
+  },
+  {
+   "id": "three_way_+130_+240_+210__logit_shift",
+   "market": "three_way_+130_+240_+210",
+   "method": "logit_shift",
+   "american": [
+    130,
+    240,
+    210
+   ],
+   "decimal": [
+    2.3,
+    3.4,
+    3.1
+   ],
+   "raw_implied": [
+    0.434782608696,
+    0.294117647059,
+    0.322580645161
+   ],
+   "booksum": 1.051480900916,
+   "fair": [
+    0.41583736365,
+    0.278283972275,
+    0.305878664075
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.077520935436
+   }
+  },
+  {
+   "id": "three_way_+130_+240_+210__probit",
+   "market": "three_way_+130_+240_+210",
+   "method": "probit",
+   "american": [
+    130,
+    240,
+    210
+   ],
+   "decimal": [
+    2.3,
+    3.4,
+    3.1
+   ],
+   "raw_implied": [
+    0.434782608696,
+    0.294117647059,
+    0.322580645161
+   ],
+   "booksum": 1.051480900916,
+   "fair": [
+    0.416216813991,
+    0.278009229096,
+    0.305773956912
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.047370614562
+   }
+  },
+  {
+   "id": "three_way_+130_+240_+210__worst_case",
+   "market": "three_way_+130_+240_+210",
+   "method": "worst_case",
+   "american": [
+    130,
+    240,
+    210
+   ],
+   "decimal": [
+    2.3,
+    3.4,
+    3.1
+   ],
+   "raw_implied": [
+    0.434782608696,
+    0.294117647059,
+    0.322580645161
+   ],
+   "booksum": 1.051480900916,
+   "fair": [
+    0.413495488427,
+    0.276957346754,
+    0.305324950447
+   ],
+   "fair_sum": 0.995777785627,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "additive"
+     ],
+     [
+      "power"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "three_way_heavy_fav_-250_+400_+650__multiplicative",
+   "market": "three_way_heavy_fav_-250_+400_+650",
+   "method": "multiplicative",
+   "american": [
+    -250,
+    400,
+    650
+   ],
+   "decimal": [
+    1.4,
+    5.0,
+    7.5
+   ],
+   "raw_implied": [
+    0.714285714286,
+    0.2,
+    0.133333333333
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.681818181818,
+    0.190909090909,
+    0.127272727273
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "three_way_heavy_fav_-250_+400_+650__additive",
+   "market": "three_way_heavy_fav_-250_+400_+650",
+   "method": "additive",
+   "american": [
+    -250,
+    400,
+    650
+   ],
+   "decimal": [
+    1.4,
+    5.0,
+    7.5
+   ],
+   "raw_implied": [
+    0.714285714286,
+    0.2,
+    0.133333333333
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.698412698413,
+    0.184126984127,
+    0.11746031746
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "three_way_heavy_fav_-250_+400_+650__power",
+   "market": "three_way_heavy_fav_-250_+400_+650",
+   "method": "power",
+   "american": [
+    -250,
+    400,
+    650
+   ],
+   "decimal": [
+    1.4,
+    5.0,
+    7.5
+   ],
+   "raw_implied": [
+    0.714285714286,
+    0.2,
+    0.133333333333
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.700086821391,
+    0.181685210378,
+    0.118227968231
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.059674119483
+   }
+  },
+  {
+   "id": "three_way_heavy_fav_-250_+400_+650__shin",
+   "market": "three_way_heavy_fav_-250_+400_+650",
+   "method": "shin",
+   "american": [
+    -250,
+    400,
+    650
+   ],
+   "decimal": [
+    1.4,
+    5.0,
+    7.5
+   ],
+   "raw_implied": [
+    0.714285714286,
+    0.2,
+    0.133333333333
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.694168363326,
+    0.185787644468,
+    0.120043992206
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.024226581046
+   }
+  },
+  {
+   "id": "three_way_heavy_fav_-250_+400_+650__odds_ratio",
+   "market": "three_way_heavy_fav_-250_+400_+650",
+   "method": "odds_ratio",
+   "american": [
+    -250,
+    400,
+    650
+   ],
+   "decimal": [
+    1.4,
+    5.0,
+    7.5
+   ],
+   "raw_implied": [
+    0.714285714286,
+    0.2,
+    0.133333333333
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.693393058255,
+    0.184439414607,
+    0.122167527138
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.105458650382
+   }
+  },
+  {
+   "id": "three_way_heavy_fav_-250_+400_+650__logit_shift",
+   "market": "three_way_heavy_fav_-250_+400_+650",
+   "method": "logit_shift",
+   "american": [
+    -250,
+    400,
+    650
+   ],
+   "decimal": [
+    1.4,
+    5.0,
+    7.5
+   ],
+   "raw_implied": [
+    0.714285714286,
+    0.2,
+    0.133333333333
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.693393058255,
+    0.184439414607,
+    0.122167527138
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.100260317072
+   }
+  },
+  {
+   "id": "three_way_heavy_fav_-250_+400_+650__probit",
+   "market": "three_way_heavy_fav_-250_+400_+650",
+   "method": "probit",
+   "american": [
+    -250,
+    400,
+    650
+   ],
+   "decimal": [
+    1.4,
+    5.0,
+    7.5
+   ],
+   "raw_implied": [
+    0.714285714286,
+    0.2,
+    0.133333333333
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.69439927371,
+    0.184270182515,
+    0.121330543775
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.057589611059
+   }
+  },
+  {
+   "id": "three_way_heavy_fav_-250_+400_+650__worst_case",
+   "market": "three_way_heavy_fav_-250_+400_+650",
+   "method": "worst_case",
+   "american": [
+    -250,
+    400,
+    650
+   ],
+   "decimal": [
+    1.4,
+    5.0,
+    7.5
+   ],
+   "raw_implied": [
+    0.714285714286,
+    0.2,
+    0.133333333333
+   ],
+   "booksum": 1.047619047619,
+   "fair": [
+    0.681818181818,
+    0.181685210378,
+    0.11746031746
+   ],
+   "fair_sum": 0.980963709657,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ],
+     [
+      "additive"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "three_way_additive_invalid_-600_+400_+6600__multiplicative",
+   "market": "three_way_additive_invalid_-600_+400_+6600",
+   "method": "multiplicative",
+   "american": [
+    -600,
+    400,
+    6600
+   ],
+   "decimal": [
+    1.166666666667,
+    5.0,
+    67.0
+   ],
+   "raw_implied": [
+    0.857142857143,
+    0.2,
+    0.014925373134
+   ],
+   "booksum": 1.072068230277,
+   "fair": [
+    0.799522673031,
+    0.186555290374,
+    0.013922036595
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "three_way_additive_invalid_-600_+400_+6600__additive",
+   "market": "three_way_additive_invalid_-600_+400_+6600",
+   "method": "additive",
+   "american": [
+    -600,
+    400,
+    6600
+   ],
+   "decimal": [
+    1.166666666667,
+    5.0,
+    67.0
+   ],
+   "raw_implied": [
+    0.857142857143,
+    0.2,
+    0.014925373134
+   ],
+   "booksum": 1.072068230277,
+   "fair": [
+    0.833120113717,
+    0.175977256574,
+    -0.009097370291
+   ],
+   "fair_sum": 1.0,
+   "valid": false,
+   "params": {},
+   "note": "method produced a probability outside (0,1): implementation must flag/raise, not clip silently"
+  },
+  {
+   "id": "three_way_additive_invalid_-600_+400_+6600__power",
+   "market": "three_way_additive_invalid_-600_+400_+6600",
+   "method": "power",
+   "american": [
+    -600,
+    400,
+    6600
+   ],
+   "decimal": [
+    1.166666666667,
+    5.0,
+    67.0
+   ],
+   "raw_implied": [
+    0.857142857143,
+    0.2,
+    0.014925373134
+   ],
+   "booksum": 1.072068230277,
+   "fair": [
+    0.836740420599,
+    0.155523057445,
+    0.007736521957
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.156280254485
+   }
+  },
+  {
+   "id": "three_way_additive_invalid_-600_+400_+6600__shin",
+   "market": "three_way_additive_invalid_-600_+400_+6600",
+   "method": "shin",
+   "american": [
+    -600,
+    400,
+    6600
+   ],
+   "decimal": [
+    1.166666666667,
+    5.0,
+    67.0
+   ],
+   "raw_implied": [
+    0.857142857143,
+    0.2,
+    0.014925373134
+   ],
+   "booksum": 1.072068230277,
+   "fair": [
+    0.823276387185,
+    0.172963375722,
+    0.003760237093
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.051694382519
+   }
+  },
+  {
+   "id": "three_way_additive_invalid_-600_+400_+6600__odds_ratio",
+   "market": "three_way_additive_invalid_-600_+400_+6600",
+   "method": "odds_ratio",
+   "american": [
+    -600,
+    400,
+    6600
+   ],
+   "decimal": [
+    1.166666666667,
+    5.0,
+    67.0
+   ],
+   "raw_implied": [
+    0.857142857143,
+    0.2,
+    0.014925373134
+   ],
+   "booksum": 1.072068230277,
+   "fair": [
+    0.824534786899,
+    0.163737872204,
+    0.011727340897
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.276830638723
+   }
+  },
+  {
+   "id": "three_way_additive_invalid_-600_+400_+6600__logit_shift",
+   "market": "three_way_additive_invalid_-600_+400_+6600",
+   "method": "logit_shift",
+   "american": [
+    -600,
+    400,
+    6600
+   ],
+   "decimal": [
+    1.166666666667,
+    5.0,
+    67.0
+   ],
+   "raw_implied": [
+    0.857142857143,
+    0.2,
+    0.014925373134
+   ],
+   "booksum": 1.072068230277,
+   "fair": [
+    0.824534786899,
+    0.163737872204,
+    0.011727340897
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.244380943919
+   }
+  },
+  {
+   "id": "three_way_additive_invalid_-600_+400_+6600__probit",
+   "market": "three_way_additive_invalid_-600_+400_+6600",
+   "method": "probit",
+   "american": [
+    -600,
+    400,
+    6600
+   ],
+   "decimal": [
+    1.166666666667,
+    5.0,
+    67.0
+   ],
+   "raw_implied": [
+    0.857142857143,
+    0.2,
+    0.014925373134
+   ],
+   "booksum": 1.072068230277,
+   "fair": [
+    0.824777445842,
+    0.164664707583,
+    0.010557846576
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.133844249813
+   }
+  },
+  {
+   "id": "three_way_additive_invalid_-600_+400_+6600__worst_case",
+   "market": "three_way_additive_invalid_-600_+400_+6600",
+   "method": "worst_case",
+   "american": [
+    -600,
+    400,
+    6600
+   ],
+   "decimal": [
+    1.166666666667,
+    5.0,
+    67.0
+   ],
+   "raw_implied": [
+    0.857142857143,
+    0.2,
+    0.014925373134
+   ],
+   "booksum": 1.072068230277,
+   "fair": [
+    0.799522673031,
+    0.155523057445,
+    0.003760237093
+   ],
+   "fair_sum": 0.958805967569,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "power"
+     ],
+     [
+      "shin"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "six_way_field__multiplicative",
+   "market": "six_way_field",
+   "method": "multiplicative",
+   "american": [
+    250,
+    300,
+    400,
+    600,
+    900,
+    1500
+   ],
+   "decimal": [
+    3.5,
+    4.0,
+    5.0,
+    7.0,
+    10.0,
+    16.0
+   ],
+   "raw_implied": [
+    0.285714285714,
+    0.25,
+    0.2,
+    0.142857142857,
+    0.1,
+    0.0625
+   ],
+   "booksum": 1.041071428571,
+   "fair": [
+    0.274442538593,
+    0.240137221269,
+    0.192109777015,
+    0.137221269297,
+    0.096054888508,
+    0.060034305317
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "six_way_field__additive",
+   "market": "six_way_field",
+   "method": "additive",
+   "american": [
+    250,
+    300,
+    400,
+    600,
+    900,
+    1500
+   ],
+   "decimal": [
+    3.5,
+    4.0,
+    5.0,
+    7.0,
+    10.0,
+    16.0
+   ],
+   "raw_implied": [
+    0.285714285714,
+    0.25,
+    0.2,
+    0.142857142857,
+    0.1,
+    0.0625
+   ],
+   "booksum": 1.041071428571,
+   "fair": [
+    0.278869047619,
+    0.243154761905,
+    0.193154761905,
+    0.136011904762,
+    0.093154761905,
+    0.055654761905
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "six_way_field__power",
+   "market": "six_way_field",
+   "method": "power",
+   "american": [
+    250,
+    300,
+    400,
+    600,
+    900,
+    1500
+   ],
+   "decimal": [
+    3.5,
+    4.0,
+    5.0,
+    7.0,
+    10.0,
+    16.0
+   ],
+   "raw_implied": [
+    0.285714285714,
+    0.25,
+    0.2,
+    0.142857142857,
+    0.1,
+    0.0625
+   ],
+   "booksum": 1.041071428571,
+   "fair": [
+    0.277054086981,
+    0.241628295353,
+    0.192245756225,
+    0.136187878963,
+    0.094499749364,
+    0.058384233115
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.024569343344
+   }
+  },
+  {
+   "id": "six_way_field__shin",
+   "market": "six_way_field",
+   "method": "shin",
+   "american": [
+    250,
+    300,
+    400,
+    600,
+    900,
+    1500
+   ],
+   "decimal": [
+    3.5,
+    4.0,
+    5.0,
+    7.0,
+    10.0,
+    16.0
+   ],
+   "raw_implied": [
+    0.285714285714,
+    0.25,
+    0.2,
+    0.142857142857,
+    0.1,
+    0.0625
+   ],
+   "booksum": 1.041071428571,
+   "fair": [
+    0.277054261296,
+    0.241910602114,
+    0.192712116921,
+    0.13649281058,
+    0.094341505934,
+    0.057488703155
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.008253269182
+   }
+  },
+  {
+   "id": "six_way_field__odds_ratio",
+   "market": "six_way_field",
+   "method": "odds_ratio",
+   "american": [
+    250,
+    300,
+    400,
+    600,
+    900,
+    1500
+   ],
+   "decimal": [
+    3.5,
+    4.0,
+    5.0,
+    7.0,
+    10.0,
+    16.0
+   ],
+   "raw_implied": [
+    0.285714285714,
+    0.25,
+    0.2,
+    0.142857142857,
+    0.1,
+    0.0625
+   ],
+   "booksum": 1.041071428571,
+   "fair": [
+    0.275483135464,
+    0.240616930636,
+    0.192013098583,
+    0.136762104187,
+    0.095529682942,
+    0.059595048188
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.051994508941
+   }
+  },
+  {
+   "id": "six_way_field__logit_shift",
+   "market": "six_way_field",
+   "method": "logit_shift",
+   "american": [
+    250,
+    300,
+    400,
+    600,
+    900,
+    1500
+   ],
+   "decimal": [
+    3.5,
+    4.0,
+    5.0,
+    7.0,
+    10.0,
+    16.0
+   ],
+   "raw_implied": [
+    0.285714285714,
+    0.25,
+    0.2,
+    0.142857142857,
+    0.1,
+    0.0625
+   ],
+   "booksum": 1.041071428571,
+   "fair": [
+    0.275483135464,
+    0.240616930636,
+    0.192013098583,
+    0.136762104187,
+    0.095529682942,
+    0.059595048188
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.050687894665
+   }
+  },
+  {
+   "id": "six_way_field__probit",
+   "market": "six_way_field",
+   "method": "probit",
+   "american": [
+    250,
+    300,
+    400,
+    600,
+    900,
+    1500
+   ],
+   "decimal": [
+    3.5,
+    4.0,
+    5.0,
+    7.0,
+    10.0,
+    16.0
+   ],
+   "raw_implied": [
+    0.285714285714,
+    0.25,
+    0.2,
+    0.142857142857,
+    0.1,
+    0.0625
+   ],
+   "booksum": 1.041071428571,
+   "fair": [
+    0.276120479345,
+    0.241044580897,
+    0.192128925326,
+    0.136533444386,
+    0.095096530494,
+    0.059076039553
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.028456636262
+   }
+  },
+  {
+   "id": "six_way_field__worst_case",
+   "market": "six_way_field",
+   "method": "worst_case",
+   "american": [
+    250,
+    300,
+    400,
+    600,
+    900,
+    1500
+   ],
+   "decimal": [
+    3.5,
+    4.0,
+    5.0,
+    7.0,
+    10.0,
+    16.0
+   ],
+   "raw_implied": [
+    0.285714285714,
+    0.25,
+    0.2,
+    0.142857142857,
+    0.1,
+    0.0625
+   ],
+   "booksum": 1.041071428571,
+   "fair": [
+    0.274442538593,
+    0.240137221269,
+    0.192013098583,
+    0.136011904762,
+    0.093154761905,
+    0.055654761905
+   ],
+   "fair_sum": 0.991414287017,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "multiplicative"
+     ],
+     [
+      "odds_ratio"
+     ],
+     [
+      "additive"
+     ],
+     [
+      "additive"
+     ],
+     [
+      "additive"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  },
+  {
+   "id": "fourteen_way_first_td_like_additive_invalid__multiplicative",
+   "market": "fourteen_way_first_td_like_additive_invalid",
+   "method": "multiplicative",
+   "american": [
+    450,
+    600,
+    650,
+    800,
+    900,
+    1100,
+    1200,
+    1400,
+    1600,
+    2000,
+    2500,
+    3300,
+    10000,
+    700
+   ],
+   "decimal": [
+    5.5,
+    7.0,
+    7.5,
+    9.0,
+    10.0,
+    12.0,
+    13.0,
+    15.0,
+    17.0,
+    21.0,
+    26.0,
+    34.0,
+    101.0,
+    8.0
+   ],
+   "raw_implied": [
+    0.181818181818,
+    0.142857142857,
+    0.133333333333,
+    0.111111111111,
+    0.1,
+    0.083333333333,
+    0.076923076923,
+    0.066666666667,
+    0.058823529412,
+    0.047619047619,
+    0.038461538462,
+    0.029411764706,
+    0.009900990099,
+    0.125
+   ],
+   "booksum": 1.20525971634,
+   "fair": [
+    0.150853944053,
+    0.118528098899,
+    0.110626225639,
+    0.092188521366,
+    0.082969669229,
+    0.069141391024,
+    0.063822822484,
+    0.055313112819,
+    0.048805687782,
+    0.0395093663,
+    0.031911411242,
+    0.024402843891,
+    0.008214818736,
+    0.103712086536
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {}
+  },
+  {
+   "id": "fourteen_way_first_td_like_additive_invalid__additive",
+   "market": "fourteen_way_first_td_like_additive_invalid",
+   "method": "additive",
+   "american": [
+    450,
+    600,
+    650,
+    800,
+    900,
+    1100,
+    1200,
+    1400,
+    1600,
+    2000,
+    2500,
+    3300,
+    10000,
+    700
+   ],
+   "decimal": [
+    5.5,
+    7.0,
+    7.5,
+    9.0,
+    10.0,
+    12.0,
+    13.0,
+    15.0,
+    17.0,
+    21.0,
+    26.0,
+    34.0,
+    101.0,
+    8.0
+   ],
+   "raw_implied": [
+    0.181818181818,
+    0.142857142857,
+    0.133333333333,
+    0.111111111111,
+    0.1,
+    0.083333333333,
+    0.076923076923,
+    0.066666666667,
+    0.058823529412,
+    0.047619047619,
+    0.038461538462,
+    0.029411764706,
+    0.009900990099,
+    0.125
+   ],
+   "booksum": 1.20525971634,
+   "fair": [
+    0.167156773508,
+    0.128195734547,
+    0.118671925023,
+    0.096449702801,
+    0.08533859169,
+    0.068671925023,
+    0.062261668613,
+    0.052005258357,
+    0.044162121102,
+    0.032957639309,
+    0.023800130152,
+    0.014750356396,
+    -0.004760418211,
+    0.11033859169
+   ],
+   "fair_sum": 1.0,
+   "valid": false,
+   "params": {},
+   "note": "method produced a probability outside (0,1): implementation must flag/raise, not clip silently"
+  },
+  {
+   "id": "fourteen_way_first_td_like_additive_invalid__power",
+   "market": "fourteen_way_first_td_like_additive_invalid",
+   "method": "power",
+   "american": [
+    450,
+    600,
+    650,
+    800,
+    900,
+    1100,
+    1200,
+    1400,
+    1600,
+    2000,
+    2500,
+    3300,
+    10000,
+    700
+   ],
+   "decimal": [
+    5.5,
+    7.0,
+    7.5,
+    9.0,
+    10.0,
+    12.0,
+    13.0,
+    15.0,
+    17.0,
+    21.0,
+    26.0,
+    34.0,
+    101.0,
+    8.0
+   ],
+   "raw_implied": [
+    0.181818181818,
+    0.142857142857,
+    0.133333333333,
+    0.111111111111,
+    0.1,
+    0.083333333333,
+    0.076923076923,
+    0.066666666667,
+    0.058823529412,
+    0.047619047619,
+    0.038461538462,
+    0.029411764706,
+    0.009900990099,
+    0.125
+   ],
+   "booksum": 1.20525971634,
+   "fair": [
+    0.15814854059,
+    0.121831897279,
+    0.113069733711,
+    0.092829706929,
+    0.082829660248,
+    0.068002752226,
+    0.062362045611,
+    0.053418030227,
+    0.046653365967,
+    0.037119703382,
+    0.029461974731,
+    0.022040654308,
+    0.006787296737,
+    0.105444638055
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "k": 1.081814120034
+   }
+  },
+  {
+   "id": "fourteen_way_first_td_like_additive_invalid__shin",
+   "market": "fourteen_way_first_td_like_additive_invalid",
+   "method": "shin",
+   "american": [
+    450,
+    600,
+    650,
+    800,
+    900,
+    1100,
+    1200,
+    1400,
+    1600,
+    2000,
+    2500,
+    3300,
+    10000,
+    700
+   ],
+   "decimal": [
+    5.5,
+    7.0,
+    7.5,
+    9.0,
+    10.0,
+    12.0,
+    13.0,
+    15.0,
+    17.0,
+    21.0,
+    26.0,
+    34.0,
+    101.0,
+    8.0
+   ],
+   "raw_implied": [
+    0.181818181818,
+    0.142857142857,
+    0.133333333333,
+    0.111111111111,
+    0.1,
+    0.083333333333,
+    0.076923076923,
+    0.066666666667,
+    0.058823529412,
+    0.047619047619,
+    0.038461538462,
+    0.029411764706,
+    0.009900990099,
+    0.125
+   ],
+   "booksum": 1.20525971634,
+   "fair": [
+    0.158828653018,
+    0.123101054629,
+    0.11437270681,
+    0.094019198119,
+    0.083851901272,
+    0.068619803514,
+    0.062769971772,
+    0.053425187583,
+    0.046296658253,
+    0.036155048676,
+    0.027928743683,
+    0.019906126185,
+    0.003987173183,
+    0.106737773303
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "z": 0.016477649756
+   }
+  },
+  {
+   "id": "fourteen_way_first_td_like_additive_invalid__odds_ratio",
+   "market": "fourteen_way_first_td_like_additive_invalid",
+   "method": "odds_ratio",
+   "american": [
+    450,
+    600,
+    650,
+    800,
+    900,
+    1100,
+    1200,
+    1400,
+    1600,
+    2000,
+    2500,
+    3300,
+    10000,
+    700
+   ],
+   "decimal": [
+    5.5,
+    7.0,
+    7.5,
+    9.0,
+    10.0,
+    12.0,
+    13.0,
+    15.0,
+    17.0,
+    21.0,
+    26.0,
+    34.0,
+    101.0,
+    8.0
+   ],
+   "raw_implied": [
+    0.181818181818,
+    0.142857142857,
+    0.133333333333,
+    0.111111111111,
+    0.1,
+    0.083333333333,
+    0.076923076923,
+    0.066666666667,
+    0.058823529412,
+    0.047619047619,
+    0.038461538462,
+    0.029411764706,
+    0.009900990099,
+    0.125
+   ],
+   "booksum": 1.20525971634,
+   "fair": [
+    0.152898069853,
+    0.119231103799,
+    0.111078248288,
+    0.092170732389,
+    0.082777277939,
+    0.068761756685,
+    0.063394872193,
+    0.05483507078,
+    0.048311834793,
+    0.039026556747,
+    0.03146685399,
+    0.024021771709,
+    0.008056856441,
+    0.103968994394
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "c": 1.231178873265
+   }
+  },
+  {
+   "id": "fourteen_way_first_td_like_additive_invalid__logit_shift",
+   "market": "fourteen_way_first_td_like_additive_invalid",
+   "method": "logit_shift",
+   "american": [
+    450,
+    600,
+    650,
+    800,
+    900,
+    1100,
+    1200,
+    1400,
+    1600,
+    2000,
+    2500,
+    3300,
+    10000,
+    700
+   ],
+   "decimal": [
+    5.5,
+    7.0,
+    7.5,
+    9.0,
+    10.0,
+    12.0,
+    13.0,
+    15.0,
+    17.0,
+    21.0,
+    26.0,
+    34.0,
+    101.0,
+    8.0
+   ],
+   "raw_implied": [
+    0.181818181818,
+    0.142857142857,
+    0.133333333333,
+    0.111111111111,
+    0.1,
+    0.083333333333,
+    0.076923076923,
+    0.066666666667,
+    0.058823529412,
+    0.047619047619,
+    0.038461538462,
+    0.029411764706,
+    0.009900990099,
+    0.125
+   ],
+   "booksum": 1.20525971634,
+   "fair": [
+    0.152898069853,
+    0.119231103799,
+    0.111078248288,
+    0.092170732389,
+    0.082777277939,
+    0.068761756685,
+    0.063394872193,
+    0.05483507078,
+    0.048311834793,
+    0.039026556747,
+    0.03146685399,
+    0.024021771709,
+    0.008056856441,
+    0.103968994394
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.207972143929
+   }
+  },
+  {
+   "id": "fourteen_way_first_td_like_additive_invalid__probit",
+   "market": "fourteen_way_first_td_like_additive_invalid",
+   "method": "probit",
+   "american": [
+    450,
+    600,
+    650,
+    800,
+    900,
+    1100,
+    1200,
+    1400,
+    1600,
+    2000,
+    2500,
+    3300,
+    10000,
+    700
+   ],
+   "decimal": [
+    5.5,
+    7.0,
+    7.5,
+    9.0,
+    10.0,
+    12.0,
+    13.0,
+    15.0,
+    17.0,
+    21.0,
+    26.0,
+    34.0,
+    101.0,
+    8.0
+   ],
+   "raw_implied": [
+    0.181818181818,
+    0.142857142857,
+    0.133333333333,
+    0.111111111111,
+    0.1,
+    0.083333333333,
+    0.076923076923,
+    0.066666666667,
+    0.058823529412,
+    0.047619047619,
+    0.038461538462,
+    0.029411764706,
+    0.009900990099,
+    0.125
+   ],
+   "booksum": 1.20525971634,
+   "fair": [
+    0.155446611695,
+    0.120505766961,
+    0.112056603629,
+    0.092497375033,
+    0.082805797913,
+    0.068390504238,
+    0.06288858122,
+    0.054139411845,
+    0.047497467359,
+    0.03809092185,
+    0.03048473945,
+    0.023054089127,
+    0.00744649958,
+    0.1046956301
+   ],
+   "fair_sum": 1.0,
+   "valid": true,
+   "params": {
+    "delta": 0.104891690564
+   }
+  },
+  {
+   "id": "fourteen_way_first_td_like_additive_invalid__worst_case",
+   "market": "fourteen_way_first_td_like_additive_invalid",
+   "method": "worst_case",
+   "american": [
+    450,
+    600,
+    650,
+    800,
+    900,
+    1100,
+    1200,
+    1400,
+    1600,
+    2000,
+    2500,
+    3300,
+    10000,
+    700
+   ],
+   "decimal": [
+    5.5,
+    7.0,
+    7.5,
+    9.0,
+    10.0,
+    12.0,
+    13.0,
+    15.0,
+    17.0,
+    21.0,
+    26.0,
+    34.0,
+    101.0,
+    8.0
+   ],
+   "raw_implied": [
+    0.181818181818,
+    0.142857142857,
+    0.133333333333,
+    0.111111111111,
+    0.1,
+    0.083333333333,
+    0.076923076923,
+    0.066666666667,
+    0.058823529412,
+    0.047619047619,
+    0.038461538462,
+    0.029411764706,
+    0.009900990099,
+    0.125
+   ],
+   "booksum": 1.20525971634,
+   "fair": [
+    0.150853944053,
+    0.118528098899,
+    0.110626225639,
+    0.092170732389,
+    0.082777277939,
+    0.068002752226,
+    0.062362045611,
+    0.053418030227,
+    0.046296658253,
+    0.036155048676,
+    0.027928743683,
+    0.019906126185,
+    0.003987173183,
+    0.103712086536
+   ],
+   "fair_sum": 0.9767249435,
+   "valid": true,
+   "params": {
+    "methods": [
+     "multiplicative",
+     "additive",
+     "power",
+     "shin",
+     "odds_ratio",
+     "probit"
+    ],
+    "argmin_methods_per_outcome": [
+     [
+      "multiplicative"
+     ],
+     [
+      "multiplicative"
+     ],
+     [
+      "multiplicative"
+     ],
+     [
+      "odds_ratio"
+     ],
+     [
+      "odds_ratio"
+     ],
+     [
+      "power"
+     ],
+     [
+      "power"
+     ],
+     [
+      "power"
+     ],
+     [
+      "shin"
+     ],
+     [
+      "shin"
+     ],
+     [
+      "shin"
+     ],
+     [
+      "shin"
+     ],
+     [
+      "shin"
+     ],
+     [
+      "multiplicative"
+     ]
+    ]
+   },
+   "note": "per-outcome minimum over valid methods in params.methods; NOT normalised (sum <= 1)"
+  }
+ ],
+ "one_sided": [
+  {
+   "american": -150,
+   "raw_implied": 0.6,
+   "transform": "multiplicative",
+   "params": {
+    "m": 0.08
+   },
+   "fair": 0.555555555556
+  },
+  {
+   "american": -150,
+   "raw_implied": 0.6,
+   "transform": "power",
+   "params": {
+    "k": 1.15
+   },
+   "fair": 0.555742919127
+  },
+  {
+   "american": -150,
+   "raw_implied": 0.6,
+   "transform": "odds_ratio",
+   "params": {
+    "c": 1.25
+   },
+   "fair": 0.545454545455
+  },
+  {
+   "american": 100,
+   "raw_implied": 0.5,
+   "transform": "multiplicative",
+   "params": {
+    "m": 0.08
+   },
+   "fair": 0.462962962963
+  },
+  {
+   "american": 100,
+   "raw_implied": 0.5,
+   "transform": "power",
+   "params": {
+    "k": 1.15
+   },
+   "fair": 0.450625231305
+  },
+  {
+   "american": 100,
+   "raw_implied": 0.5,
+   "transform": "odds_ratio",
+   "params": {
+    "c": 1.25
+   },
+   "fair": 0.444444444444
+  },
+  {
+   "american": 150,
+   "raw_implied": 0.4,
+   "transform": "multiplicative",
+   "params": {
+    "m": 0.08
+   },
+   "fair": 0.37037037037
+  },
+  {
+   "american": 150,
+   "raw_implied": 0.4,
+   "transform": "power",
+   "params": {
+    "k": 1.15
+   },
+   "fair": 0.348633398958
+  },
+  {
+   "american": 150,
+   "raw_implied": 0.4,
+   "transform": "odds_ratio",
+   "params": {
+    "c": 1.25
+   },
+   "fair": 0.347826086957
+  },
+  {
+   "american": 400,
+   "raw_implied": 0.2,
+   "transform": "multiplicative",
+   "params": {
+    "m": 0.08
+   },
+   "fair": 0.185185185185
+  },
+  {
+   "american": 400,
+   "raw_implied": 0.2,
+   "transform": "power",
+   "params": {
+    "k": 1.15
+   },
+   "fair": 0.157103006046
+  },
+  {
+   "american": 400,
+   "raw_implied": 0.2,
+   "transform": "odds_ratio",
+   "params": {
+    "c": 1.25
+   },
+   "fair": 0.166666666667
+  },
+  {
+   "american": 1000,
+   "raw_implied": 0.090909090909,
+   "transform": "multiplicative",
+   "params": {
+    "m": 0.08
+   },
+   "fair": 0.084175084175
+  },
+  {
+   "american": 1000,
+   "raw_implied": 0.090909090909,
+   "transform": "power",
+   "params": {
+    "k": 1.15
+   },
+   "fair": 0.0634451476
+  },
+  {
+   "american": 1000,
+   "raw_implied": 0.090909090909,
+   "transform": "odds_ratio",
+   "params": {
+    "c": 1.25
+   },
+   "fair": 0.074074074074
+  },
+  {
+   "american": 2500,
+   "raw_implied": 0.038461538462,
+   "transform": "multiplicative",
+   "params": {
+    "m": 0.08
+   },
+   "fair": 0.035612535613
+  },
+  {
+   "american": 2500,
+   "raw_implied": 0.038461538462,
+   "transform": "power",
+   "params": {
+    "k": 1.15
+   },
+   "fair": 0.023592863217
+  },
+  {
+   "american": 2500,
+   "raw_implied": 0.038461538462,
+   "transform": "odds_ratio",
+   "params": {
+    "c": 1.25
+   },
+   "fair": 0.031007751938
+  }
+ ],
+ "ev": [
+  {
+   "p_win": 0.55,
+   "p_push": 0.0,
+   "p_lose": 0.45,
+   "american": -110,
+   "decimal": 1.909090909091,
+   "ev_per_unit": 0.05,
+   "breakeven_p_win": 0.52380952381,
+   "variance_per_unit": 0.902045454545
+  },
+  {
+   "p_win": 0.5,
+   "p_push": 0.0,
+   "p_lose": 0.5,
+   "american": 110,
+   "decimal": 2.1,
+   "ev_per_unit": 0.05,
+   "breakeven_p_win": 0.47619047619,
+   "variance_per_unit": 1.1025
+  },
+  {
+   "p_win": 0.47,
+   "p_push": 0.06,
+   "p_lose": 0.47,
+   "american": 105,
+   "decimal": 2.05,
+   "ev_per_unit": 0.0235,
+   "breakeven_p_win": 0.458536585366,
+   "variance_per_unit": 0.98762275
+  },
+  {
+   "p_win": 0.52,
+   "p_push": 0.05,
+   "p_lose": 0.43,
+   "american": -115,
+   "decimal": 1.869565217391,
+   "ev_per_unit": 0.022173913043,
+   "breakeven_p_win": 0.508139534884,
+   "variance_per_unit": 0.822703024575
+  },
+  {
+   "p_win": 0.3,
+   "p_push": 0.0,
+   "p_lose": 0.7,
+   "american": 280,
+   "decimal": 3.8,
+   "ev_per_unit": 0.14,
+   "breakeven_p_win": 0.263157894737,
+   "variance_per_unit": 3.0324
+  },
+  {
+   "p_win": 0.1,
+   "p_push": 0.0,
+   "p_lose": 0.9,
+   "american": 1100,
+   "decimal": 12.0,
+   "ev_per_unit": 0.2,
+   "breakeven_p_win": 0.083333333333,
+   "variance_per_unit": 12.96
+  },
+  {
+   "p_win": 0.5238095238,
+   "p_push": 0.0,
+   "p_lose": 0.4761904762,
+   "american": -110,
+   "decimal": 1.909090909091,
+   "ev_per_unit": -1.8e-11,
+   "breakeven_p_win": 0.52380952381,
+   "variance_per_unit": 0.909090909093
+  },
+  {
+   "p_win": 0.45,
+   "p_push": 0.08,
+   "p_lose": 0.47,
+   "american": -105,
+   "decimal": 1.952380952381,
+   "ev_per_unit": -0.041428571429,
+   "breakeven_p_win": 0.471219512195,
+   "variance_per_unit": 0.876446938776
+  },
+  {
+   "p_win": 0.62,
+   "p_push": 0.0,
+   "p_lose": 0.38,
+   "american": -150,
+   "decimal": 1.666666666667,
+   "ev_per_unit": 0.033333333333,
+   "breakeven_p_win": 0.6,
+   "variance_per_unit": 0.654444444444
+  },
+  {
+   "p_win": 0.4,
+   "p_push": 0.1,
+   "p_lose": 0.5,
+   "american": 130,
+   "decimal": 2.3,
+   "ev_per_unit": 0.02,
+   "breakeven_p_win": 0.391304347826,
+   "variance_per_unit": 1.1756
+  },
+  {
+   "p_win": 0.48,
+   "p_push": 0.0,
+   "p_lose": 0.52,
+   "american": -110,
+   "decimal": 1.909090909091,
+   "ev_per_unit": -0.083636363636,
+   "breakeven_p_win": 0.52380952381,
+   "variance_per_unit": 0.909699173554
+  },
+  {
+   "p_win": 0.02,
+   "p_push": 0.0,
+   "p_lose": 0.98,
+   "american": 6000,
+   "decimal": 61.0,
+   "ev_per_unit": 0.22,
+   "breakeven_p_win": 0.016393442623,
+   "variance_per_unit": 72.9316
+  }
+ ],
+ "kelly": [
+  {
+   "p_win": 0.55,
+   "p_push": 0.0,
+   "american": -110,
+   "decimal": 1.909090909091,
+   "kelly_full_raw": 0.055,
+   "kelly_full_stake": 0.055,
+   "kelly_half_stake": 0.0275,
+   "kelly_quarter_stake": 0.01375,
+   "log_growth_at_full_kelly": 0.001377932123
+  },
+  {
+   "p_win": 0.5,
+   "p_push": 0.0,
+   "american": 110,
+   "decimal": 2.1,
+   "kelly_full_raw": 0.045454545455,
+   "kelly_full_stake": 0.045454545455,
+   "kelly_half_stake": 0.022727272727,
+   "kelly_quarter_stake": 0.011363636364,
+   "log_growth_at_full_kelly": 0.001135074267
+  },
+  {
+   "p_win": 0.47,
+   "p_push": 0.06,
+   "american": 105,
+   "decimal": 2.05,
+   "kelly_full_raw": 0.02380952381,
+   "kelly_full_stake": 0.02380952381,
+   "kelly_half_stake": 0.011904761905,
+   "kelly_quarter_stake": 0.005952380952,
+   "log_growth_at_full_kelly": 0.000279678675
+  },
+  {
+   "p_win": 0.52,
+   "p_push": 0.05,
+   "american": -115,
+   "decimal": 1.869565217391,
+   "kelly_full_raw": 0.026842105263,
+   "kelly_full_stake": 0.026842105263,
+   "kelly_half_stake": 0.013421052632,
+   "kelly_quarter_stake": 0.006710526316,
+   "log_growth_at_full_kelly": 0.000297976388
+  },
+  {
+   "p_win": 0.3,
+   "p_push": 0.0,
+   "american": 280,
+   "decimal": 3.8,
+   "kelly_full_raw": 0.05,
+   "kelly_full_stake": 0.05,
+   "kelly_half_stake": 0.025,
+   "kelly_quarter_stake": 0.0125,
+   "log_growth_at_full_kelly": 0.003403172651
+  },
+  {
+   "p_win": 0.1,
+   "p_push": 0.0,
+   "american": 1100,
+   "decimal": 12.0,
+   "kelly_full_raw": 0.018181818182,
+   "kelly_full_stake": 0.018181818182,
+   "kelly_half_stake": 0.009090909091,
+   "kelly_quarter_stake": 0.004545454545,
+   "log_growth_at_full_kelly": 0.001717930878
+  },
+  {
+   "p_win": 0.5238095238,
+   "p_push": 0.0,
+   "american": -110,
+   "decimal": 1.909090909091,
+   "kelly_full_raw": -2e-11,
+   "kelly_full_stake": 0.0,
+   "kelly_half_stake": 0.0,
+   "kelly_quarter_stake": 0.0,
+   "log_growth_at_full_kelly": 0.0
+  },
+  {
+   "p_win": 0.45,
+   "p_push": 0.08,
+   "american": -105,
+   "decimal": 1.952380952381,
+   "kelly_full_raw": -0.047282608696,
+   "kelly_full_stake": 0.0,
+   "kelly_half_stake": 0.0,
+   "kelly_quarter_stake": 0.0,
+   "log_growth_at_full_kelly": 0.0
+  },
+  {
+   "p_win": 0.62,
+   "p_push": 0.0,
+   "american": -150,
+   "decimal": 1.666666666667,
+   "kelly_full_raw": 0.05,
+   "kelly_full_stake": 0.05,
+   "kelly_half_stake": 0.025,
+   "kelly_quarter_stake": 0.0125,
+   "log_growth_at_full_kelly": 0.000838238283
+  },
+  {
+   "p_win": 0.4,
+   "p_push": 0.1,
+   "american": 130,
+   "decimal": 2.3,
+   "kelly_full_raw": 0.017094017094,
+   "kelly_full_stake": 0.017094017094,
+   "kelly_half_stake": 0.008547008547,
+   "kelly_quarter_stake": 0.004273504274,
+   "log_growth_at_full_kelly": 0.00017065947
+  },
+  {
+   "p_win": 0.48,
+   "p_push": 0.0,
+   "american": -110,
+   "decimal": 1.909090909091,
+   "kelly_full_raw": -0.092,
+   "kelly_full_stake": 0.0,
+   "kelly_half_stake": 0.0,
+   "kelly_quarter_stake": 0.0,
+   "log_growth_at_full_kelly": 0.0
+  },
+  {
+   "p_win": 0.02,
+   "p_push": 0.0,
+   "american": 6000,
+   "decimal": 61.0,
+   "kelly_full_raw": 0.003666666667,
+   "kelly_full_stake": 0.003666666667,
+   "kelly_half_stake": 0.001833333333,
+   "kelly_quarter_stake": 0.000916666667,
+   "log_growth_at_full_kelly": 0.000377079916
+  }
+ ],
+ "kelly_shrink": [
+  {
+   "edge_prob": 0.03,
+   "sigma_prob": 0.03,
+   "shrink_factor": 0.5
+  },
+  {
+   "edge_prob": 0.02,
+   "sigma_prob": 0.04,
+   "shrink_factor": 0.2
+  },
+  {
+   "edge_prob": 0.05,
+   "sigma_prob": 0.02,
+   "shrink_factor": 0.862068965517
+  },
+  {
+   "edge_prob": 0.0262,
+   "sigma_prob": 0.05,
+   "shrink_factor": 0.215425364984
+  }
+ ],
+ "clv": [
+  {
+   "bet_american": 105,
+   "close_american_same_side": -110,
+   "close_american_other_side": -110,
+   "clv_price": 0.07380952381,
+   "close_fair_prob_multiplicative": 0.5,
+   "clv_no_vig_multiplicative": 0.025,
+   "clv_prob_points_multiplicative": 0.012195121951,
+   "clv_log_multiplicative": 0.02469261259,
+   "close_fair_prob_additive": 0.5,
+   "clv_no_vig_additive": 0.025,
+   "clv_prob_points_additive": 0.012195121951,
+   "clv_log_additive": 0.02469261259,
+   "close_fair_prob_power": 0.5,
+   "clv_no_vig_power": 0.025,
+   "clv_prob_points_power": 0.012195121951,
+   "clv_log_power": 0.02469261259
+  },
+  {
+   "bet_american": -105,
+   "close_american_same_side": -130,
+   "close_american_other_side": 100,
+   "clv_price": 0.103519668737,
+   "close_fair_prob_multiplicative": 0.530612244898,
+   "clv_no_vig_multiplicative": 0.035957240039,
+   "clv_prob_points_multiplicative": 0.018417122947,
+   "clv_log_multiplicative": 0.035325868892,
+   "close_fair_prob_additive": 0.532608695652,
+   "clv_no_vig_additive": 0.039855072464,
+   "clv_prob_points_additive": 0.020413573701,
+   "clv_log_additive": 0.039081350042,
+   "close_fair_prob_power": 0.533683505394,
+   "clv_no_vig_power": 0.041953510531,
+   "clv_prob_points_power": 0.021488383443,
+   "clv_log_power": 0.041097326723
+  },
+  {
+   "bet_american": 150,
+   "close_american_same_side": 120,
+   "close_american_other_side": -150,
+   "clv_price": 0.136363636364,
+   "close_fair_prob_multiplicative": 0.431034482759,
+   "clv_no_vig_multiplicative": 0.077586206897,
+   "clv_prob_points_multiplicative": 0.031034482759,
+   "clv_log_multiplicative": 0.074723546196,
+   "close_fair_prob_additive": 0.427272727273,
+   "clv_no_vig_additive": 0.068181818182,
+   "clv_prob_points_additive": 0.027272727273,
+   "clv_log_additive": 0.065957967792,
+   "close_fair_prob_power": 0.425301390668,
+   "clv_no_vig_power": 0.06325347667,
+   "clv_prob_points_power": 0.025301390668,
+   "clv_log_power": 0.061333524998
+  },
+  {
+   "bet_american": -110,
+   "close_american_same_side": 105,
+   "close_american_other_side": -125,
+   "clv_price": -0.068736141907,
+   "close_fair_prob_multiplicative": 0.467532467532,
+   "clv_no_vig_multiplicative": -0.107438016529,
+   "clv_prob_points_multiplicative": -0.056277056277,
+   "clv_log_multiplicative": -0.113659318473,
+   "close_fair_prob_additive": 0.466124661247,
+   "clv_no_vig_additive": -0.110125646711,
+   "clv_prob_points_additive": -0.057684862563,
+   "clv_log_additive": -0.116675002302,
+   "close_fair_prob_power": 0.465413772567,
+   "clv_no_vig_power": -0.111482797826,
+   "clv_prob_points_power": -0.058395751242,
+   "clv_log_power": -0.118201270659
+  },
+  {
+   "bet_american": 240,
+   "close_american_same_side": 200,
+   "close_american_other_side": -260,
+   "clv_price": 0.133333333333,
+   "close_fair_prob_multiplicative": 0.315789473684,
+   "clv_no_vig_multiplicative": 0.073684210526,
+   "clv_prob_points_multiplicative": 0.021671826625,
+   "clv_log_multiplicative": 0.071095921684,
+   "close_fair_prob_additive": 0.305555555556,
+   "clv_no_vig_additive": 0.038888888889,
+   "clv_prob_points_additive": 0.011437908497,
+   "clv_log_additive": 0.038151765964,
+   "close_fair_prob_power": 0.299982007222,
+   "clv_no_vig_power": 0.019938824553,
+   "clv_prob_points_power": 0.005864360163,
+   "clv_log_power": 0.019742649569
+  }
+ ],
+ "line_translation": [
+  {
+   "family": "poisson",
+   "params": {},
+   "sharp_line": 24.5,
+   "sharp_fair_p_over_excl_push": 0.5,
+   "mu": 24.667468366988,
+   "sharp_line_probs": {
+    "p_over": 0.5,
+    "p_push": 0.0,
+    "p_under": 0.5
+   },
+   "targets": [
+    {
+     "line": 22.5,
+     "p_over": 0.658654731904,
+     "p_push": 0.0,
+     "p_under": 0.341345268096
+    },
+    {
+     "line": 23.5,
+     "p_over": 0.580415331059,
+     "p_push": 0.0,
+     "p_under": 0.419584668941
+    },
+    {
+     "line": 24,
+     "p_over": 0.5,
+     "p_push": 0.080415331059,
+     "p_under": 0.419584668941
+    },
+    {
+     "line": 25,
+     "p_over": 0.420654294596,
+     "p_push": 0.079345705404,
+     "p_under": 0.5
+    },
+    {
+     "line": 25.5,
+     "p_over": 0.420654294596,
+     "p_push": 0.0,
+     "p_under": 0.579345705404
+    },
+    {
+     "line": 26.5,
+     "p_over": 0.345375153129,
+     "p_push": 0.0,
+     "p_under": 0.654624846871
+    }
+   ]
+  },
+  {
+   "family": "poisson",
+   "params": {},
+   "sharp_line": 4.5,
+   "sharp_fair_p_over_excl_push": 0.52,
+   "mu": 4.77948182963,
+   "sharp_line_probs": {
+    "p_over": 0.52,
+    "p_push": 0.0,
+    "p_under": 0.48
+   },
+   "targets": [
+    {
+     "line": 3.5,
+     "p_over": 0.702645691867,
+     "p_push": 0.0,
+     "p_under": 0.297354308133
+    },
+    {
+     "line": 4,
+     "p_over": 0.52,
+     "p_push": 0.182645691867,
+     "p_under": 0.297354308133
+    },
+    {
+     "line": 5,
+     "p_over": 0.345409646892,
+     "p_push": 0.174590353108,
+     "p_under": 0.48
+    },
+    {
+     "line": 5.5,
+     "p_over": 0.345409646892,
+     "p_push": 0.0,
+     "p_under": 0.654590353108
+    }
+   ]
+  },
+  {
+   "family": "poisson",
+   "params": {},
+   "sharp_line": 0.5,
+   "sharp_fair_p_over_excl_push": 0.4,
+   "mu": 0.510825623766,
+   "sharp_line_probs": {
+    "p_over": 0.4,
+    "p_push": 0.0,
+    "p_under": 0.6
+   },
+   "targets": [
+    {
+     "line": 1,
+     "p_over": 0.09350462574,
+     "p_push": 0.30649537426,
+     "p_under": 0.6
+    },
+    {
+     "line": 1.5,
+     "p_over": 0.09350462574,
+     "p_push": 0.0,
+     "p_under": 0.90649537426
+    }
+   ]
+  },
+  {
+   "family": "poisson",
+   "params": {},
+   "sharp_line": 24,
+   "sharp_fair_p_over_excl_push": 0.5,
+   "mu": 24.165753439734,
+   "sharp_line_probs": {
+    "p_over": 0.459447360487,
+    "p_push": 0.081105279026,
+    "p_under": 0.459447360487
+   },
+   "targets": [
+    {
+     "line": 23,
+     "p_over": 0.540552639513,
+     "p_push": 0.080548976115,
+     "p_under": 0.378898384371
+    },
+    {
+     "line": 23.5,
+     "p_over": 0.540552639513,
+     "p_push": 0.0,
+     "p_under": 0.459447360487
+    },
+    {
+     "line": 24,
+     "p_over": 0.459447360487,
+     "p_push": 0.081105279026,
+     "p_under": 0.459447360487
+    },
+    {
+     "line": 24.5,
+     "p_over": 0.459447360487,
+     "p_push": 0.0,
+     "p_under": 0.540552639513
+    },
+    {
+     "line": 25,
+     "p_over": 0.381048553463,
+     "p_push": 0.078398807024,
+     "p_under": 0.540552639513
+    }
+   ]
+  },
+  {
+   "family": "nb2",
+   "params": {
+    "r": 10
+   },
+   "sharp_line": 24.5,
+   "sharp_fair_p_over_excl_push": 0.55,
+   "mu": 26.758398088808,
+   "sharp_line_probs": {
+    "p_over": 0.55,
+    "p_push": 0.0,
+    "p_under": 0.45
+   },
+   "targets": [
+    {
+     "line": 23.5,
+     "p_over": 0.591989047679,
+     "p_push": 0.0,
+     "p_under": 0.408010952321
+    },
+    {
+     "line": 24,
+     "p_over": 0.55,
+     "p_push": 0.041989047679,
+     "p_under": 0.408010952321
+    },
+    {
+     "line": 25.5,
+     "p_over": 0.508430149089,
+     "p_push": 0.0,
+     "p_under": 0.491569850911
+    },
+    {
+     "line": 26.5,
+     "p_over": 0.467694307134,
+     "p_push": 0.0,
+     "p_under": 0.532305692866
+    }
+   ]
+  },
+  {
+   "family": "nb2",
+   "params": {
+    "r": 4
+   },
+   "sharp_line": 5.5,
+   "sharp_fair_p_over_excl_push": 0.45,
+   "mu": 5.683256372189,
+   "sharp_line_probs": {
+    "p_over": 0.45,
+    "p_push": 0.0,
+    "p_under": 0.55
+   },
+   "targets": [
+    {
+     "line": 4.5,
+     "p_over": 0.563558947128,
+     "p_push": 0.0,
+     "p_under": 0.436441052872
+    },
+    {
+     "line": 5,
+     "p_over": 0.45,
+     "p_push": 0.113558947128,
+     "p_under": 0.436441052872
+    },
+    {
+     "line": 6,
+     "p_over": 0.350025685821,
+     "p_push": 0.099974314179,
+     "p_under": 0.55
+    },
+    {
+     "line": 6.5,
+     "p_over": 0.350025685821,
+     "p_push": 0.0,
+     "p_under": 0.649974314179
+    }
+   ]
+  },
+  {
+   "family": "nb1",
+   "params": {
+    "phi": 2.8
+   },
+   "sharp_line": 24.5,
+   "sharp_fair_p_over_excl_push": 0.5,
+   "mu": 25.264662651427,
+   "sharp_line_probs": {
+    "p_over": 0.5,
+    "p_push": 0.0,
+    "p_under": 0.5
+   },
+   "targets": [
+    {
+     "line": 22.5,
+     "p_over": 0.597479973818,
+     "p_push": 0.0,
+     "p_under": 0.402520026182
+    },
+    {
+     "line": 23.5,
+     "p_over": 0.548545071127,
+     "p_push": 0.0,
+     "p_under": 0.451454928873
+    },
+    {
+     "line": 24,
+     "p_over": 0.5,
+     "p_push": 0.048545071127,
+     "p_under": 0.451454928873
+    },
+    {
+     "line": 25,
+     "p_over": 0.452519686884,
+     "p_push": 0.047480313116,
+     "p_under": 0.5
+    },
+    {
+     "line": 25.5,
+     "p_over": 0.452519686884,
+     "p_push": 0.0,
+     "p_under": 0.547480313116
+    }
+   ],
+   "nb_size_r": 14.035923695237
+  },
+  {
+   "family": "nb1",
+   "params": {
+    "phi": 2.1
+   },
+   "sharp_line": 24.5,
+   "sharp_fair_p_over_excl_push": 0.5,
+   "mu": 25.033143874193,
+   "sharp_line_probs": {
+    "p_over": 0.5,
+    "p_push": 0.0,
+    "p_under": 0.5
+   },
+   "targets": [
+    {
+     "line": 23.5,
+     "p_over": 0.555925874424,
+     "p_push": 0.0,
+     "p_under": 0.444074125576
+    },
+    {
+     "line": 25.5,
+     "p_over": 0.445210599132,
+     "p_push": 0.0,
+     "p_under": 0.554789400868
+    }
+   ],
+   "nb_size_r": 22.757403521993
+  },
+  {
+   "family": "nb1",
+   "params": {
+    "phi": 1.26
+   },
+   "sharp_line": 4.5,
+   "sharp_fair_p_over_excl_push": 0.6,
+   "mu": 5.392647075611,
+   "sharp_line_probs": {
+    "p_over": 0.6,
+    "p_push": 0.0,
+    "p_under": 0.4
+   },
+   "targets": [
+    {
+     "line": 3.5,
+     "p_over": 0.752346809676,
+     "p_push": 0.0,
+     "p_under": 0.247653190324
+    },
+    {
+     "line": 4,
+     "p_over": 0.6,
+     "p_push": 0.152346809676,
+     "p_under": 0.247653190324
+    },
+    {
+     "line": 5.5,
+     "p_over": 0.444445514327,
+     "p_push": 0.0,
+     "p_under": 0.555554485673
+    }
+   ],
+   "nb_size_r": 20.740950290811
+  },
+  {
+   "family": "nb1",
+   "params": {
+    "phi": 2.8
+   },
+   "sharp_line": 6,
+   "sharp_fair_p_over_excl_push": 0.55,
+   "mu": 7.226784214684,
+   "sharp_line_probs": {
+    "p_over": 0.496976486813,
+    "p_push": 0.096406387613,
+    "p_under": 0.406617125574
+   },
+   "targets": [
+    {
+     "line": 5.5,
+     "p_over": 0.593382874426,
+     "p_push": 0.0,
+     "p_under": 0.406617125574
+    },
+    {
+     "line": 6,
+     "p_over": 0.496976486813,
+     "p_push": 0.096406387613,
+     "p_under": 0.406617125574
+    },
+    {
+     "line": 6.5,
+     "p_over": 0.496976486813,
+     "p_push": 0.0,
+     "p_under": 0.503023513187
+    },
+    {
+     "line": 7,
+     "p_over": 0.408308265056,
+     "p_push": 0.088668221756,
+     "p_under": 0.503023513187
+    }
+   ],
+   "nb_size_r": 4.014880119269
+  },
+  {
+   "family": "normal",
+   "params": {
+    "sigma": 8
+   },
+   "sharp_line": 24.5,
+   "sharp_fair_p_over_excl_push": 0.52,
+   "mu": 24.901228667718,
+   "sharp_line_probs": {
+    "p_over": 0.52,
+    "p_push": 0.0,
+    "p_under": 0.48
+   },
+   "targets": [
+    {
+     "line": 23.5,
+     "p_over": 0.56952052227,
+     "p_push": 0.0,
+     "p_under": 0.43047947773
+    },
+    {
+     "line": 24,
+     "p_over": 0.52,
+     "p_push": 0.04952052227,
+     "p_under": 0.43047947773
+    },
+    {
+     "line": 25,
+     "p_over": 0.470168455154,
+     "p_push": 0.049831544846,
+     "p_under": 0.48
+    },
+    {
+     "line": 25.5,
+     "p_over": 0.470168455154,
+     "p_push": 0.0,
+     "p_under": 0.529831544846
+    }
+   ]
+  },
+  {
+   "family": "normal",
+   "params": {
+    "sigma": 2.4
+   },
+   "sharp_line": 4.5,
+   "sharp_fair_p_over_excl_push": 0.5,
+   "mu": 4.5,
+   "sharp_line_probs": {
+    "p_over": 0.5,
+    "p_push": 0.0,
+    "p_under": 0.5
+   },
+   "targets": [
+    {
+     "line": 3.5,
+     "p_over": 0.661538880489,
+     "p_push": 0.0,
+     "p_under": 0.338461119511
+    },
+    {
+     "line": 4,
+     "p_over": 0.5,
+     "p_push": 0.161538880489,
+     "p_under": 0.338461119511
+    },
+    {
+     "line": 5.5,
+     "p_over": 0.338461119511,
+     "p_push": 0.0,
+     "p_under": 0.661538880489
+    }
+   ]
+  },
+  {
+   "family": "normal",
+   "params": {
+    "sigma": 8
+   },
+   "sharp_line": 24,
+   "sharp_fair_p_over_excl_push": 0.5,
+   "mu": 24.0,
+   "sharp_line_probs": {
+    "p_over": 0.475082330971,
+    "p_push": 0.049835338058,
+    "p_under": 0.475082330971
+   },
+   "targets": [
+    {
+     "line": 23.5,
+     "p_over": 0.524917669029,
+     "p_push": 0.0,
+     "p_under": 0.475082330971
+    },
+    {
+     "line": 24,
+     "p_over": 0.475082330971,
+     "p_push": 0.049835338058,
+     "p_under": 0.475082330971
+    },
+    {
+     "line": 24.5,
+     "p_over": 0.475082330971,
+     "p_push": 0.0,
+     "p_under": 0.524917669029
+    }
+   ]
+  },
+  {
+   "family": "normal",
+   "params": {
+    "sigma": 30
+   },
+   "sharp_line": 62.5,
+   "sharp_fair_p_over_excl_push": 0.47,
+   "mu": 60.241904137005,
+   "sharp_line_probs": {
+    "p_over": 0.47,
+    "p_push": 0.0,
+    "p_under": 0.53
+   },
+   "targets": [
+    {
+     "line": 59.5,
+     "p_over": 0.50986489207,
+     "p_push": 0.0,
+     "p_under": 0.49013510793
+    },
+    {
+     "line": 64.5,
+     "p_over": 0.443565070307,
+     "p_push": 0.0,
+     "p_under": 0.556434929693
+    },
+    {
+     "line": 65,
+     "p_over": 0.430433795873,
+     "p_push": 0.013131274435,
+     "p_under": 0.556434929693
+    }
+   ]
+  }
+ ]
+}

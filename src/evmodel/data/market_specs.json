@@ -1,0 +1,424 @@
+{
+ "meta": {
+  "nba": {
+   "fit_seasons": [
+    2017,
+    2018,
+    2019,
+    2020,
+    2021
+   ],
+   "test_seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "val_seasons": [
+    2022,
+    2023
+   ]
+  },
+  "nfl": {
+   "fit_seasons": [
+    2019,
+    2020,
+    2021
+   ],
+   "test_seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "val_seasons": [
+    2022,
+    2023
+   ]
+  },
+  "nhl": {
+   "fit_seasons": [
+    2023
+   ],
+   "test_seasons": [
+    2025,
+    2026
+   ],
+   "val_seasons": [
+    2024
+   ]
+  }
+ },
+ "specs": {
+  "nba/player_assists": {
+   "alpha": 0.0,
+   "c": 0.115,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0308,
+   "phi": 1.3021,
+   "scale": 1.0,
+   "test_ece": 0.0071,
+   "test_games": 27621,
+   "zero_inflation": 0.0
+  },
+  "nba/player_blocks": {
+   "alpha": 0.0,
+   "c": 0.002,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 0.9782,
+   "phi": 1.0139,
+   "scale": 1.217,
+   "test_ece": 0.009,
+   "test_games": 15091,
+   "zero_inflation": 0.0
+  },
+  "nba/player_blocks_steals": {
+   "alpha": 0.02654,
+   "c": 0.316,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 0.9883,
+   "phi": 1.0,
+   "scale": 1.0,
+   "test_ece": 0.0047,
+   "test_games": 27615,
+   "zero_inflation": 0.0
+  },
+  "nba/player_points": {
+   "alpha": 0.0,
+   "c": 16.267,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.016,
+   "phi": 2.1576,
+   "scale": 3.392,
+   "test_ece": 0.0052,
+   "test_games": 35742,
+   "zero_inflation": 0.0
+  },
+  "nba/player_points_assists": {
+   "alpha": 0.0,
+   "c": 18.911,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0191,
+   "phi": 2.1271,
+   "scale": 3.062,
+   "test_ece": 0.0043,
+   "test_games": 35202,
+   "zero_inflation": 0.0
+  },
+  "nba/player_points_rebounds": {
+   "alpha": 0.0,
+   "c": 25.893,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0124,
+   "phi": 1.9686,
+   "scale": 3.07,
+   "test_ece": 0.005,
+   "test_games": 37620,
+   "zero_inflation": 0.0
+  },
+  "nba/player_points_rebounds_assists": {
+   "alpha": 0.02278,
+   "c": 40.505,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0171,
+   "phi": 0.9904,
+   "scale": 3.039,
+   "test_ece": 0.0064,
+   "test_games": 34214,
+   "zero_inflation": 0.0
+  },
+  "nba/player_rebounds": {
+   "alpha": 0.03338,
+   "c": 1.789,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0053,
+   "phi": 0.997,
+   "scale": 1.196,
+   "test_ece": 0.0036,
+   "test_games": 37592,
+   "zero_inflation": 0.0
+  },
+  "nba/player_rebounds_assists": {
+   "alpha": 0.0,
+   "c": 4.828,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.015,
+   "phi": 1.0905,
+   "scale": 1.535,
+   "test_ece": 0.0072,
+   "test_games": 37403,
+   "zero_inflation": 0.0
+  },
+  "nba/player_steals": {
+   "alpha": 0.00455,
+   "c": 0.184,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 0.9769,
+   "phi": 1.0,
+   "scale": 1.0,
+   "test_ece": 0.01,
+   "test_games": 31114,
+   "zero_inflation": 0.0
+  },
+  "nba/player_threes": {
+   "alpha": 0.0,
+   "c": 0.361,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0194,
+   "phi": 1.0834,
+   "scale": 1.0,
+   "test_ece": 0.0044,
+   "test_games": 38220,
+   "zero_inflation": 0.0
+  },
+  "nba/player_turnovers": {
+   "alpha": 0.0,
+   "c": 0.18,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0066,
+   "phi": 1.0,
+   "scale": 1.0,
+   "test_ece": 0.0072,
+   "test_games": 25883,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_anytime_td": {
+   "alpha": 0.0,
+   "c": 0.044,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 0.9989,
+   "phi": 1.0,
+   "scale": 1.0,
+   "test_ece": 0.0177,
+   "test_games": 8580,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_pass_attempts": {
+   "alpha": 0.0,
+   "c": 119.637,
+   "family": "normal",
+   "lower": 0,
+   "mean_scale": 1.0101,
+   "phi": 0.0,
+   "scale": 1.0,
+   "test_ece": 0.0197,
+   "test_games": 1456,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_pass_completions": {
+   "alpha": 0.0,
+   "c": 57.506,
+   "family": "normal",
+   "lower": 0,
+   "mean_scale": 1.0081,
+   "phi": 0.0,
+   "scale": 1.0,
+   "test_ece": 0.0217,
+   "test_games": 1481,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_pass_interceptions": {
+   "alpha": 0.00107,
+   "c": 0.523,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 0.9995,
+   "phi": 0.0,
+   "scale": 1.171,
+   "test_ece": 0.0233,
+   "test_games": 1408,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_pass_rush_yds": {
+   "alpha": 0.0,
+   "c": 8259.496,
+   "family": "normal",
+   "lower": 0,
+   "mean_scale": 1.0064,
+   "phi": 0.0,
+   "scale": 1.0,
+   "test_ece": 0.0182,
+   "test_games": 1420,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_pass_tds": {
+   "alpha": 0.0,
+   "c": 0.0,
+   "family": "poisson",
+   "lower": 0,
+   "mean_scale": 1.0047,
+   "phi": 1.0,
+   "scale": 1.0,
+   "test_ece": 0.0364,
+   "test_games": 1436,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_pass_yds": {
+   "alpha": 0.0,
+   "c": 7770.234,
+   "family": "normal",
+   "lower": 0,
+   "mean_scale": 1.0054,
+   "phi": 0.0,
+   "scale": 1.0,
+   "test_ece": 0.0182,
+   "test_games": 1405,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_reception_yds": {
+   "alpha": 0.0,
+   "c": 0.0,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0393,
+   "phi": 27.6554,
+   "scale": 20.748,
+   "test_ece": 0.0087,
+   "test_games": 6577,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_receptions": {
+   "alpha": 0.09602,
+   "c": 4.747,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0785,
+   "phi": 0.0,
+   "scale": 1.0,
+   "test_ece": 0.0094,
+   "test_games": 6447,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_rush_attempts": {
+   "alpha": 0.0,
+   "c": 4.092,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.1043,
+   "phi": 3.0534,
+   "scale": 2.317,
+   "test_ece": 0.0354,
+   "test_games": 2358,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_rush_reception_yds": {
+   "alpha": 0.0,
+   "c": 1040.15,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0662,
+   "phi": 0.9347,
+   "scale": 21.596,
+   "test_ece": 0.0097,
+   "test_games": 6576,
+   "zero_inflation": 0.0
+  },
+  "nfl/player_rush_yds": {
+   "alpha": 0.0,
+   "c": 0.0,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 1.0648,
+   "phi": 27.3716,
+   "scale": 11.439,
+   "test_ece": 0.0082,
+   "test_games": 3178,
+   "zero_inflation": 0.0
+  },
+  "nhl/player_assists": {
+   "alpha": 0.0,
+   "c": 0.0,
+   "family": "poisson",
+   "lower": 0,
+   "mean_scale": 0.9893,
+   "phi": 1.0,
+   "scale": 1.0,
+   "test_ece": 0.0091,
+   "test_games": 31403,
+   "zero_inflation": 0.0
+  },
+  "nhl/player_blocked_shots": {
+   "alpha": 0.04713,
+   "c": 0.0,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 0.9781,
+   "phi": 1.0624,
+   "scale": 1.0,
+   "test_ece": 0.0073,
+   "test_games": 21758,
+   "zero_inflation": 0.0
+  },
+  "nhl/player_goal_scorer_anytime": {
+   "alpha": 0.0,
+   "c": 0.0,
+   "family": "poisson",
+   "lower": 0,
+   "mean_scale": 0.9785,
+   "phi": 1.0,
+   "scale": 1.0,
+   "test_ece": 0.0049,
+   "test_games": 21220,
+   "zero_inflation": 0.0
+  },
+  "nhl/player_goals": {
+   "alpha": 0.0,
+   "c": 0.0,
+   "family": "poisson",
+   "lower": 0,
+   "mean_scale": 0.9785,
+   "phi": 1.0,
+   "scale": 1.0,
+   "test_ece": 0.0038,
+   "test_games": 21220,
+   "zero_inflation": 0.0
+  },
+  "nhl/player_points": {
+   "alpha": 0.0,
+   "c": 0.0,
+   "family": "poisson",
+   "lower": 0,
+   "mean_scale": 1.0024,
+   "phi": 1.0,
+   "scale": 1.0,
+   "test_ece": 0.013,
+   "test_games": 31112,
+   "zero_inflation": 0.0
+  },
+  "nhl/player_shots_on_goal": {
+   "alpha": 0.00338,
+   "c": 0.038,
+   "family": "negbin",
+   "lower": 0,
+   "mean_scale": 0.9903,
+   "phi": 1.105,
+   "scale": 1.0,
+   "test_ece": 0.0068,
+   "test_games": 28358,
+   "zero_inflation": 0.0
+  },
+  "nhl/player_total_saves": {
+   "alpha": 0.0157,
+   "c": 54.532,
+   "family": "normal",
+   "lower": 0,
+   "mean_scale": 0.9708,
+   "phi": 0.0,
+   "scale": 1.0,
+   "test_ece": 0.0149,
+   "test_games": 3453,
+   "zero_inflation": 0.0
+  }
+ }
+}

@@ -1,0 +1,73 @@
+# Example settings for `sportspred --config examples/sportspred.toml ...`
+# (or export SPORTSPRED_CONFIG=examples/sportspred.toml).
+# Every option is optional; anything left out keeps its default.
+# No secrets belong here: credentials are read from environment variables
+# only (see .env.example).
+
+[paths]
+data_dir = "data"                  # store, raw downloads and reports live here (git-ignored)
+
+[selection]
+# These are selection and freshness RULES, not model weights. Model weights
+# are learned in validation. `sportspred validate` reports accuracy and
+# coverage at several thresholds (the PASS-rule table), on development folds
+# and on the untouched final test.
+min_prob_binary = 0.60             # below this a two-way selection is PASS
+min_prob_three_way = 0.45
+min_prob_over_under = 0.55
+allowed_coverage = ["validated", "experimental"]
+require_interval_above_even = true # PASS when the model-uncertainty interval reaches a coin flip
+horizon_hours = 36.0               # only events starting within this window are predicted
+
+[selection.min_prob_overrides]
+# "nba:winner" = 0.62
+
+[selection.max_age_hours]          # stricter freshness per check
+# injury_report = 12
+
+[selection.recheck_within_hours]
+# injury_report = 2
+
+[confidence]
+# Labels come from OBSERVED out-of-sample hit rates of the probability band a
+# selection falls in (lower 95% bound), never from the raw probability.
+min_band_events = 150
+high_observed_low = 0.70
+medium_observed_low = 0.60
+
+[combos]
+primary_size = 3
+max_size = 6
+leg_statuses = ["FINAL"]           # PROVISIONAL / CONDITIONAL legs are never recommended
+show_provisional_preview = true    # clearly labelled preview, not a recommendation
+min_leg_prob = 0.65
+min_joint_prob_larger = 0.25       # 4+ leg combos are shown only above this all-win probability
+alternatives_per_size = 3
+max_abs_residual_correlation = 0.03
+allowed_coverage = ["validated"]
+
+[ev]
+# The EV module is optional and separate; it only runs when prices are supplied.
+devig_method = "multiplicative"
+max_quote_age_minutes = 30.0
+min_edge = 0.02
+paper_stake = 1.0
+mode = "paper"                     # the only supported mode: nothing is ever placed
+
+[[ev.presets]]
+# Raw market-implied probability band for team-win selections in these
+# leagues only. Editable; not applied to other sports, markets or props.
+name = "us_major_team_win"
+leagues = ["nba", "nhl", "nfl"]
+markets = ["winner"]
+raw_implied_min = 0.40
+raw_implied_max = 0.70
+enabled = true
+
+[validation]
+n_boot = 500
+seed = 20261112
+min_final_events = 300
+min_dev_folds = 3
+max_ece = 0.03
+n_replicas = 30

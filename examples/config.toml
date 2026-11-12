@@ -9,6 +9,8 @@ devig_method = "shin"
 # book whose price is being judged) with at least this much total weight.
 min_ref_books = 1
 min_ref_weight = 0.6
+# ...and those books must outweigh the book being judged by this factor.
+min_ref_weight_ratio = 1.5
 
 # How much each book counts towards the fair price.  Sharper = heavier.
 # Books you leave out get weight 0: they are scanned for value but never
@@ -29,7 +31,7 @@ min_ev_low_confidence = 0.05       # ...or +5% when the fair price is less certa
 min_price_american = -250
 max_price_american = 250
 # target_books = ["draftkings", "betmgm", "williamhill_us", "espnbet"]
-model_weight = 0.2                 # share of the projection model in the blend
+model_weight = 0.1                 # share of the projection model in the blend
 allow_model_only = false           # never bet on the model alone
 
 [scan.dfs_books]

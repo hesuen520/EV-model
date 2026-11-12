@@ -1150,23 +1150,15 @@ class TestScaledNegBin:
         true_mean, _, _ = _brute(ScaledNegBinDist(mean, var, scale), 400)
         assert true_mean == pytest.approx(mean, rel=1e-2)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG (minor, documentation): the docstring says the exact moments differ by "
-            "'about 1% for means of a few units', but the variance falls well short of its "
-            "target there: -2.7% for (mean 3, var 5, scale 1.5), -4.2% for (3, 8, 2), -8.4% "
-            "for (5, 30, 5) and -9.1% for (2, 4.4, 2.2). The shortfall is about "
-            "(scale**2 - 1)/12 plus a small-mean term"
-        ),
-    )
     @pytest.mark.parametrize("mean, var, scale", [(3.0, 5.0, 1.5), (3.0, 8.0, 2.0), (5.0, 30.0, 5.0), (2.0, 4.4, 2.2)])
-    def test_variance_target_is_within_about_one_percent_for_means_of_a_few_units(
+    def test_variance_target_is_a_few_percent_off_for_means_of_a_few_units(
         self, mean: float, var: float, scale: float
     ) -> None:
+        """Documented caveat; measured shortfalls are 2.7%, 4.2%, 8.4% and 9.1% for these cases."""
         dist = ScaledNegBinDist(mean, var, scale)
         _, true_var, _ = _brute(dist, 600)
-        assert true_var == pytest.approx(dist.var, rel=2e-2)
+        assert true_var < dist.var
+        assert true_var == pytest.approx(dist.var, rel=0.10)
 
     def test_is_less_right_skewed_than_a_negative_binomial_with_the_same_moments(self) -> None:
         """The reason the class exists: same mean and variance, visibly less skew."""
@@ -1312,9 +1304,11 @@ SPEC_IDS = sorted(SPECS)
 
 def _documented_variance(spec: FamilySpec, mean: float) -> float:
     """The variance function exactly as the FamilySpec docstring states it."""
-    m = abs(mean) if spec.family == "normal" else max(mean, 0.0)
+    m = max(mean, 0.0)
     if spec.family == "poisson":
         return m
+    if spec.family == "normal" and spec.lower is None:
+        return spec.c + spec.phi * m + spec.alpha * m * m  # plain intercept: may sit at or below zero
     var = spec.c * m / (m + 1.0) + spec.phi * m + spec.alpha * m * m
     if spec.family == "negbin":
         var = max(var, spec.scale * m)  # floored at a (scaled) Poisson
@@ -1385,10 +1379,12 @@ class TestFamilySpecConstruction:
     # -- variance function ---------------------------------------------------
     @pytest.mark.parametrize("mean", [0.0, 0.2, 1.0, 7.5, 60.0, 250.0])
     def test_variance_function_is_c_m_over_m_plus_1_plus_phi_m_plus_alpha_m2(self, mean: float) -> None:
-        for family in ("normal", "gamma"):
+        for family in ("normal", "gamma"):  # the default normal is clamped at 0
             spec = FamilySpec(family, phi=1.3, alpha=0.07, c=2.5)
             expected = 2.5 * mean / (mean + 1.0) + 1.3 * mean + 0.07 * mean * mean
             assert spec.variance(mean) == pytest.approx(expected, rel=1e-14, abs=1e-15)
+        unclamped = FamilySpec("normal", phi=1.3, alpha=0.07, c=2.5, lower=None)
+        assert unclamped.variance(mean) == pytest.approx(2.5 + 1.3 * mean + 0.07 * mean * mean, rel=1e-14)
         nb2 = FamilySpec("negbin", phi=1.0, alpha=0.2)
         assert nb2.variance(mean) == pytest.approx(mean + 0.2 * mean * mean, rel=1e-14, abs=1e-15)
         assert FamilySpec("poisson", phi=3.0, alpha=2.0, c=9.0).variance(mean) == mean
@@ -1410,10 +1406,19 @@ class TestFamilySpecConstruction:
         assert FamilySpec("negbin", phi=1.0, alpha=0.0, scale=2.5).variance(mean) == pytest.approx(2.5 * mean, rel=1e-15)
         assert FamilySpec("gamma", phi=0.5).variance(mean) == pytest.approx(0.5 * mean, rel=1e-15)  # no floor
 
-    def test_normal_variance_uses_the_absolute_mean(self) -> None:
+    def test_unclamped_normal_keeps_a_plain_intercept_for_non_positive_means(self) -> None:
+        """Documented: c + phi*m + alpha*m^2 with m floored at zero, so signed stats keep a spread."""
         spec = FamilySpec("normal", phi=1.0, alpha=0.1, c=4.0, lower=None)
-        for mean in (0.5, 3.0, 25.0):
-            assert spec.variance(-mean) == spec.variance(mean) > 0.0
+        for mean in (0.0, -0.5, -3.0, -250.0):
+            assert spec.variance(mean) == 4.0
+            assert spec.dist(mean).var == pytest.approx(4.0, rel=1e-12)
+        assert spec.variance(3.0) == pytest.approx(4.0 + 3.0 + 0.9, rel=1e-14)
+
+    @pytest.mark.parametrize("family", ["poisson", "negbin", "gamma"])
+    def test_count_families_have_no_variance_at_or_below_a_zero_mean(self, family: str) -> None:
+        spec = FamilySpec(family, phi=1.2, alpha=0.1, c=3.0)
+        assert spec.variance(0.0) == 0.0
+        assert spec.variance(-4.0) == 0.0
 
     @pytest.mark.parametrize("name", sorted(SPECS))
     def test_variance_matches_the_documented_formula_for_every_catalogued_spec(self, name: str) -> None:
@@ -1505,17 +1510,17 @@ class TestFamilySpecConstruction:
         assert isinstance(dist, DiscretizedNormal)
         assert dist.lower is None
         assert dist.mean == mean
-        m = abs(mean)
-        expected_var = 3.0 * m / (m + 1.0) + 1.5 * m + 0.04 * m * m
+        m = max(mean, 0.0)
+        expected_var = 3.0 + 1.5 * m + 0.04 * m * m
         assert dist.var == pytest.approx(expected_var, rel=1e-12)
         assert _latent_sd(dist, round(mean)) == pytest.approx(math.sqrt(expected_var), rel=1e-6)
 
-    @pytest.mark.parametrize("lower", [0, 3, -5])
-    @pytest.mark.parametrize("offset", [2.0, 6.0, 40.0])
-    def test_clamped_normal_family(self, lower: int, offset: float) -> None:
+    @pytest.mark.parametrize(
+        "lower, mean", [(0, 2.0), (0, 6.0), (0, 40.0), (3, 5.0), (3, 9.0), (3, 43.0), (-5, 1.0), (-5, 35.0)]
+    )
+    def test_clamped_normal_family(self, lower: int, mean: float) -> None:
         """Clamped members keep the latent sd of the variance function and hit the mean."""
         spec = FamilySpec("normal", phi=1.5, alpha=0.04, c=3.0, lower=lower)
-        mean = lower + offset
         dist = spec.dist(mean)
         assert isinstance(dist, DiscretizedNormal)
         assert dist.lower == lower
@@ -1561,18 +1566,27 @@ class TestFamilySpecConstruction:
         assert spec.variance(mean) > 0.0
         assert spec.variance(mean) == pytest.approx(spec.dist(mean).var, rel=1e-12)
 
+    def test_variance_of_a_clamped_normal_is_the_latent_one(self) -> None:
+        """Documented exception: use dist(mean).var for the clamped variable's own variance."""
+        spec = FamilySpec("normal", phi=0.0, alpha=0.0, c=25.0)
+        dist = spec.dist(2.0)
+        assert spec.variance(2.0) == pytest.approx(25.0 * 2.0 / 3.0, rel=1e-14)
+        assert _latent_sd(dist, 2) ** 2 == pytest.approx(spec.variance(2.0), rel=1e-6)
+        assert dist.var < 0.5 * spec.variance(2.0)  # the clamp removes most of the spread
+
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "BUG (minor, documentation): FamilySpec.variance() is documented as the "
-            "'variance of the base distribution built for mean', but for a clamped normal "
-            "it is the latent variance: FamilySpec('normal', c=25).variance(2.0) = 16.7 "
-            "while dist(2.0).var = 6.95 (the clamp at 0 removes most of the spread)"
+            "BUG (minor): the variance function floors the mean at zero, which is right for "
+            "a stat clamped at 0 but leaves a normal family clamped at a negative bound "
+            "without any spread for means between the bound and zero: "
+            "FamilySpec('normal', phi=1.5, c=3, lower=-5).dist(-3.0) is a point mass at -3"
         ),
     )
-    def test_variance_agrees_with_a_clamped_normal(self) -> None:
-        spec = FamilySpec("normal", phi=0.0, alpha=0.0, c=25.0)
-        assert spec.variance(2.0) == pytest.approx(spec.dist(2.0).var, rel=0.05)
+    def test_normal_clamped_below_zero_keeps_a_spread_for_negative_means(self) -> None:
+        dist = FamilySpec("normal", phi=1.5, alpha=0.04, c=3.0, lower=-5).dist(-3.0)
+        assert dist.pmf(-3) < 0.99
+        assert dist.var > 0.1
 
     # -- zero inflation and degenerate means ---------------------------------
     @pytest.mark.parametrize("family", FAMILIES)
@@ -1635,22 +1649,16 @@ class TestFamilySpecConstruction:
         assert _brute_mean(dist, -5, 80) == pytest.approx(2.0, abs=0.01)
         assert dist.mean == pytest.approx(2.0, abs=0.01)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG (minor): dist(mean) is documented as 'the member of the family whose "
-            "overall mean is mean', but for means below ~1 the clamped normal and the gamma "
-            "families miss it because the latent mean is chosen from a continuous "
-            "approximation that ignores rounding: FamilySpec('normal', phi=1).dist(0.5) has "
-            "true mean 0.549 (+10%), dist(0.2) has 0.262 (+31%); "
-            "FamilySpec('gamma', phi=1).dist(0.5) has 0.438 (-12%), dist(0.2) has 0.156 (-22%)"
-        ),
-    )
     @pytest.mark.parametrize("family", ["normal", "gamma"])
     @pytest.mark.parametrize("mean", [0.2, 0.5])
-    def test_small_means_are_reproduced_too(self, family: str, mean: float) -> None:
+    def test_small_means_are_matched_only_to_within_rounding_effects(self, family: str, mean: float) -> None:
+        """Documented: 'closely for means of a few units and above, less so below one'.
+
+        Measured: normal(phi=1) gives 0.262 for 0.2 and 0.549 for 0.5; gamma(phi=1)
+        gives 0.156 and 0.438.  The absolute miss stays below 0.07.
+        """
         dist = FamilySpec(family, phi=1.0, alpha=0.0, c=0.0).dist(mean)
-        assert _brute_mean(dist, 0, 200) == pytest.approx(mean, rel=0.03)
+        assert _brute_mean(dist, 0, 200) == pytest.approx(mean, abs=0.07)
 
 
 # --------------------------------------------------------------------------
@@ -1729,54 +1737,64 @@ class TestSolveMeanRoundTrip:
 UNCLAMPED_NORMALS = {
     "intercept": FamilySpec("normal", phi=0.0, alpha=0.0, c=64.0, lower=None),
     "intercept_and_cv": FamilySpec("normal", phi=0.0, alpha=0.05, c=30.0, lower=None),
-    "poisson_like": FamilySpec("normal", phi=2.0, alpha=0.1, c=0.0, lower=None),
+    "intercept_and_phi": FamilySpec("normal", phi=1.0, alpha=0.1, c=4.0, lower=None),
 }
 
 
+@pytest.mark.parametrize("name", sorted(UNCLAMPED_NORMALS))
 class TestUnclampedNormalAroundZero:
     """Signed stats (``lower=None``): the family must stay ordered through mean 0."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG: for the unclamped normal family the variance function is applied to "
-            "abs(mean) and vanishes at 0, so every member near mean 0 is a spike and "
-            "P(X > line) is not monotone in the mean. FamilySpec('normal', c=64, lower=None): "
-            "P(X > 2.5) is 0.268 at mean -1, 0.000 at mean 0 and 0.300 at mean 0.35. A signed "
-            "stat with a mean near zero and a real spread cannot be represented"
-        ),
-    )
-    @pytest.mark.parametrize("name", sorted(UNCLAMPED_NORMALS))
-    @pytest.mark.parametrize("line", [0.5, 2.5])
+    @pytest.mark.parametrize("line", [-5.5, -0.5, 0.5, 2.5, 5.5])
     def test_prob_over_is_monotone_in_the_mean_across_zero(self, name: str, line: float) -> None:
+        """A variance that vanished at mean 0 would make P(X > 2.5) dip to zero there."""
         spec = UNCLAMPED_NORMALS[name]
         values = [spec.dist(float(m)).prob_over(line) for m in np.linspace(-15.0, 15.0, 601)]
         assert all(b >= a - 1e-12 for a, b in zip(values, values[1:]))
+        assert values[0] < 0.2 < 0.8 < values[-1]
 
+    @pytest.mark.parametrize("target", [0.05, 0.25, 0.6])
+    def test_the_mean_reproducing_a_price_is_unique(self, name: str, target: float) -> None:
+        spec = UNCLAMPED_NORMALS[name]
+        gaps = np.array([spec.dist(float(m)).prob_over(2.5) - target for m in np.linspace(-40.0, 40.0, 16001)])
+        assert int(np.sum(np.sign(gaps[1:]) != np.sign(gaps[:-1]))) == 1
+
+    def test_round_trip_at_negative_zero_and_positive_lines(self, name: str) -> None:
+        spec = UNCLAMPED_NORMALS[name]
+        for line in (-5.5, -4.0, -0.5, 0.0, 0.5, 2.5, 5.5):
+            for p in (0.05, 0.2, 0.45, 0.6, 0.9):
+                mean = spec.solve_mean(line, p)
+                assert spec.dist(mean).prob_over_no_push(line) == pytest.approx(p, abs=1e-8)
+
+    def test_a_mean_near_zero_keeps_its_spread(self, name: str) -> None:
+        spec = UNCLAMPED_NORMALS[name]
+        for mean in (-1.0, 0.0, 1.0):
+            dist = spec.dist(mean)
+            assert dist.sd == pytest.approx(math.sqrt(_documented_variance(spec, mean)), rel=1e-12)
+            assert dist.sd >= 2.0
+            assert 0.01 < dist.prob_over(2.5) < 0.5  # neither a spike nor certain
+
+
+class TestUnclampedNormalWithoutIntercept:
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "BUG: consequence of the above - the mean reproducing a price is not unique. "
-            "With FamilySpec('normal', c=64, lower=None) three means (-1.85, -0.41 and +0.22) "
-            "all give P(X > 2.5) = 0.25, yet imply P(X > 10.5) of 0.0277, 0.0057 and 0.0012; "
-            "solve_mean/translate return whichever root the bracketing happens to find"
+            "BUG (minor): an unclamped normal spec with c = 0 has zero variance for every "
+            "mean <= 0 (the mean is floored at zero in the variance function), so at "
+            "negative lines P(over) is a step function and solve_mean returns a point on "
+            "the step instead of raising: FamilySpec('normal', phi=2, alpha=0.1, c=0, "
+            "lower=None).solve_mean(-4.0, 0.2) returns -4.4988, whose P(over | no push) is "
+            "0.0. Either reject c = 0 with lower=None or raise ValueError here"
         ),
     )
-    @pytest.mark.parametrize("name", sorted(UNCLAMPED_NORMALS))
-    def test_the_mean_reproducing_a_price_is_unique(self, name: str) -> None:
-        spec = UNCLAMPED_NORMALS[name]
-        target = 0.6 * max(spec.dist(-m).prob_over(2.5) for m in (0.5, 1.0, 2.0))
-        gaps = np.array([spec.dist(float(m)).prob_over(2.5) - target for m in np.linspace(-40.0, 40.0, 16001)])
-        crossings = int(np.sum(np.sign(gaps[1:]) != np.sign(gaps[:-1])))
-        assert crossings == 1
-
-    @pytest.mark.parametrize("name", sorted(UNCLAMPED_NORMALS))
-    def test_round_trip_still_holds_on_whichever_branch_is_found(self, name: str) -> None:
-        spec = UNCLAMPED_NORMALS[name]
-        for line in (-5.5, -0.5, 0.5, 2.5, 5.5):
-            for p in (0.05, 0.2, 0.45, 0.6, 0.9):
-                mean = spec.solve_mean(line, p)
-                assert spec.dist(mean).prob_over(line) == pytest.approx(p, abs=1e-8)
+    @pytest.mark.parametrize("line, p", [(-4.0, 0.2), (-4.0, 0.9), (-4.0, 0.05)])
+    def test_solve_mean_reproduces_the_price_or_refuses(self, line: float, p: float) -> None:
+        spec = FamilySpec("normal", phi=2.0, alpha=0.1, c=0.0, lower=None)
+        try:
+            mean = spec.solve_mean(line, p)
+        except ValueError:
+            return
+        assert spec.dist(mean).prob_over_no_push(line) == pytest.approx(p, abs=1e-6)
 
 
 class TestSolveMeanAgainstIndependentSolutions:

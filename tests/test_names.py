@@ -221,30 +221,39 @@ class TestPlayerKey:
     def test_typographic_hyphens_and_apostrophes(self, name: str, expected: str) -> None:
         assert player_key(name) == expected
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG (minor): U+00B4 ACUTE ACCENT is listed among the joiner characters, but "
-            "NFKD normalisation runs first and turns it into a space plus a combining mark, "
-            "so player_key('D\u00b4Angelo Russell') is 'd angelo russell', not 'dangelo russell'"
-        ),
-    )
-    def test_acute_accent_used_as_an_apostrophe(self) -> None:
-        assert player_key("D\u00b4Angelo Russell") == "dangelo russell"
-
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG (minor): initials separated by a space are not merged, so 'C. J. Stroud' "
-            "gives 'c j stroud' instead of 'cj stroud' and NameMatcher cannot recover it "
-            "either (the first names 'c' and 'cj' differ, and the surname rule sees 'j stroud')"
-        ),
-    )
     @pytest.mark.parametrize(
-        "spaced, compact", [("C. J. Stroud", "C.J. Stroud"), ("T. J. Watt", "TJ Watt"), ("A J Brown", "A.J. Brown")]
+        "name, expected",
+        [("D\u00b4Angelo Russell", "dangelo russell"), ("N\u00b4Keal Harry", "nkeal harry"), ("Jos\u00e9 Ram\u00edrez", "jose ramirez")],
+    )
+    def test_acute_accent_used_as_an_apostrophe(self, name: str, expected: str) -> None:
+        """U+00B4 must be dropped before NFKD turns it into a space plus a combining mark."""
+        assert player_key(name) == expected
+
+    @pytest.mark.parametrize(
+        "spaced, compact",
+        [
+            ("C. J. Stroud", "C.J. Stroud"),
+            ("T. J. Watt", "TJ Watt"),
+            ("A J Brown", "A.J. Brown"),
+            ("Brown, A. J.", "AJ Brown"),
+            ("P. J. Washington Jr.", "P.J. Washington"),
+            ("K. C. Jones", "KC Jones"),
+        ],
     )
     def test_spaced_initials_join_with_compact_initials(self, spaced: str, compact: str) -> None:
-        assert player_key(spaced) == player_key(compact) or NameMatcher([compact]).match(spaced) == player_key(compact)
+        assert player_key(spaced) == player_key(compact)
+
+    @pytest.mark.parametrize(
+        "name, expected",
+        [
+            ("A. St. Brown", "a st brown"),          # one initial: nothing to merge
+            ("J Williams", "j williams"),
+            ("Michael A. Jordan", "michael a jordan"),  # a middle initial is not a leading run
+            ("A B", "a b"),                          # the last token is never swallowed
+        ],
+    )
+    def test_initial_merging_leaves_other_names_alone(self, name: str, expected: str) -> None:
+        assert player_key(name) == expected
 
     def test_key_is_canonical(self) -> None:
         """Lower-case ASCII letters/digits separated by single spaces, and idempotent."""
@@ -480,36 +489,17 @@ class TestMatcherTeamHint:
         assert matcher.match("D. Mitchell", "XXX") is None
         assert matcher.match("J. Williams", "NYK") is None
 
-    @pytest.mark.parametrize("team", [None, ""])
-    def test_empty_team_hint_is_ignored(self, matcher: NameMatcher, team: Optional[str]) -> None:
-        assert matcher.match("Nikola Jokić", team) == "nikola jokic"
-        assert matcher.match("N. Claxton", team) == "nicolas claxton"
-        assert matcher.match("D. Mitchell", team) is None
-
-    @pytest.mark.xfail(
-        strict=True,
-        raises=(AssertionError, TypeError),
-        reason=(
-            "BUG: a missing team hint coming from a DataFrame is not treated as 'no hint'. "
-            "match('Nikola Jokic', float('nan')) returns None because 'NAN' is compared with "
-            "the roster teams (every player with a known team is vetoed), and pd.NA raises "
-            "TypeError('boolean value of NA is ambiguous'). The constructor already ignores "
-            "NaN roster teams; match() should do the same"
-        ),
-    )
-    @pytest.mark.parametrize("team", [float("nan"), np.nan, pd.NA, "nan"])
+    @pytest.mark.parametrize("team", [None, "", "  ", float("nan"), np.nan, pd.NA, pd.NaT, "nan", "None"])
     def test_missing_team_hint_is_ignored(self, matcher: NameMatcher, team: object) -> None:
+        """A missing value from a DataFrame must mean 'no hint', not 'team NAN'."""
         assert matcher.match("Nikola Jokić", team) == "nikola jokic"  # type: ignore[arg-type]
+        assert matcher.match("N. Claxton", team) == "nicolas claxton"  # type: ignore[arg-type]
+        assert matcher.match("D. Mitchell", team) is None  # type: ignore[arg-type]
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG (minor): team hints and roster teams are upper-cased but not stripped, so "
-            "match('Nikola Jokic', ' DEN ') is vetoed although the roster team is 'DEN'"
-        ),
-    )
-    def test_team_hint_whitespace_is_ignored(self, matcher: NameMatcher) -> None:
-        assert matcher.match("Nikola Jokić", " DEN ") == "nikola jokic"
+    def test_team_hint_whitespace_and_case_are_ignored(self, matcher: NameMatcher) -> None:
+        assert matcher.match("Nikola Jokić", " den ") == "nikola jokic"
+        assert NameMatcher(["Trae Young"], [" atl "]).match("Trae Young", "ATL") == "trae young"
+        assert NameMatcher(["Trae Young"], [" atl "]).match("Trae Young", "TOR") is None
 
     def test_a_player_can_be_registered_with_several_teams(self) -> None:
         m = NameMatcher(
@@ -527,11 +517,11 @@ class TestMatcherTeamHint:
         assert m.match("T. Young", "ATL") is None
         assert m.match("Trae Young", "ATL") == "trae young"
 
-    def test_team_hint_vetoes_fuzzy_candidates(self, matcher: NameMatcher) -> None:
-        """A typo of Jokić is not matched when the hint points at another team."""
-        assert matcher.match("Nikola Jokicc") == "nikola jokic"
-        assert matcher.match("Nikola Jokicc", "DEN") == "nikola jokic"
-        assert matcher.match("Nikola Jokicc", "MIA") is None
+    def test_team_hint_vetoes_prefix_candidates(self, matcher: NameMatcher) -> None:
+        assert matcher.match("Nic Claxton", "BKN") == "nicolas claxton"
+        assert matcher.match("Nic Claxton", "NYK") is None
+        assert matcher.match("A. St. Brown", "DET") == "amonra st brown"
+        assert matcher.match("A. St. Brown", "CHI") is None
 
     @pytest.mark.parametrize(
         "roster_name, roster_team, query, team",
@@ -551,52 +541,63 @@ class TestMatcherTeamHint:
         assert m.match(query) == player_key(roster_name)
 
 
-class TestMatcherFuzzy:
+class TestMatcherDoesNotGuess:
+    """Documented: nothing fuzzier than initial/prefix compatibility is attempted."""
+
     @pytest.mark.parametrize(
-        "query, expected",
+        "query",
         [
-            ("Giannis Antetokoumpo", "giannis antetokounmpo"),
-            ("Giannis Antetokounmpoo", "giannis antetokounmpo"),
-            ("Thanasis Antetokounpo", "thanasis antetokounmpo"),
-            ("Shai Gilgeous Alexander", "shai gilgeousalexander"),  # hyphen dropped by the feed
-            ("Nikola Jokicc", "nikola jokic"),
-            ("Lebron Jamess", "lebron james"),
-            ("Nicolas Claxtonn", "nicolas claxton"),
-            ("Donovan Mitchel", "donovan mitchell"),
+            "Giannis Antetokoumpo",     # surname typo
+            "Gianis Antetokounmpo",     # first-name typo
+            "Nikola Jokicc",
+            "Nicola Jokic",
+            "Lebron Jamess",
+            "Donavan Mitchell",
+            "Nikola Jović",             # a different NBA player
         ],
     )
-    def test_surname_typos_are_recovered(self, matcher: NameMatcher, query: str, expected: str) -> None:
-        assert matcher.match(query) == expected
-
-    @pytest.mark.parametrize("query", ["Gianis Antetokounmpo", "Nicola Jokic", "Lebrun James", "Donavan Mitchell"])
-    def test_first_name_typos_are_not_guessed(self, matcher: NameMatcher, query: str) -> None:
-        """Documented: only the surname may differ; similar first names are other people."""
+    def test_misspelled_or_look_alike_names_return_none(self, matcher: NameMatcher, query: str) -> None:
         assert matcher.match(query) is None
 
     @pytest.mark.parametrize("query", ["Zzzz Qqqq", "Kevin Durant", "Stephen Curry", "Luka Doncic", "Jayson Tatum"])
     def test_unrelated_names_return_none(self, matcher: NameMatcher, query: str) -> None:
         assert matcher.match(query) is None
 
-    def test_two_equally_close_candidates_return_none(self) -> None:
-        m = NameMatcher(["Jon Smithson", "Jon Smithsen"])
-        assert m.match("Jon Smithsan") is None
-        assert NameMatcher(["Jon Smithson"]).match("Jon Smithsan") == "jon smithson"
-
-    def test_threshold_controls_strictness(self) -> None:
-        typo = "Giannis Antetokoumpo"  # surname similarity 0.96
-        assert NameMatcher(["Giannis Antetokounmpo"]).match(typo) == "giannis antetokounmpo"
-        assert NameMatcher(["Giannis Antetokounmpo"], threshold=0.99).match(typo) is None
-        assert NameMatcher(["Giannis Antetokounmpo"], threshold=0.99).match("Giannis Antetokounmpo") == (
-            "giannis antetokounmpo"
-        )
-
-    def test_default_threshold(self) -> None:
-        assert NameMatcher(["A B"]).threshold == 0.85
+    def test_an_alias_is_the_way_to_bridge_a_spelling_difference(self) -> None:
+        m = NameMatcher(["Giannis Antetokounmpo"], aliases={"Giannis Antetokoumpo": "Giannis Antetokounmpo"})
+        assert m.match("Giannis Antetokoumpo") == "giannis antetokounmpo"
+        assert m.match("GIANNIS ANTETOKOUMPO") == "giannis antetokounmpo"
 
     def test_mononyms_are_only_matched_exactly(self, matcher: NameMatcher) -> None:
         assert matcher.match("Nenê") == "nene"
         assert matcher.match("Nenee") is None
         assert matcher.match("Nen") is None
+
+    def test_spaced_initials_resolve_through_the_key(self, matcher: NameMatcher) -> None:
+        assert matcher.match("C. J. Stroud") == "cj stroud"
+        assert matcher.match("C J Stroud", "HOU") == "cj stroud"
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "BUG (debatable): a hyphen written as a space is a routine feed difference, but "
+            "player_key drops hyphens without a space ('gilgeousalexander') and keeps the "
+            "space variant as two tokens ('gilgeous alexander'), and the matcher no longer "
+            "has any step that bridges them: 'Shai Gilgeous Alexander', 'Karl Anthony Towns' "
+            "and 'Amon Ra St. Brown' all come back None unless an alias is supplied for each"
+        ),
+    )
+    @pytest.mark.parametrize(
+        "roster_name, query",
+        [
+            ("Shai Gilgeous-Alexander", "Shai Gilgeous Alexander"),
+            ("Karl-Anthony Towns", "Karl Anthony Towns"),
+            ("Amon-Ra St. Brown", "Amon Ra St. Brown"),
+            ("Kentavious Caldwell-Pope", "Kentavious Caldwell Pope"),
+        ],
+    )
+    def test_hyphen_written_as_a_space_still_matches(self, roster_name: str, query: str) -> None:
+        assert NameMatcher([roster_name]).match(query) == player_key(roster_name)
 
 
 class TestMatcherConstruction:
@@ -680,7 +681,7 @@ LOOK_ALIKE_PAIRS: List[Tuple[str, str]] = [
     ("Jalen Hurts", "Jalen Hurd"),
 ]
 
-#: Same first name and distinct surnames that are >= 0.85 similar.
+#: Same first name and distinct surnames that differ by a few letters.
 SIMILAR_SURNAME_PAIRS: List[Tuple[str, str]] = [
     ("Avery Williams", "Avery Williamson"),      # NFL returner / NFL linebacker
     ("Michael Harris II", "Michael Harrison"),
@@ -717,7 +718,7 @@ class TestAdversarialPairs:
         assert m.match(f"{first[0]}. {surname}") == player_key(first)
         assert m.match(f"{second[0]}. {surname}") == player_key(second)
 
-    @pytest.mark.parametrize("first, second", SAME_SURNAME_PAIRS + LOOK_ALIKE_PAIRS)
+    @pytest.mark.parametrize("first, second", SAME_SURNAME_PAIRS + LOOK_ALIKE_PAIRS + SIMILAR_SURNAME_PAIRS)
     def test_missing_player_is_not_matched_to_his_look_alike(self, first: str, second: str) -> None:
         """Only one of the two is on the roster: the other must come back as None."""
         assert NameMatcher([second]).match(first) is None
@@ -728,13 +729,22 @@ class TestAdversarialPairs:
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "BUG (debatable): the surname-typo rule (identical first name, surname >= 0.85 "
-            "similar) cannot tell a typo from a different common surname. With only Avery "
-            "Williamson on the roster, 'Avery Williams' (a different NFL player) resolves to "
-            "him; likewise Harris/Harrison, Hernandez/Fernandez, Johnson/Johnston"
+            "BUG (debatable, follows from documented rule 3): the prefix rule treats a "
+            "first name that is a prefix of another as the same person, so a player missing "
+            "from the roster resolves to a different real player when no team hint is "
+            "given: with only Tyler Johnson (NFL receiver) known, 'Ty Johnson' (NFL running "
+            "back) matches him; likewise Tre Brown / Trent Brown. A contradicting team hint "
+            "does prevent it"
         ),
     )
-    @pytest.mark.parametrize("first, second", SIMILAR_SURNAME_PAIRS)
-    def test_distinct_surnames_are_not_treated_as_typos(self, first: str, second: str) -> None:
+    @pytest.mark.parametrize("first, second", [("Ty Johnson", "Tyler Johnson"), ("Tre Brown", "Trent Brown")])
+    def test_prefix_rule_does_not_merge_different_players(self, first: str, second: str) -> None:
         assert NameMatcher([second]).match(first) is None
         assert NameMatcher([first]).match(second) is None
+
+    @pytest.mark.parametrize("first, second", [("Ty Johnson", "Tyler Johnson"), ("Tre Brown", "Trent Brown")])
+    def test_prefix_namesakes_are_safe_with_both_known_or_a_team_hint(self, first: str, second: str) -> None:
+        both = NameMatcher([first, second])
+        assert both.match(first) == player_key(first)
+        assert both.match(second) == player_key(second)
+        assert NameMatcher([second], ["LAR"]).match(first, "BUF") is None

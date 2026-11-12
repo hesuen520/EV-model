@@ -247,7 +247,8 @@ class MarketEngine:
 
         ``exclude_book`` is the book whose price is being evaluated.  A
         consensus must be supported by *other* books (the minimum-reference
-        rules ignore the target).  When ``include_target_book`` is set, the
+        rules ignore the target), and those books must outweigh the target
+        itself by ``min_ref_weight_ratio``.  When ``include_target_book`` is set, the
         target's own de-vigged quote is then pooled in at its own weight:
         a sharp book's price is evidence too, so apparent edges against a
         sharp book shrink, while a zero-weight soft book never influences
@@ -261,6 +262,8 @@ class MarketEngine:
             return None
         spec = self.spec_for(sport, base)
         own = [r for r in everyone if r.book == exclude_book] if cfg.include_target_book else []
+        target_weight = self._weights.get(str(exclude_book).lower(), 0.0) if exclude_book else 0.0
+        needed_weight = max(cfg.min_ref_weight, cfg.min_ref_weight_ratio * target_weight)
 
         def pool(kind: str, translate: bool) -> Optional[Consensus]:
             """Pool the other books; if they qualify, let the target's own view count too."""
@@ -274,7 +277,7 @@ class MarketEngine:
             if basis is None:
                 return None
             if kind == "sharp":
-                if basis.n_refs < cfg.min_ref_books or basis.weight < cfg.min_ref_weight:
+                if basis.n_refs < cfg.min_ref_books or basis.weight < needed_weight - 1e-12:
                     return None
             elif basis.n_refs < cfg.fallback_min_books:
                 return None
@@ -299,7 +302,10 @@ class MarketEngine:
         # need no distributional assumption, so translated references are
         # only brought in when the same-line ones are not enough.
         for kind in ("sharp", "market_avg"):
-            if kind == "market_avg" and not cfg.fallback_market_average:
+            # The unweighted market average is only a fallback for judging
+            # books that carry no reference weight themselves; it never
+            # overrules a weighted (sharper) book.
+            if kind == "market_avg" and (not cfg.fallback_market_average or target_weight > 0.0):
                 break
             for translate in (False, True):
                 result = pool(kind, translate)

@@ -101,6 +101,12 @@ or zero).
 * **Leave-one-out.** A price is only ever called +EV on the strength of
   *other* books. The book being judged can shrink its own edge (its quote is
   evidence too, at its own weight) but can never create one.
+* **Sharper books overrule softer ones, never the reverse.** The references
+  must outweigh the book being judged by a factor of 1.5. When a sharp book
+  and the soft books disagree, the soft books are usually the stale ones, so
+  the scanner looks for value at the soft books and not against the sharp
+  one. If both sides of a prop clear the bar at different books, the bet is
+  flagged `books_split`: check for news before betting.
 * **Different lines.** When a reference book hangs 24.5 and the target book
   hangs 23.5, the probability is moved across lines through the market's
   fitted distribution, and the bet is flagged. Same-line references are
@@ -110,7 +116,11 @@ or zero).
   it, so no edge exists only because of that choice.
 * **Pick'em apps** (PrizePicks, Underdog) have no per-leg price, so a leg is
   valued against the break-even probability of the entry type you play
-  (`evmodel dfs` lists them).
+  (`evmodel dfs` lists them). The EV shown for a leg is that comparison, not
+  the EV of a finished entry, and legs from the same game are correlated.
+* **Yes/no props** (anytime touchdown, anytime goal) are usually posted as a
+  single "Yes" price. With no "No" side there is no vig to measure, so the
+  market engine only values them when a reference book quotes both sides.
 
 ### Projection model (`evmodel.projection`)
 
@@ -122,11 +132,15 @@ counts, and a *scaled* negative binomial for stats that arrive in chunks
 (basketball points, football yardage), which reproduces the skew those stats
 really have.
 
-The model is deliberately a **second opinion**, blended at 20% weight by
+The model is deliberately a **second opinion**, blended at 10% weight by
 default and never used alone unless you ask (`--model-only`). It does not
 know about injuries, lineup changes or matchups announced since a player's
 last game, and sportsbooks do. A model that ignores that news will "find"
-large edges that are simply the market knowing something it does not.
+large edges that are simply the market knowing something it does not. In a
+side experiment during development, lines were set using just two same-day
+facts the model lacks (who starts, and which teammates are out): a game-log
+model then claimed edges of five points or more on 14% to 46% of NBA props,
+and less than one point of that was real.
 
 ### Staking (`evmodel.scanner`)
 

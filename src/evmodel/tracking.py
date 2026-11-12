@@ -26,12 +26,20 @@ Conventions
 -----------
 Prices are **decimal** odds everywhere (stake included, always > 1); American
 odds appear only as a clearly named convenience (``price_american`` when
-adding a bet, ``avg_price_american`` in a summary).  ``stake`` and ``pnl``
+adding a bet, ``avg_price_american`` in a summary).  A negative number is
+never accepted as a decimal price.  Positive American odds cannot be told
+from long decimal odds by the number alone, so the ledger
+(:meth:`BetLedger.add`, :meth:`BetLedger.record_close`) refuses a decimal
+price that is a whole number of 100 or more (``+150`` typed where ``2.5``
+belongs); the plain functions (:func:`settle_pnl`, :func:`clv_price` ...)
+take any decimal price above 1 as given.  ``stake`` and ``pnl``
 are in one unit of the user's choosing (dollars or betting units) - the
 ledger never converts, so use the same unit for every bet.  ``fair_prob`` and
 ``closing_fair_prob`` are the unconditional probability that the bet *wins*;
 the probability of a push (whole-number lines) is carried separately in
-``push_prob``, exactly as in the scanner's opportunities table.
+``push_prob``, exactly as in the scanner's opportunities table.  Timestamps
+are stored in UTC; one given without a time zone is taken to be UTC, and a
+bare number is refused because an epoch count does not say its unit.
 
 Ledger columns
 --------------
@@ -73,19 +81,24 @@ One row per placed bet, in this order (:data:`LEDGER_COLUMNS`):
 The file is ordinary CSV and may be inspected or edited by hand: blank cells
 mean "unknown", extra columns are preserved, and a settled row whose ``pnl``
 cell is blank gets it recomputed on the next read.  If you change a
-``result`` by hand, clear its ``pnl`` cell too (or re-settle with
-``overwrite=True``).
+``result``, ``stake`` or ``price`` by hand, clear the row's ``pnl`` cell too
+(or re-settle with ``overwrite=True``).  A ``pnl`` that the result rules out
+(a profit on a loss, a loss larger than the stake, anything but zero on a
+push or void) is reported as an error with its line number rather than
+summed, as is a probability outside its range; a ``pnl`` that differs from
+the standard payout in an allowed direction (a profit boost) is kept.
 """
 
 from __future__ import annotations
 
 import csv
 import math
+import numbers
 import os
 import shutil
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
@@ -93,8 +106,9 @@ import numpy as np
 import pandas as pd
 
 from .devig import devig_two_way
-from .distributions import FamilySpec
+from .distributions import FamilySpec, is_integer_line
 from .ev import bet_variance, expected_value
+from .markets import find_market
 from .names import player_key as canonical_player_key
 from .odds import american_to_decimal, decimal_to_american
 
@@ -201,13 +215,22 @@ _ADD_FIELDS = frozenset(
     }
 )
 
+# Fields of a scanner row that are estimates for that row's own proposition.
+_ESTIMATES: Tuple[str, ...] = ("fair_prob", "push_prob", "ev")
+
 _LINE_TOL = 1e-9
 _PROB_TOL = 1e-9
+_PRICE_TOL = 1e-9
+_PNL_TOL = 1e-9  # relative slack on "a loss costs at most the stake"
+_AMERICAN_MIN = 100.0  # smallest magnitude of American odds
+_AMERICAN_DISPLAY = 0.5  # rounding of an American price shown as a whole number
+_DECIMAL_DISPLAY = 0.005  # rounding of a decimal price shown to two places
 _FIT_TOL = 1e-6  # largest acceptable error of a fitted family at the closing price
 _BOOT_CELLS = 2_000_000  # cap on resampled indices held in memory at once
 
 Bet = Dict[str, Any]
 ResultsLookup = Callable[[pd.Series], Union[None, float, str]]
+TimeZone = Union[str, tzinfo]
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +252,13 @@ def _is_missing(value: object) -> bool:
 
 def _text(value: object) -> str:
     return "" if _is_missing(value) else str(value).strip()
+
+
+def _id_text(value: object) -> str:
+    """An identifier as text; ``12345.0`` (an id column read with gaps) is ``"12345"``."""
+    if isinstance(value, (float, np.floating)) and math.isfinite(value) and float(value).is_integer():
+        return str(int(value))
+    return _text(value)
 
 
 def _number(value: object, name: str) -> float:
@@ -279,6 +309,38 @@ def _optional_price(value: object, name: str) -> float:
     return math.nan if _is_missing(value) else _check_price(value, name)
 
 
+def _refuse_american(price: float, name: str, remedy: str) -> None:
+    """Raise when a decimal price is a whole number of 100 or more.
+
+    That is what positive American odds look like (``+150``) and next to
+    never what a prop pays in decimal odds, so the number is refused rather
+    than recorded as a 149-to-1 shot.  ``remedy`` tells the caller what to
+    pass instead.
+    """
+    if price >= _AMERICAN_MIN and price == math.floor(price):
+        raise ValueError(
+            f"{name} must be decimal odds, but {price:g} looks like American odds "
+            f"(+{price:g} is {american_to_decimal(price):g} in decimal odds); {remedy}"
+        )
+
+
+def _decimal_at(points: float) -> float:
+    """Decimal odds ``points`` American points away from even money (negative: odds-on)."""
+    return 2.0 + points / 100.0 if points >= 0.0 else 1.0 + 100.0 / (100.0 - points)
+
+
+def _same_price(decimal: float, american: float) -> bool:
+    """True when a decimal and an American price are one price in two notations.
+
+    Either may have been rounded for display: the American price to a whole
+    number, the decimal price to two places.
+    """
+    points = american - 100.0 if american > 0.0 else american + 100.0
+    low = _decimal_at(points - _AMERICAN_DISPLAY) - _DECIMAL_DISPLAY
+    high = _decimal_at(points + _AMERICAN_DISPLAY) + _DECIMAL_DISPLAY
+    return low - _PRICE_TOL <= decimal <= high + _PRICE_TOL
+
+
 def _check_stake(value: object) -> float:
     stake = _number(value, "stake")
     if not stake > 0.0:
@@ -290,19 +352,42 @@ def _same_line(a: float, b: float) -> bool:
     return abs(a - b) < _LINE_TOL
 
 
+def _timestamp(value: object, name: str) -> Optional[pd.Timestamp]:
+    """``value`` as a pandas timestamp with or without a time zone (``None`` when missing).
+
+    A bare number is refused: an epoch count does not say whether it is in
+    seconds, milliseconds or nanoseconds, and pandas would silently read it
+    as nanoseconds (a 2026 epoch in seconds becomes one second past 1970).
+    """
+    if _is_missing(value):
+        return None
+    if isinstance(value, numbers.Real):  # bool, int, float and the NumPy scalars
+        raise ValueError(
+            f"{name} must be a date or a time, not the bare number {value!r}; "
+            "convert an epoch first, e.g. pd.Timestamp(seconds, unit='s', tz='UTC')"
+        )
+    try:
+        stamp = pd.Timestamp(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} is not a timestamp: {value!r}") from exc
+    return None if stamp is pd.NaT else stamp
+
+
+def _utc(value: object, name: str) -> Optional[pd.Timestamp]:
+    """``value`` as a UTC instant (``None`` when missing); no time zone means UTC already."""
+    stamp = _timestamp(value, name)
+    if stamp is None:
+        return None
+    return stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp.tz_convert("UTC")
+
+
 def _utc_iso(value: object, name: str) -> str:
     """Normalise a timestamp to a UTC ISO-8601 string (``""`` when missing).
 
     Timestamps without a time zone are taken to be UTC already.
     """
-    if _is_missing(value):
-        return ""
-    try:
-        stamp = pd.Timestamp(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} is not a timestamp: {value!r}") from exc
-    stamp = stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp.tz_convert("UTC")
-    return str(stamp.isoformat(timespec="seconds"))
+    stamp = _utc(value, name)
+    return "" if stamp is None else str(stamp.isoformat(timespec="seconds"))
 
 
 def _now() -> str:
@@ -337,7 +422,9 @@ def settle_pnl(result: str, stake: float, decimal_price: float) -> float:
     """Profit of a settled bet in stake units.
 
     A win pays ``stake * (decimal_price - 1)``, a loss costs the stake, and a
-    push or void returns it (profit 0).
+    push or void returns it (profit 0).  ``decimal_price`` is used as given:
+    positive American odds passed by mistake (``150`` for ``+150``) cannot be
+    detected here.
     """
     result = _check_result(result)
     stake = _check_stake(stake)
@@ -355,7 +442,8 @@ def clv_price(bet_decimal: float, closing_decimal: float) -> float:
     Positive when we were paid more than the closing price *of the same side
     at the same line*.  It still contains the closing book's margin, so a
     small negative value does not mean the bet was -EV; :func:`clv_ev` is the
-    margin-free number.
+    margin-free number.  Both prices are used as given: positive American odds
+    passed by mistake (``120`` for ``+120``) cannot be detected here.
     """
     return _check_price(bet_decimal, "bet_decimal") / _check_price(closing_decimal, "closing_decimal") - 1.0
 
@@ -471,18 +559,126 @@ def _row_to_dict(row: object) -> Dict[str, object]:
 
 
 def _resolve_price(price: object, price_american: object) -> float:
-    """Decimal price of a new bet; American odds are used only if no decimal is given."""
-    if _is_missing(price):
-        if _is_missing(price_american):
+    """Decimal price of a new bet from its decimal and/or its American notation.
+
+    Given both, they must be one and the same price (the decimal number is
+    kept): two notations that disagree leave no way to know which price the
+    bet was struck at.  A decimal price on its own must not look like
+    American odds.
+    """
+    if _is_missing(price_american):
+        if _is_missing(price):
             raise ValueError("price is required (decimal odds), or pass price_american")
-        return american_to_decimal(_number(price_american, "price_american"))
-    return _check_price(price)
+        decimal = _check_price(price)
+        _refuse_american(decimal, "price", "pass American odds, or decimal odds this long, as price_american")
+        return decimal
+    american = _number(price_american, "price_american")
+    converted = american_to_decimal(american)
+    if _is_missing(price):
+        return converted
+    decimal = _check_price(price)
+    if not _same_price(decimal, american):
+        raise ValueError(
+            f"price {decimal:g} and price_american {american:g} (decimal {converted:.4g}) are different "
+            "prices; give only the one the bet was struck at"
+        )
+    return decimal
 
 
-def _new_bet(values: Mapping[str, object]) -> Bet:
-    """Validate the fields of a new bet and lay them out as a ledger row (no id yet)."""
+def _quoted_price(row: Mapping[str, object]) -> float:
+    """Decimal price a scanner row was quoted at; NaN when it has no readable price."""
+    try:
+        return _resolve_price(row.get("price"), row.get("price_american"))
+    except ValueError:
+        return math.nan
+
+
+def _key_of(values: Mapping[str, object]) -> str:
+    """Canonical player key of a bet's fields: its ``player_key``, else from its ``player``.
+
+    A key that is supplied goes through :func:`evmodel.names.player_key` too
+    (which leaves a canonical key unchanged), so that however the caller
+    spelled it the ledger joins on one form.
+    """
+    return canonical_player_key(values.get("player_key")) or canonical_player_key(values.get("player"))
+
+
+def _override(row: Mapping[str, object], given: Mapping[str, object]) -> Dict[str, object]:
+    """A scanner row with the caller's overrides applied.
+
+    The price and the player each come in two forms (decimal and American
+    odds, name and key).  When one form is overridden and the other is not,
+    the row's other form would go on describing the old price or the old
+    player, so it is dropped and derived afresh.
+    """
+    values = dict(row)
+    if "price" in given and "price_american" not in given:
+        values.pop("price_american", None)
+    if "price_american" in given and "price" not in given:
+        values.pop("price", None)
+    old_name, old_key = canonical_player_key(row.get("player")), _key_of(row)
+    if "player" in given and "player_key" not in given:
+        if old_name and canonical_player_key(given["player"]) != old_name:
+            values.pop("player_key", None)
+    if "player_key" in given and "player" not in given:
+        if old_key and canonical_player_key(given["player_key"]) != old_key:
+            values.pop("player", None)
+    values.update(given)
+    return values
+
+
+def _moved_off(row: Mapping[str, object], merged: Mapping[str, object]) -> bool:
+    """True when ``merged`` is no longer the proposition that ``row`` describes.
+
+    That is a different game, player, market, line or side than the row
+    names; a field the row leaves blank is filled in, not changed.
+    """
+    old_key = _key_of(row)
+    if old_key and _key_of(merged) != old_key:
+        return True
+    old_event = _id_text(row.get("event_id"))
+    if old_event and _id_text(merged.get("event_id")) != old_event:
+        return True
+    for name in ("market", "side"):
+        old = _text(row.get(name)).lower()
+        if old and _text(merged.get(name)).lower() != old:
+            return True
+    if _is_missing(row.get("line")):
+        return False
+    try:
+        return not _same_line(_number(row.get("line"), "line"), _number(merged.get("line"), "line"))
+    except ValueError:
+        return True  # a line that cannot be read cannot be shown to be the same line
+
+
+def _check_probs(fair_prob: float, push_prob: float) -> None:
+    """Raise unless ``push_prob`` is in [0, 1) and a known ``fair_prob`` in [0, 1 - push_prob]."""
+    if not 0.0 <= push_prob < 1.0:
+        raise ValueError(f"push_prob must be in [0, 1), got {push_prob!r}")
+    if not math.isnan(fair_prob) and not 0.0 <= fair_prob <= 1.0 - push_prob + _PROB_TOL:
+        raise ValueError(
+            f"fair_prob must be in [0, 1 - push_prob], got {fair_prob!r} with push_prob {push_prob!r}"
+        )
+
+
+def _reprice_ev(ev: float, quoted: float, price: float, push_prob: float) -> float:
+    """EV per unit at ``price`` of a bet worth ``ev`` per unit at the ``quoted`` price.
+
+    The win probability behind the quoted number follows from
+    ``ev = p * quoted - 1 + push_prob`` and is valued again at ``price``.
+    """
+    p_win = min(max((ev + 1.0 - push_prob) / quoted, 0.0), 1.0 - push_prob)
+    return expected_value(p_win, price, push_prob)
+
+
+def _new_bet(values: Mapping[str, object], quoted: float = math.nan) -> Bet:
+    """Validate the fields of a new bet and lay them out as a ledger row (no id yet).
+
+    ``quoted`` is the price that an ``ev`` among ``values`` was worked out at
+    when that is not the bet's own price (NaN: it is).
+    """
     player = _text(values.get("player"))
-    key = _text(values.get("player_key")) or canonical_player_key(player)
+    key = _key_of(values)
     market = _text(values.get("market")).lower()
     if not key:
         raise ValueError("a bet needs a player (or player_key)")
@@ -499,17 +695,15 @@ def _new_bet(values: Mapping[str, object]) -> Bet:
     push_prob = _number(values.get("push_prob"), "push_prob")
     if math.isnan(push_prob):
         push_prob = 0.0
-    if not 0.0 <= push_prob < 1.0:
-        raise ValueError(f"push_prob must be in [0, 1), got {push_prob!r}")
+    _check_probs(fair_prob, push_prob)
     if math.isnan(fair_prob):
         ev = _number(values.get("ev"), "ev")
-        if not math.isnan(ev) and not -1.0 <= ev <= price - 1.0:
+        basis = price if math.isnan(quoted) else quoted
+        if not math.isnan(ev) and not -1.0 <= ev <= basis - 1.0:
             raise ValueError(f"ev per unit must be in [-1, price - 1], got {ev!r}")
+        if not math.isnan(ev) and basis != price:
+            ev = _reprice_ev(ev, basis, price, push_prob)
     else:
-        if not 0.0 <= fair_prob <= 1.0 - push_prob + _PROB_TOL:
-            raise ValueError(
-                f"fair_prob must be in [0, 1 - push_prob], got {fair_prob!r} with push_prob {push_prob!r}"
-            )
         fair_prob = min(fair_prob, 1.0 - push_prob)
         # Recomputed rather than copied so that it matches the price actually obtained.
         ev = expected_value(fair_prob, price, push_prob)
@@ -518,7 +712,7 @@ def _new_bet(values: Mapping[str, object]) -> Bet:
     bet.update(
         placed_at=_utc_iso(values.get("placed_at"), "placed_at") or _now(),
         sport=_text(values.get("sport")).lower(),
-        event_id=_text(values.get("event_id")),
+        event_id=_id_text(values.get("event_id")),
         event=_text(values.get("event")),
         commence_time=_utc_iso(values.get("commence_time"), "commence_time"),
         player=player,
@@ -571,7 +765,74 @@ def _settle(bet: Bet, result: Optional[str], actual: Optional[float], overwrite:
     bet["settled_at"] = _now()
 
 
-def _results_lookup(results: pd.DataFrame) -> ResultsLookup:
+def _closing_distribution(
+    bet: Bet, closing_line: float, over: float, under: float, spec: Optional[FamilySpec], method: str
+) -> Optional[Dict[str, float]]:
+    """:func:`clv_with_line_move` for a ledger row, or ``None`` when no family can be used.
+
+    The family is ``spec`` or, failing that, the one registered for the
+    bet's sport and market.  A ``spec`` that does not fit the closing prices
+    is the caller's error; a registered family that does not is passed over,
+    so that a close can always be recorded without naming a family.
+    """
+    family = spec
+    if family is None:
+        market = find_market(bet["sport"], bet["market"])
+        if market is None:
+            return None
+        family = market.spec
+    try:
+        return clv_with_line_move(
+            family, bet["side"], bet["line"], bet["price"], closing_line, over, under, method
+        )
+    except ValueError:
+        if spec is not None:
+            raise
+        return None
+
+
+def _pnl_possible(result: str, pnl: float, stake: float) -> bool:
+    """Whether a stored profit can go with a result.
+
+    A win never loses money, a loss costs at most the stake and a push or
+    void pays nothing.  Within those bounds the profit is free to differ
+    from the standard payout (a profit boost, a partial refund).
+    """
+    if result == "win":
+        return pnl >= 0.0
+    if result == "loss":
+        return -stake * (1.0 + _PNL_TOL) <= pnl <= 0.0
+    return pnl == 0.0
+
+
+def _game_day(record: Mapping[str, object], tz: TimeZone) -> Optional[date]:
+    """Calendar date of the game a results row is from (``None`` when it does not say).
+
+    A ``commence_time`` is an instant, as is a ``game_date`` that carries a
+    UTC offset: both are converted to ``tz``.  A plain ``game_date`` already
+    is a calendar date and is taken as written.
+    """
+    start = _utc(record.get("commence_time"), "commence_time")
+    if start is not None:
+        return start.tz_convert(tz).date()
+    day = _timestamp(record.get("game_date"), "game_date")
+    if day is None:
+        return None
+    return day.date() if day.tzinfo is None else day.tz_convert(tz).date()
+
+
+def _same_game(bet_event: str, bet_day: Optional[date], event_id: str, game_day: Optional[date]) -> bool:
+    """Whether a results row can be from the game a bet was placed on."""
+    if event_id and bet_event:
+        return event_id == bet_event
+    if game_day is not None:
+        # A dated row is only for a bet known to be on that date: a bet
+        # without a start time may just as well be on another night's game.
+        return game_day == bet_day
+    return True
+
+
+def _results_lookup(results: pd.DataFrame, tz: TimeZone) -> ResultsLookup:
     """Turn a results table into a function giving the final stat value of a bet."""
     if not isinstance(results, pd.DataFrame):
         raise TypeError("results must be a pandas DataFrame or a callable")
@@ -580,29 +841,39 @@ def _results_lookup(results: pd.DataFrame) -> ResultsLookup:
         missing.append("player_key")
     if missing:
         raise ValueError(f"results table is missing required columns: {missing}")
+    now = pd.Timestamp(_now())
+    try:
+        now.tz_convert(tz)
+    except (LookupError, TypeError, ValueError) as exc:
+        raise ValueError(f"unknown time zone {tz!r}") from exc
 
-    has_key = "player_key" in results.columns
-    has_event = "event_id" in results.columns
-    table: Dict[Tuple[str, str], List[Tuple[str, float]]] = {}
+    table: Dict[Tuple[str, str], List[Tuple[str, Optional[date], float]]] = {}
     for record in results.to_dict("records"):
         actual = _number(record["actual"], "actual")
-        key = _text(record["player_key"]) if has_key else ""
-        key = key or canonical_player_key(record.get("player"))
+        key = _key_of(record)
         if math.isnan(actual) or not key:
             continue
-        event_id = _text(record["event_id"]) if has_event else ""
-        table.setdefault((key, _text(record["market"]).lower()), []).append((event_id, actual))
+        game = (_id_text(record.get("event_id")), _game_day(record, tz), actual)
+        table.setdefault((key, _text(record["market"]).lower()), []).append(game)
 
     def lookup(bet: pd.Series) -> Optional[float]:
+        try:
+            start = _utc(bet["commence_time"], "commence_time")
+        except ValueError as exc:
+            raise ValueError(f"bet {bet['bet_id']!r}: {exc}") from exc
+        if start is not None and start > now:
+            return None  # not started yet: a stat for this player is from an earlier game
+        bet_day = None if start is None else start.tz_convert(tz).date()
         candidates = {
             actual
-            for event_id, actual in table.get((bet["player_key"], bet["market"]), [])
-            if not event_id or not bet["event_id"] or event_id == bet["event_id"]
+            for event_id, game_day, actual in table.get((bet["player_key"], bet["market"]), [])
+            if _same_game(bet["event_id"], bet_day, event_id, game_day)
         }
         if len(candidates) > 1:
             raise ValueError(
                 f"bet {bet['bet_id']!r} ({bet['player_key']} {bet['market']}) matches {len(candidates)} "
-                "different results; give both the bet and the results an event_id, or pass one game only"
+                "different results; give the results an event_id or a game_date that the bet can be "
+                "checked against, or pass one game only"
             )
         return candidates.pop() if candidates else None
 
@@ -622,7 +893,9 @@ class BetLedger:
     ----------
     path:
         Location of the CSV file.  Missing parent directories are created;
-        the file itself appears with the first bet.
+        the file itself appears with the first bet.  If ``path`` is a
+        symbolic link the file it points to is the one rewritten, so the link
+        (say, into a synced folder) stays a link.
     """
 
     def __init__(self, path: Union[str, "os.PathLike[str]"]) -> None:
@@ -656,8 +929,14 @@ class BetLedger:
             bet["stake"] = _check_stake(bet["stake"])
             if math.isnan(bet["push_prob"]):
                 bet["push_prob"] = 0.0
+            _check_probs(bet["fair_prob"], bet["push_prob"])
             if bet["result"] and math.isnan(bet["pnl"]):
                 bet["pnl"] = settle_pnl(bet["result"], bet["stake"], bet["price"])
+            elif bet["result"] and not _pnl_possible(bet["result"], bet["pnl"], bet["stake"]):
+                raise ValueError(
+                    f"pnl {bet['pnl']!r} cannot be the profit of a {bet['result']} at stake "
+                    f"{bet['stake']!r}; clear the cell to have it recomputed"
+                )
         except ValueError as exc:
             raise ValueError(f"{where}: {exc}") from exc
         return bet
@@ -680,7 +959,10 @@ class BetLedger:
     def _save(self, rows: List[Bet], extras: List[str]) -> None:
         """Atomically replace the file with ``rows``."""
         columns = LEDGER_COLUMNS + extras
-        temporary = self.path.with_name(f".{self.path.name}.{uuid.uuid4().hex}.tmp")
+        # Replacing a symbolic link would turn it into a regular file and leave
+        # the file it pointed to behind, so the swap is made where the data lives.
+        target = Path(os.path.realpath(self.path))
+        temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
         try:
             with temporary.open("x", newline="", encoding="utf-8") as handle:
                 writer = csv.writer(handle, lineterminator="\n")
@@ -689,9 +971,9 @@ class BetLedger:
                     writer.writerow([_cell(bet.get(column, "")) for column in columns])
                 handle.flush()
                 os.fsync(handle.fileno())
-            if self.path.exists():
-                shutil.copymode(self.path, temporary)
-            os.replace(temporary, self.path)
+            if target.exists():
+                shutil.copymode(target, temporary)
+            os.replace(temporary, target)
         finally:
             temporary.unlink(missing_ok=True)  # only still there if the write failed
 
@@ -727,16 +1009,31 @@ class BetLedger:
         the row's value.
 
         Required: ``player`` (or ``player_key``), ``market``, ``line``,
-        ``side`` and ``stake``, and the price as decimal odds in ``price``
-        (``price_american`` is converted when no decimal price is given).
-        Optional: ``sport``, ``event_id``, ``event``, ``commence_time``,
-        ``book``, ``fair_prob``, ``push_prob``, ``ev``, ``source``, ``flags``,
-        ``notes`` and ``placed_at`` (defaults to now).  Timestamps without a
-        time zone are read as UTC.
+        ``side`` and ``stake``, and the price: decimal odds in ``price`` or
+        American odds in ``price_american``.  Given both, they must be the
+        same price; ``price`` alone must not be a whole number of 100 or more,
+        which is refused as probable American odds (odds that long are given
+        as ``price_american``).  Optional: ``sport``, ``event_id``,
+        ``event``, ``commence_time``, ``book``, ``fair_prob``, ``push_prob``,
+        ``ev``, ``source``, ``flags``, ``notes`` and ``placed_at`` (defaults
+        to now).  Timestamps without a time zone are read as UTC and bare
+        numbers are refused.  ``player_key`` is brought to its canonical form
+        and a whole-number ``event_id`` is stored without a trailing ``.0``.
 
-        ``ev`` is stored per unit staked.  When ``fair_prob`` is known it is
-        recomputed at the recorded price, so a bet struck at a different price
-        than the scanner showed still carries the right expectation.
+        What an override does to the rest of a row:
+
+        * ``price`` or ``price_american`` replaces the row's price in both
+          notations.  ``ev`` (per unit staked) is recomputed from
+          ``fair_prob`` at the recorded price; a row that carries only an
+          ``ev`` has it converted to the recorded price through the win
+          probability it implies at the row's own price.
+        * ``player`` or ``player_key`` naming another player replaces the
+          row's player in both forms.
+        * A different ``line``, ``side``, ``market``, player or ``event_id``
+          makes it a bet the row's ``fair_prob``, ``push_prob`` and ``ev``
+          were not estimated for.  They are dropped unless given anew, and
+          the bet is then recorded without a model expectation rather than
+          with an invented one.
 
         Raises :class:`DuplicateBetError` if a bet with the same event,
         player, market, line, side and book is already recorded, unless
@@ -747,14 +1044,18 @@ class BetLedger:
         unknown = sorted(set(fields) - _ADD_FIELDS)
         if unknown:
             raise TypeError(f"add() got unexpected field(s) {unknown}; allowed: {sorted(_ADD_FIELDS)}")
-        values = _row_to_dict(row)
+        row_values = _row_to_dict(row)
         given = {name: value for name, value in fields.items() if value is not None}
-        if "price" in given and "price_american" not in given:
-            values.pop("price_american", None)  # the row's American price describes the old price
-        values.update(given)
+        # An ev given with the bet is at the bet's price; the row's is at the row's.
+        quoted = math.nan if "ev" in given else _quoted_price(row_values)
+        values = _override(row_values, given)
+        if _moved_off(row_values, values):
+            for name in _ESTIMATES:
+                if name not in given:
+                    values.pop(name, None)
         if stake is not None:
             values["stake"] = stake
-        bet = _new_bet(values)
+        bet = _new_bet(values, quoted)
 
         rows, extras = self._load()
         if not allow_duplicate:
@@ -788,15 +1089,27 @@ class BetLedger:
         ``closing_over_price`` / ``closing_under_price`` are the last decimal
         prices before the game started (ideally from a sharp book) and
         ``closing_line`` the line they belong to (default: the line we bet).
-        Calling again replaces the previous closing numbers.
+        A whole number of 100 or more is refused as probable American odds,
+        unless the bet itself was struck at a price that long.  Calling again
+        replaces the previous closing numbers.
 
         * ``clv_price`` needs our side's closing price at the line we bet.
-        * ``clv_ev`` needs both closing prices.  At the line we bet it is our
-          price's EV at the de-vigged closing probability, using the push
-          probability recorded with the bet.  If the line moved it is computed
-          by :func:`clv_with_line_move`, which needs ``spec``, the
-          distribution family of the stat; without one it is left blank.
+        * ``clv_ev`` and ``closing_fair_prob`` need both closing prices,
+          which are de-vigged with ``method``.  A de-vigged price says
+          nothing about pushes and belongs to the closing line only, so two
+          cases need the distribution family of the stat
+          (:func:`clv_with_line_move`): a line that moved, and a whole-number
+          line whose bet has no push probability recorded.  The family is
+          ``spec``, or else the one registered for the bet's sport and market
+          (:func:`evmodel.markets.find_market`).  With no family a moved
+          line has no ``clv_ev``, and on such a whole-number line pushes are
+          ignored: ``closing_fair_prob`` is then conditional on no push and
+          ``clv_ev`` overstated by a factor ``1 / (1 - P(push))``.
+        * At an unmoved line whose bet has a push probability recorded, that
+          probability is used and no family is consulted.
 
+        A ``spec`` that cannot reproduce the closing prices is an error (and
+        nothing is stored); a registered family that cannot is passed over.
         Whatever cannot be computed from what was given is stored as NaN.
         Returns ``{"closing_fair_prob", "clv_price", "clv_ev"}`` as stored.
         """
@@ -807,6 +1120,10 @@ class BetLedger:
 
         rows, extras = self._load()
         bet = self._find(rows, bet_id)
+        if bet["price"] < _AMERICAN_MIN:
+            remedy = "convert American odds with evmodel.odds.american_to_decimal"
+            _refuse_american(over, "closing_over_price", remedy)
+            _refuse_american(under, "closing_under_price", remedy)
         line = bet["line"] if _is_missing(closing_line) else _check_line(closing_line, "closing_line")
         ours, other = (over, under) if bet["side"] == "over" else (under, over)
         moved = not _same_line(line, bet["line"])
@@ -815,15 +1132,18 @@ class BetLedger:
         if not moved and not math.isnan(ours):
             price_clv = clv_price(bet["price"], ours)
         if not math.isnan(over) and not math.isnan(under):
-            if not moved:
-                push = bet["push_prob"]
-                fair = closing_fair_prob(ours, other, method) * (1.0 - push)
-                value = clv_ev(bet["price"], fair, push)
-            elif spec is not None:
-                translated = clv_with_line_move(
-                    spec, bet["side"], bet["line"], bet["price"], line, over, under, method
-                )
+            push = bet["push_prob"]
+            conditional = closing_fair_prob(ours, other, method)
+            # Two prices at the closing line do not reach a bet at another line,
+            # nor say how often a whole-number line pushes: a distribution does.
+            translated = None
+            if moved or (push == 0.0 and is_integer_line(bet["line"])):
+                translated = _closing_distribution(bet, line, over, under, spec, method)
+            if translated is not None:
                 fair, value = translated["closing_fair_prob"], translated["clv_ev"]
+            elif not moved:
+                fair = conditional * (1.0 - push)
+                value = clv_ev(bet["price"], fair, push)
 
         bet.update(
             closing_line=line,
@@ -861,21 +1181,45 @@ class BetLedger:
         self._save(rows, extras)
         return float(bet["pnl"])
 
-    def settle_from_results(self, results: Union[pd.DataFrame, ResultsLookup]) -> int:
+    def settle_from_results(
+        self, results: Union[pd.DataFrame, ResultsLookup], tz: TimeZone = "America/New_York"
+    ) -> int:
         """Grade every open bet for which a final stat is available.
 
         ``results`` is either
 
         * a DataFrame with columns ``player_key`` (or ``player``), ``market``
-          and ``actual``, and optionally ``event_id``.  A bet matches a row
-          with the same player and market; event ids must agree where both
-          the bet and the row have one.  Without event ids the match is by
-          player and market alone, so pass only the results of the games the
-          open bets were placed on.  If a bet matches rows with different
-          values a ``ValueError`` is raised and nothing is settled; or
+          and ``actual``, and optionally ``event_id`` and ``game_date`` (or
+          ``commence_time``) to say which game each row is from; or
         * a callable receiving each open bet as a pandas Series and returning
           the final stat value, a result string (for example ``"void"``), or
-          ``None`` when the bet cannot be settled yet.
+          ``None`` when the bet cannot be settled yet.  The rules below do
+          not apply to a callable: it is handed the whole bet and decides.
+
+        A bet matches a table row with the same player and market that can be
+        from the bet's game:
+
+        * A bet whose ``commence_time`` is still in the future is never
+          settled from a table: whatever the table says about that player is
+          from an earlier game.
+        * Event ids must agree where both the bet and the row have one (the
+          odds feed's id, as stored with the bet; a stats feed's ``game_id``
+          is a different id and is not looked at).
+        * Otherwise a row with a ``game_date`` is matched only to a bet whose
+          ``commence_time`` falls on that calendar date in ``tz``.  The
+          default, US Eastern time, gives the official game date of NBA, NFL,
+          NHL and MLB games, which is what the package's game logs carry.  A
+          row with a ``commence_time`` (or a ``game_date`` with a UTC offset)
+          is first brought to its own calendar date in ``tz``.  A bet without
+          a ``commence_time`` never matches a dated row: it stays open rather
+          than being graded against a game it may not have been placed on.
+        * A row with neither an event id in common nor a date matches on
+          player and market alone, so pass a table like that only for the
+          games the open bets were placed on.
+
+        If a bet matches rows with different values (a doubleheader, or
+        several games in an undated table) a ``ValueError`` is raised and
+        nothing is settled.
 
         Bets without a result stay open: a missing value (no row, NaN,
         ``None``) never voids a bet here, because in a bulk table it usually
@@ -883,7 +1227,7 @@ class BetLedger:
 
         Returns the number of bets settled.
         """
-        lookup = results if callable(results) else _results_lookup(results)
+        lookup = results if callable(results) else _results_lookup(results, tz)
         rows, extras = self._load()
         settled = 0
         for bet in rows:
@@ -963,6 +1307,7 @@ class _Arrays:
     pnl: np.ndarray
     clv_price: np.ndarray
     clv_ev: np.ndarray
+    has_close: np.ndarray  # a closing price was recorded, whether or not it gave a CLV
 
 
 def _numeric_column(bets: pd.DataFrame, name: str) -> np.ndarray:
@@ -980,7 +1325,9 @@ def _prepare(bets: pd.DataFrame) -> _Arrays:
     """Validate a bets table and derive what the statistics need.
 
     ``ev`` is filled from ``fair_prob`` where blank (and the reverse), and
-    ``pnl`` from the result where blank, so no NaN reaches a sum.
+    ``pnl`` from the result where blank, so no NaN reaches a sum.  A stored
+    ``pnl`` that its result rules out is an error, as it is when a ledger
+    file is read.
     """
     if not isinstance(bets, pd.DataFrame):
         raise TypeError("bets must be a pandas DataFrame (for a ledger use BetLedger.to_frame())")
@@ -1017,7 +1364,20 @@ def _prepare(bets: pd.DataFrame) -> _Arrays:
         ev[i] = expected_value(fair[i], price[i], push[i])
 
     stored_pnl = _numeric_column(bets, "pnl")
+    impossible = [
+        int(i)
+        for i in np.flatnonzero(~np.isnan(stored_pnl) & (result != ""))
+        if not _pnl_possible(result[i], float(stored_pnl[i]), float(stake[i]))
+    ]
+    if impossible:
+        raise ValueError(
+            f"{len(impossible)} bet(s) have a pnl that their result rules out (a win cannot lose, a loss "
+            f"costs at most the stake, a push or void pays nothing); first at position {impossible[0]}"
+        )
     graded_pnl = np.select([result == "win", result == "loss"], [stake * (price - 1.0), -stake], default=0.0)
+    no_close = np.isnan(_numeric_column(bets, "closing_price")) & np.isnan(
+        _numeric_column(bets, "closing_other_price")
+    )
     return _Arrays(
         result=result,
         stake=stake,
@@ -1028,6 +1388,7 @@ def _prepare(bets: pd.DataFrame) -> _Arrays:
         pnl=np.where(np.isnan(stored_pnl), graded_pnl, stored_pnl),
         clv_price=_numeric_column(bets, "clv_price"),
         clv_ev=_numeric_column(bets, "clv_ev"),
+        has_close=~no_close,
     )
 
 
@@ -1091,8 +1452,9 @@ def summarize(bets: pd.DataFrame, n_boot: int = 2000, seed: int = 0) -> Dict[str
         ``total_staked`` (stakes of graded bets - the ROI denominator),
         ``open_stake`` (stakes still at risk), ``pnl`` (profit of graded
         bets; taken from the ``pnl`` column, or derived from the result where
-        that is blank), ``roi`` = ``pnl / total_staked``, ``win_rate`` =
-        ``wins / (wins + losses)``.
+        that is blank; a ``pnl`` that the result rules out, such as a profit
+        on a loss, raises ``ValueError``), ``roi`` = ``pnl / total_staked``,
+        ``win_rate`` = ``wins / (wins + losses)``.
     Prices
         ``avg_price``: stake-weighted mean decimal price of all non-void
         bets, i.e. the price of the whole book of bets as one wager;
@@ -1122,6 +1484,11 @@ def summarize(bets: pd.DataFrame, n_boot: int = 2000, seed: int = 0) -> Dict[str
         ``avg_clv_price`` and ``avg_clv_ev`` are stake-weighted means over
         the non-void bets that have them; ``clv_beat_rate`` is the share of
         bets with ``clv_ev > 0`` and ``clv_n`` how many have a ``clv_ev``.
+        ``clv_missing`` counts the non-void bets whose close was recorded
+        but gave no ``clv_ev`` (one closing price only, or a line that moved
+        in a market with no known distribution).  The averages are silent
+        about those bets, and bets whose line moved are not a random sample,
+        so a large ``clv_missing`` makes ``avg_clv_ev`` unreliable.
     """
     data = _prepare(bets)
     won = data.result == "win"
@@ -1172,6 +1539,7 @@ def summarize(bets: pd.DataFrame, n_boot: int = 2000, seed: int = 0) -> Dict[str
     has_clv_price = ~void & ~np.isnan(data.clv_price)
     has_clv_ev = ~void & ~np.isnan(data.clv_ev)
     clv_n = int(has_clv_ev.sum())
+    clv_missing = int((~void & data.has_close & np.isnan(data.clv_ev)).sum())
 
     return {
         "n_bets": len(data.result),
@@ -1200,6 +1568,7 @@ def summarize(bets: pd.DataFrame, n_boot: int = 2000, seed: int = 0) -> Dict[str
         "avg_clv_ev": _weighted_mean(data.clv_ev[has_clv_ev], data.stake[has_clv_ev]),
         "clv_beat_rate": _ratio(float((data.clv_ev[has_clv_ev] > 0.0).sum()), clv_n),
         "clv_n": clv_n,
+        "clv_missing": clv_missing,
     }
 
 

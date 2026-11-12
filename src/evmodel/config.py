@@ -85,6 +85,11 @@ class ConsensusConfig:
     min_ref_books: int = 1
     #: minimum total weight of those reference books
     min_ref_weight: float = 0.6
+    #: the reference books must also outweigh the book being evaluated by
+    #: this factor.  A sharp book's price is not called +EV on the say-so of
+    #: softer books: when they disagree with it, they are usually the ones
+    #: that are stale.
+    min_ref_weight_ratio: float = 1.5
     #: once other books support a consensus, also pool in the evaluated book's
     #: own de-vigged quote at its own weight.  This shrinks apparent edges
     #: against sharp books (whose price is itself strong evidence) and leaves
@@ -134,8 +139,10 @@ class ScanConfig:
     target_books: Optional[List[str]] = None
     #: skip alternate lines when scanning for bets
     include_alternates: bool = True
-    #: weight of the projection model when a market consensus also exists
-    model_weight: float = 0.2
+    #: weight of the projection model when a market consensus also exists.
+    #: Kept small on purpose: the model sees no injury or lineup news, and
+    #: most of what it "disagrees" with the market about is exactly that.
+    model_weight: float = 0.1
     #: model weight is scaled down below this many games of history
     model_full_weight_games: int = 20
     #: report bets supported only by the projection model (no consensus)

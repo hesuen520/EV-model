@@ -309,7 +309,15 @@ def scan(
         cutoff = now + pd.Timedelta(minutes=float(cfg.min_minutes_to_start))
         keep &= starts.isna() | (starts >= cutoff)
 
-    picks = valued[keep].sort_values("ev", ascending=False, kind="stable")
+    picks = valued[keep].sort_values("ev", ascending=False, kind="stable").copy()
+    if not picks.empty:
+        # Both sides clearing the bar at different books means the books
+        # disagree about the prop: an arbitrage, or one of them is stale.
+        prop = ["event_id", "player_key", "market"]
+        split = picks.groupby(prop)["side"].transform("nunique") > 1
+        picks.loc[split, "flags"] = [
+            f"{flags},books_split" if flags else "books_split" for flags in picks.loc[split, "flags"]
+        ]
     if cfg.best_price_only and not picks.empty:
         picks = picks.drop_duplicates(["event_id", "player_key", "market", "side"], keep="first")
         # Never recommend both sides of the same prop.

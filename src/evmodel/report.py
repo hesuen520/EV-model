@@ -31,6 +31,7 @@ _FLAG_TEXT: Dict[str, str] = {
     "model_disagrees": "model and market disagree on the side",
     "alt_line": "alternate line",
     "dfs": "pick'em leg: valued against entry break-even",
+    "books_split": "both sides look +EV at different books: check for news or a stale price",
 }
 _FLAG_SHORT: Dict[str, str] = {
     "line_translated": "line moved",
@@ -42,6 +43,7 @@ _FLAG_SHORT: Dict[str, str] = {
     "model_disagrees": "model split",
     "alt_line": "alt line",
     "dfs": "pick'em",
+    "books_split": "books split",
 }
 
 #: Stylesheet shared by the standalone report and anything that embeds its rows.

@@ -419,18 +419,39 @@ class TestQuotesTimes:
         assert df["commence_time"].iloc[0] == pd.Timestamp("2025-01-01", tz="UTC")
         assert df["commence_time"].iloc[1] == pd.Timestamp(expected, tz="UTC")
 
+    @pytest.mark.parametrize(
+        "values",
+        [
+            [1735689600, 1735776000],                 # Unix seconds
+            [1735689600000, 1735776000000],           # Unix milliseconds
+            [1735689600.0, 1735776000.0],
+            [np.int64(1735689600), "2025-01-02T00:00:00Z"],   # numbers and text in one column
+        ],
+    )
+    def test_unix_epochs_are_seconds_or_milliseconds_never_nanoseconds(self, values: List[object]) -> None:
+        """1735689600 is 2025-01-01T00:00:00Z; read as nanoseconds it would be 1970."""
+        times = self._commence(values)
+        assert times.tolist() == [pd.Timestamp("2025-01-01", tz="UTC"), pd.Timestamp("2025-01-02", tz="UTC")]
+
+    @pytest.mark.parametrize("value", [5, 20250101, 1735689600000000, np.inf, -np.inf, 1e300, np.nan])
+    def test_numbers_that_are_not_plausible_epochs_become_nat(self, value: float) -> None:
+        times = self._commence([value, 1735689600])
+        assert pd.isna(times.iloc[0])
+        assert times.iloc[1] == pd.Timestamp("2025-01-01", tz="UTC")
+
     @pytest.mark.xfail(
         strict=True,
+        raises=TypeError,
         reason=(
-            "BUG: numeric timestamps are read as nanoseconds since 1970, so a Unix epoch in "
-            "seconds (1735689600 = 2025-01-01T00:00:00Z, a very common API format) silently "
-            "becomes 1970-01-01 00:00:01.7356896 instead of 2025 or NaT"
+            "BUG: an epoch column with pandas' nullable integer dtype and a missing value "
+            "crashes normalize_quotes: _to_utc calls float(pd.NA) -> TypeError('float() "
+            "argument must be a string or a real number, not NAType')"
         ),
     )
-    @pytest.mark.parametrize("values", [[1735689600, 1735776000], [1735689600.0, np.nan]])
-    def test_unix_epoch_seconds_do_not_become_1970(self, values: List[float]) -> None:
-        stamp = normalize_quotes(_quotes(2, commence_time=values))["commence_time"].iloc[0]
-        assert pd.isna(stamp) or stamp == pd.Timestamp("2025-01-01", tz="UTC")
+    def test_nullable_integer_epochs_with_a_gap(self) -> None:
+        raw = _quotes(2, commence_time=pd.array([1735689600, pd.NA], dtype="Int64"))
+        times = normalize_quotes(raw)["commence_time"]
+        assert times.iloc[0] == pd.Timestamp("2025-01-01", tz="UTC") and pd.isna(times.iloc[1])
 
 
 class TestQuotesAlternateFlag:
@@ -592,19 +613,21 @@ class TestGamelogsCoercion:
         assert df["started"].tolist() == [True, False, True]   # flags are not stats
         assert df["position"].tolist() == ["C", "F", "G"]      # text is left alone
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG: by default only columns that already have a numeric dtype are converted, "
-            "although the docstring says every 'numeric-looking' column is. A stat column "
-            "read as text (['30', '25']) or holding one marker ([30, 'DNP', 12], which pandas "
-            "stores as object) is left as object/str, so later arithmetic on it fails"
-        ),
-    )
-    @pytest.mark.parametrize("values", [["30", "25", "12"], [30, "DNP", 12], ["30", 25, None]])
+    @pytest.mark.parametrize("values", [["30", "25", "12"], ["30", 25, None], [" 7 ", "", None], ["1e1", "2.5", "3"]])
     def test_numeric_looking_text_columns_become_float_stats_by_default(self, values: List[object]) -> None:
+        """Stats read as text (a CSV column, a JSON API) are still stats."""
         df = normalize_gamelogs(_gamelogs(3, points=values))
         assert df["points"].dtype == np.float64
+        assert df["points"].iloc[0] == float(str(values[0]).strip())
+
+    @pytest.mark.parametrize("values", [[30, "DNP", 12], ["1,234", "2", "3"], ["C", "F", "G"], ["", None, " "]])
+    def test_columns_with_non_numeric_text_are_left_alone_by_default(self, values: List[object]) -> None:
+        """One marker such as 'DNP' makes a column non-numeric: name it in stat_columns to coerce it."""
+        df = normalize_gamelogs(_gamelogs(3, extra=values))
+        assert df["extra"].dtype != np.float64
+        assert df["extra"].tolist()[0] == values[0]
+        coerced = normalize_gamelogs(_gamelogs(3, extra=values), stat_columns=["extra"])
+        assert coerced["extra"].dtype == np.float64
 
     def test_explicit_stat_columns_coerce_text_and_markers(self) -> None:
         raw = _gamelogs(3, points=["30", "DNP", None], started=[True, False, True])
@@ -754,18 +777,23 @@ class TestGamelogsDates:
         df = normalize_gamelogs(_gamelogs(3, game_date=["2025-01-01", bad, "2025-01-03"], points=[1, 2, 3]))
         assert df["points"].tolist() == [1.0, 3.0]
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG: integer game dates are read as nanoseconds since 1970: game_date=20250101 "
-            "(YYYYMMDD, a common feed/CSV representation) silently becomes "
-            "1970-01-01 00:00:00.020250101 instead of 2025-01-01 or a dropped row"
-        ),
+    @pytest.mark.parametrize(
+        "values",
+        [[20250101, 20250102], [20250101.0, 20250102.0], [np.int64(20250101), "2025-01-02"], ["20250101", "20250102"]],
     )
-    @pytest.mark.parametrize("values", [[20250101, 20250102], [20250101.0, 20250102.0]])
-    def test_integer_yyyymmdd_dates_do_not_become_1970(self, values: List[float]) -> None:
-        df = normalize_gamelogs(_gamelogs(2, game_date=values))
-        assert len(df) == 0 or df["game_date"].tolist() == [pd.Timestamp("2025-01-01"), pd.Timestamp("2025-01-02")]
+    def test_integer_yyyymmdd_dates(self, values: List[object]) -> None:
+        """20250101 is a date, not 20,250,101 nanoseconds after 1970."""
+        assert self._dates(values).tolist() == [pd.Timestamp("2025-01-01"), pd.Timestamp("2025-01-02")]
+
+    @pytest.mark.parametrize("bad", [1735689600, 2025, 20251340, 20250230, 20250101.5, 0, -20250101])
+    def test_numbers_that_are_not_yyyymmdd_drop_their_row(self, bad: float) -> None:
+        df = normalize_gamelogs(_gamelogs(2, game_date=[bad, 20250102], points=[1, 2]))
+        assert df["points"].tolist() == [2.0]
+        assert df["game_date"].tolist() == [pd.Timestamp("2025-01-02")]
+
+    def test_nullable_integer_dates_with_a_gap(self) -> None:
+        df = normalize_gamelogs(_gamelogs(2, game_date=pd.array([20250101, pd.NA], dtype="Int64"), points=[1, 2]))
+        assert df["points"].tolist() == [1.0]
 
 
 class TestGamelogsIdsAndFlags:

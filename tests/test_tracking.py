@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import stat
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List
 
@@ -17,6 +18,7 @@ from scipy.stats import norm, poisson
 from evmodel import tracking
 from evmodel.distributions import FamilySpec
 from evmodel.ev import bet_variance, expected_value
+from evmodel.markets import find_market
 from evmodel.schema import OPPORTUNITY_COLUMNS
 from evmodel.tracking import (
     LEDGER_COLUMNS,
@@ -59,9 +61,38 @@ def _fields(**overrides: object) -> Dict[str, object]:
     return fields
 
 
+def _opportunity(**overrides: object) -> Dict[str, object]:
+    """A scanner row: Jokic over 24.5 points at 1.95 (-105) with a 55% fair probability."""
+    row: Dict[str, object] = dict(
+        sport="nba",
+        event_id="evt1",
+        event="Nuggets @ Lakers",
+        player="Nikola Jokic",
+        player_key="nikola jokic",
+        market="player_points",
+        line=24.5,
+        side="over",
+        book="draftkings",
+        price=1.95,
+        price_american=-105.0,
+        fair_prob=0.55,
+        push_prob=0.0,
+        ev=expected_value(0.55, 1.95),
+        source="market",
+    )
+    row.update(overrides)
+    return row
+
+
 @pytest.fixture
 def ledger(tmp_path: Path) -> BetLedger:
     return BetLedger(tmp_path / "ledger.csv")
+
+
+@pytest.fixture
+def morning_of_the_12th(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Freeze the ledger's clock at 10 am US Eastern on 12 November 2026."""
+    monkeypatch.setattr(tracking, "_now", lambda: "2026-11-12T15:00:00+00:00")
 
 
 # ---------------------------------------------------------------------------
@@ -416,6 +447,242 @@ def test_add_accepts_american_price_only_by_name(ledger: BetLedger) -> None:
         ledger.add(stake=11, **_fields(price=None, book="other"))
 
 
+def test_add_price_american_override_replaces_the_rows_price(ledger: BetLedger) -> None:
+    # The scanner showed -105 (1.95) but the bet was struck at -120.
+    bet_id = ledger.add(_opportunity(), stake=100, price_american=-120)
+    row = ledger.to_frame().set_index("bet_id").loc[bet_id]
+    struck = 1 + 100 / 120
+    assert row["price"] == pytest.approx(struck)
+    assert row["ev"] == pytest.approx(0.55 * struck - 1)  # +0.0083, not the row's +0.0725
+    assert ledger.settle(bet_id, result="win") == pytest.approx(100 * 100 / 120)
+
+    # The mirror image: a decimal override is not second-guessed by the row's American price.
+    other = ledger.add(_opportunity(book="fanduel"), stake=100, price=1.87)
+    assert ledger.to_frame().set_index("bet_id").loc[other, "price"] == 1.87
+
+
+def test_add_refuses_one_bet_with_two_prices(ledger: BetLedger) -> None:
+    with pytest.raises(ValueError, match="price 1.87 and price_american -120 .* are different prices"):
+        ledger.add(_opportunity(), stake=100, price=1.87, price_american=-120)
+    with pytest.raises(ValueError, match="different prices"):
+        ledger.add(_opportunity(price_american=-120.0), stake=100)  # a row that contradicts itself
+    with pytest.raises(ValueError, match="American odds"):
+        ledger.add(_opportunity(), stake=100, price_american=50)
+    assert not ledger.path.exists()
+
+
+@pytest.mark.parametrize(
+    "decimal, american, same",
+    [
+        (1 + 100 / 110, -110, True),
+        (1.91, -110, True),  # the decimal price rounded to two places
+        (1.95, -105, True),  # the American price rounded to a whole number
+        (2.0, 100, True),
+        (2.0, -100, True),  # even money has two American spellings
+        (1.995, -100, True),
+        (2.5, 150, True),
+        (1.11, -950, True),
+        (26.0, 2500, True),
+        (1.87, -120, False),
+        (1.91, -115, False),
+        (1.91, 110, False),  # a lost minus sign
+        (2.0, 102, False),
+        (2.5, 155, False),
+        (1.10, -950, False),  # -950 is 1.105, which no rounding makes 1.10
+    ],
+)
+def test_decimal_and_american_notation_must_be_one_price(
+    ledger: BetLedger, decimal: float, american: float, same: bool
+) -> None:
+    fields = _fields(price=decimal, price_american=american)
+    if same:
+        ledger.add(stake=1, **fields)
+        assert ledger.to_frame().iloc[0]["price"] == decimal
+    else:
+        with pytest.raises(ValueError, match="different prices"):
+            ledger.add(stake=1, **fields)
+
+
+@pytest.mark.parametrize("price", [150, 150.0, "150", "+150", 100, 2500])
+def test_add_refuses_a_decimal_price_that_looks_american(ledger: BetLedger, price: object) -> None:
+    # +150 typed into the decimal field would be a 149-to-1 shot with an EV of +5900%.
+    with pytest.raises(ValueError, match="price must be decimal odds, but .* looks like American odds"):
+        ledger.add(stake=10, **_fields(price=price, fair_prob=0.4))
+    assert not ledger.path.exists()
+
+
+def test_long_prices_are_recorded_through_price_american(ledger: BetLedger) -> None:
+    ledger.add(stake=10, **_fields(price=99.0, fair_prob=None, book="a"))  # below the American range
+    ledger.add(stake=10, **_fields(price=150.5, fair_prob=None, book="b"))  # not how American odds look
+    stated_twice = ledger.add(stake=10, **_fields(price=151.0, price_american=15000, fair_prob=None, book="c"))
+    longshot = ledger.add(stake=10, **_fields(price=None, price_american=14900, fair_prob=0.01, book="d"))
+    rows = ledger.to_frame().set_index("bet_id")
+    assert rows.loc[stated_twice, "price"] == 151.0
+    assert rows.loc[longshot, "price"] == 150.0 and rows.loc[longshot, "ev"] == pytest.approx(0.5)
+
+    # The stored price reads back, may close at a price just as long, and settles.
+    out = ledger.record_close(longshot, closing_over_price=126.0)
+    assert out["clv_price"] == pytest.approx(150 / 126 - 1)
+    assert ledger.settle(longshot, result="win") == 1490.0
+    assert BetLedger(ledger.path).to_frame().set_index("bet_id").loc[longshot, "pnl"] == 1490.0
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"line": 25.5},
+        {"line": 24.0},
+        {"side": "under"},
+        {"market": "player_assists"},
+        {"player": "Jamal Murray"},
+        {"player_key": "jamal murray"},
+        {"event_id": "evt2"},
+    ],
+)
+def test_add_override_to_another_bet_drops_the_rows_probability(ledger: BetLedger, override: dict) -> None:
+    # The row's numbers were estimated for Jokic over 25 points in evt1 and for nothing else.
+    row = _opportunity(line=25.0, fair_prob=0.50, push_prob=0.06, ev=expected_value(0.50, 1.95, 0.06))
+    bet_id = ledger.add(row, stake=10, price=2.05, **override)
+    stored = ledger.to_frame().set_index("bet_id").loc[bet_id]
+    assert math.isnan(stored["fair_prob"]) and math.isnan(stored["ev"]) and stored["push_prob"] == 0.0
+    assert stored["price"] == 2.05 and stored["source"] == "market"  # the rest of the row is kept
+
+    # No invented expectation reaches the statistics.
+    ledger.settle(bet_id, result="win")
+    stats = summarize(ledger.to_frame(), n_boot=0)
+    assert stats["n_model"] == 0 and math.isnan(stats["expected_pnl"]) and math.isnan(stats["z_score"])
+    assert calibration_table(ledger.to_frame()).empty
+
+
+def test_add_override_with_a_new_probability(ledger: BetLedger) -> None:
+    under = ledger.add(_opportunity(), stake=10, side="under", price=1.87, fair_prob=0.45)
+    whole = ledger.add(_opportunity(), stake=10, line=25, price=2.05, fair_prob=0.47, push_prob=0.06)
+    by_ev = ledger.add(_opportunity(), stake=10, line=25.5, price=2.05, ev=0.03)
+    rows = ledger.to_frame().set_index("bet_id")
+    assert rows.loc[under, "fair_prob"] == 0.45
+    assert rows.loc[under, "ev"] == pytest.approx(0.45 * 1.87 - 1)  # -0.1585: the under was never +EV
+    assert rows.loc[whole, "fair_prob"] == 0.47 and rows.loc[whole, "push_prob"] == 0.06
+    assert rows.loc[whole, "ev"] == pytest.approx(0.47 * 1.05 - 0.47)
+    assert math.isnan(rows.loc[by_ev, "fair_prob"]) and rows.loc[by_ev, "ev"] == 0.03
+
+
+def test_add_override_that_restates_the_row_keeps_its_probability(ledger: BetLedger) -> None:
+    bet_id = ledger.add(
+        _opportunity(),
+        stake=10,
+        line="24.5",
+        side=" OVER ",
+        market="Player_Points",
+        player="NIKOLA JOKIĆ",
+        event_id="evt1",
+        book="fanduel",
+        price=2.0,
+        notes="boosted",
+    )
+    row = ledger.to_frame().set_index("bet_id").loc[bet_id]
+    assert row["fair_prob"] == 0.55 and row["ev"] == pytest.approx(0.10)
+    assert row["player"] == "NIKOLA JOKIĆ" and row["player_key"] == "nikola jokic"
+
+    # A key the scanner resolved from an abbreviated name survives the name being restated.
+    resolved = _opportunity(player="A. St. Brown", player_key="amonra st brown", market="player_receptions")
+    bet_id = ledger.add(resolved, stake=10, player="A. St. Brown", price=2.0)
+    row = ledger.to_frame().set_index("bet_id").loc[bet_id]
+    assert row["player_key"] == "amonra st brown" and row["fair_prob"] == 0.55
+
+
+def test_add_override_of_the_player_replaces_name_and_key(ledger: BetLedger) -> None:
+    by_name = ledger.add(_opportunity(), stake=10, player="Jamal Murray")
+    by_key = ledger.add(_opportunity(book="fanduel"), stake=10, player_key="jamal murray")
+    rows = ledger.to_frame().set_index("bet_id")
+    assert (rows.loc[by_name, "player"], rows.loc[by_name, "player_key"]) == ("Jamal Murray", "jamal murray")
+    assert (rows.loc[by_key, "player"], rows.loc[by_key, "player_key"]) == ("", "jamal murray")
+
+
+def test_add_converts_an_ev_only_row_to_the_price_obtained(ledger: BetLedger) -> None:
+    row = _opportunity(fair_prob=None)  # an EV of +0.0725 at 1.95 and no probability
+    unchanged = ledger.add(row, stake=10)
+    worse = ledger.add(dict(row, book="fanduel"), stake=10, price=1.80)
+    american = ledger.add(dict(row, book="betmgm"), stake=10, price_american=-125)
+    restated = ledger.add(dict(row, book="caesars"), stake=10, price=1.80, ev=0.02)
+    whole = ledger.add(
+        _opportunity(line=25, price=2.0, price_american=100, fair_prob=None, push_prob=0.10, ev=0.0, book="espnbet"),
+        stake=10,
+        price=2.2,
+    )
+    rows = ledger.to_frame().set_index("bet_id")
+    assert rows["fair_prob"].isna().all()
+    assert rows.loc[unchanged, "ev"] == row["ev"]
+    assert rows.loc[worse, "ev"] == pytest.approx(0.55 * 1.80 - 1)  # -0.01: the edge is gone at 1.80
+    assert rows.loc[american, "ev"] == pytest.approx(0.55 * 1.80 - 1)
+    assert rows.loc[restated, "ev"] == 0.02  # an EV given with the price is at that price
+    assert rows.loc[whole, "ev"] == pytest.approx(0.45 * 1.2 - 0.45)  # win 0.45, push 0.10, lose 0.45
+
+    # The statistics recover the same 55% whatever price the bet was struck at.
+    ledger.settle(unchanged, result="win")
+    ledger.settle(worse, result="win")
+    stats = summarize(ledger.to_frame(), n_boot=0)
+    assert stats["n_model"] == 2
+    assert stats["expected_pnl"] == pytest.approx(10 * (0.55 * 1.95 - 1) + 10 * (0.55 * 1.80 - 1))
+    assert list(calibration_table(ledger.to_frame())["predicted"]) == pytest.approx([0.55])
+
+
+@pytest.mark.parametrize("field", ["commence_time", "placed_at"])
+@pytest.mark.parametrize("value", [1794526200, 1794526200.0, np.int64(1794526200), 1794526200000, True])
+def test_bare_numbers_are_not_timestamps(ledger: BetLedger, field: str, value: object) -> None:
+    # pandas reads a bare number as nanoseconds: epoch seconds for 2026 would land in 1970.
+    with pytest.raises(ValueError, match=f"{field} must be a date or a time, not the bare number"):
+        ledger.add(stake=10, **_fields(**{field: value}))
+    assert not ledger.path.exists()
+
+
+@pytest.mark.parametrize(
+    "value, stored",
+    [
+        ("2026-11-12T23:30:00Z", "2026-11-12T23:30:00+00:00"),
+        ("2026-11-12 18:30-05:00", "2026-11-12T23:30:00+00:00"),
+        (datetime(2026, 11, 12, 23, 30), "2026-11-12T23:30:00+00:00"),  # no zone means UTC
+        (datetime(2026, 11, 12, 23, 30, tzinfo=timezone.utc), "2026-11-12T23:30:00+00:00"),
+        (np.datetime64("2026-11-12T23:30"), "2026-11-12T23:30:00+00:00"),
+        (pd.Timestamp(1794526200, unit="s", tz="UTC"), "2026-11-12T23:30:00+00:00"),  # an epoch, unit stated
+        (date(2026, 11, 12), "2026-11-12T00:00:00+00:00"),
+        (pd.NaT, ""),
+        (float("nan"), ""),
+        ("", ""),
+    ],
+)
+def test_timestamps_in_every_usual_form(ledger: BetLedger, value: object, stored: str) -> None:
+    ledger.add(stake=10, **_fields(commence_time=value))
+    assert ledger.to_frame().iloc[0]["commence_time"] == stored
+
+
+def test_identifiers_are_stored_in_canonical_form(ledger: BetLedger) -> None:
+    # A key spelled like a name and an id column that pandas read as floats.
+    first = ledger.add(stake=10, **_fields(player=None, player_key="Nikola Jokić", event_id=401585123.0))
+    row = ledger.to_frame().iloc[0]
+    assert row["player_key"] == "nikola jokic" and row["event_id"] == "401585123"
+
+    # The same bet spelled the usual way is therefore recognised ...
+    for event_id in ("401585123", 401585123, np.float64(401585123.0), np.int64(401585123)):
+        with pytest.raises(DuplicateBetError, match=first):
+            ledger.add(stake=10, **_fields(event_id=event_id))
+    assert len(ledger.to_frame()) == 1
+    # ... while ids that are text stay exactly as they are.
+    padded = ledger.add(stake=10, **_fields(event_id=" 007 "))
+    assert ledger.to_frame().set_index("bet_id").loc[padded, "event_id"] == "007"
+
+    # Results keyed just as loosely still find the bet, and only by its own event.
+    results = pd.DataFrame(
+        {
+            "event_id": [401585123.0, 999.0],
+            "player_key": ["Jokić, Nikola", "Nikola Jokić"],
+            "market": ["player_points", "player_points"],
+            "actual": [30, 10],
+        }
+    )
+    assert ledger.settle_from_results(results) == 1
+    assert ledger.to_frame().set_index("bet_id").loc[first, "result"] == "win"
+
+
 def test_add_absorbs_rounding_noise_in_probabilities(ledger: BetLedger) -> None:
     # over + push from a distribution can exceed 1 by a few ulps; that is not bad input.
     bet_id = ledger.add(stake=5, **_fields(fair_prob=1.0 + 5e-10))
@@ -610,6 +877,90 @@ def test_rewrite_preserves_file_mode(ledger: BetLedger) -> None:
     assert stat.S_IMODE(ledger.path.stat().st_mode) == 0o600
 
 
+@pytest.mark.skipif(os.name != "posix", reason="symbolic links and POSIX file modes")
+def test_symlinked_ledger_is_written_through_the_link(tmp_path: Path) -> None:
+    real = tmp_path / "synced" / "real.csv"
+    first = BetLedger(real).add(stake=10, **_fields())
+    os.chmod(real, 0o600)
+    link = tmp_path / "link.csv"
+    link.symlink_to(Path("synced") / "real.csv")  # relative, as `ln -s` would make it
+
+    through_link = BetLedger(link)
+    second = through_link.add(stake=10, **_fields(line=27.5))
+    through_link.settle(first, actual=30)
+
+    assert link.is_symlink()  # not replaced by a regular file that drifts away from the real one
+    assert list(BetLedger(real).to_frame()["bet_id"]) == [first, second]
+    assert list(BetLedger(real).settled_bets()["bet_id"]) == [first]
+    assert stat.S_IMODE(real.stat().st_mode) == 0o600
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["link.csv", "synced"]
+    assert sorted(p.name for p in real.parent.iterdir()) == ["real.csv"]  # no temporary file left
+
+    # A link to a file that does not exist yet is filled in, not replaced either.
+    later = tmp_path / "later.csv"
+    later.symlink_to(real.with_name("later.csv"))
+    BetLedger(later).add(stake=10, **_fields())
+    assert later.is_symlink() and real.with_name("later.csv").is_file()
+    assert len(BetLedger(real.with_name("later.csv")).to_frame()) == 1
+
+
+_SETTLED_HEADER = "bet_id,player_key,market,line,side,price,stake,fair_prob,push_prob,result,pnl\n"
+
+
+@pytest.mark.parametrize(
+    "cells, message",
+    [
+        ("loss,25.0", "line 2: pnl 25.0 cannot be the profit of a loss at stake 25.0"),
+        ("loss,-30", "line 2: pnl -30.0 cannot be the profit of a loss at stake 25.0"),  # e.g. the stake was edited
+        ("win,-25", "line 2: pnl -25.0 cannot be the profit of a win"),
+        ("push,5", "line 2: pnl 5.0 cannot be the profit of a push"),
+        ("void,-25", "line 2: pnl -25.0 cannot be the profit of a void"),
+    ],
+)
+def test_stale_pnl_in_a_hand_edited_file_raises_a_located_error(ledger: BetLedger, cells: str, message: str) -> None:
+    # Someone changed a result (or a stake) in a spreadsheet and left the old pnl behind.
+    ledger.path.write_text(f"{_SETTLED_HEADER}1,a b,pts,24.5,over,2.0,25,,,{cells}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ledger.to_frame()
+    with pytest.raises(ValueError, match="clear the cell to have it recomputed"):
+        ledger.settle("1", result="win", overwrite=True)  # no method works on a ledger it cannot trust
+
+
+def test_pnl_that_differs_from_the_standard_payout_is_kept(ledger: BetLedger) -> None:
+    rows = [
+        "1,a b,pts,24.5,over,2.0,25,,,win,40",  # a profit boost
+        "2,a c,pts,24.5,over,2.0,25,,,loss,-12.5",  # half the stake refunded
+        "3,a d,pts,24.5,over,2.0,25,,,loss,",  # blank: recomputed
+        "4,a e,pts,24.5,over,2.0,25,,,push,0",
+        "5,a f,pts,24.5,over,2.0,25,,,,7",  # a stray pnl on an open bet is never summed
+    ]
+    ledger.path.write_text(_SETTLED_HEADER + "".join(row + "\n" for row in rows), encoding="utf-8")
+    frame = ledger.to_frame()
+    assert list(frame["pnl"]) == [40.0, -12.5, -25.0, 0.0, 7.0]
+    stats = summarize(frame, n_boot=0)
+    assert stats["pnl"] == 2.5 and stats["total_staked"] == 100.0 and stats["n_open"] == 1
+
+
+@pytest.mark.parametrize(
+    "fair_prob, push_prob, message",
+    [
+        ("55", "", "line 2: fair_prob must be in [0, 1 - push_prob], got 55.0"),  # a percentage
+        ("-0.1", "", "line 2: fair_prob must be in"),
+        ("0.95", "0.1", "line 2: fair_prob must be in"),
+        ("0.5", "1.5", "line 2: push_prob must be in [0, 1), got 1.5"),
+        ("", "-0.1", "line 2: push_prob must be in"),
+    ],
+)
+def test_probability_out_of_range_in_the_file_raises_a_located_error(
+    ledger: BetLedger, fair_prob: str, push_prob: str, message: str
+) -> None:
+    ledger.path.write_text(
+        f"{_SETTLED_HEADER}1,a b,pts,24.5,over,2.0,25,{fair_prob},{push_prob},,\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ledger.to_frame()
+
+
 def test_hand_edited_file_is_read_and_extra_columns_survive(ledger: BetLedger) -> None:
     first = ledger.add(stake=10, **_fields())
     # A person appends a settled bet in a spreadsheet: BOM, own column, blank pnl.
@@ -723,7 +1074,8 @@ def test_record_close_with_one_price(ledger: BetLedger) -> None:
 
 
 def test_record_close_when_the_line_moved(ledger: BetLedger) -> None:
-    bet_id = ledger.add(stake=10, **_fields(line=24.5, price=MINUS_110))
+    # A stat the market registry does not know, so that only an explicit family can translate it.
+    bet_id = ledger.add(stake=10, **_fields(market="player_fantasy_score", line=24.5, price=MINUS_110))
     # Without a distribution family nothing can be said across lines.
     blind = ledger.record_close(bet_id, MINUS_110, MINUS_110, closing_line=25.5)
     assert all(math.isnan(value) for value in blind.values())
@@ -750,6 +1102,107 @@ def test_record_close_when_the_line_moved(ledger: BetLedger) -> None:
     assert same["clv_price"] == pytest.approx(MINUS_110 / 1.8 - 1)
     same = ledger.record_close(bet_id, 1.8, 2.1, spec=_StuckSpec("poisson"))  # never consulted
     assert same["clv_ev"] == pytest.approx(MINUS_110 * 2.1 / 3.9 - 1)
+
+
+def _stored_close(out: Dict[str, float]) -> Dict[str, float]:
+    """The part of a :func:`clv_with_line_move` result that ``record_close`` stores."""
+    return {key: out[key] for key in ("closing_fair_prob", "clv_ev")}
+
+
+def test_record_close_moved_line_uses_the_registered_family(ledger: BetLedger) -> None:
+    # NBA points are in the market registry, so a moved line needs no spec from the caller.
+    over = ledger.add(stake=10, **_fields(line=24.5, price=MINUS_110, fair_prob=None))
+    under = ledger.add(stake=10, **_fields(line=24.5, side="under", price=MINUS_110, fair_prob=None))
+    unknown = ledger.add(stake=10, **_fields(market="player_fantasy_score", line=24.5, price=MINUS_110))
+    family = find_market("nba", "player_points").spec
+
+    out_over = ledger.record_close(over, MINUS_110, MINUS_110, closing_line=25.5)
+    out_under = ledger.record_close(under, MINUS_110, MINUS_110, closing_line=25.5)
+    blind = ledger.record_close(unknown, MINUS_110, MINUS_110, closing_line=25.5)
+
+    expected = clv_with_line_move(family, "over", 24.5, MINUS_110, 25.5, MINUS_110, MINUS_110)
+    assert _stored_close(out_over) == _stored_close(expected)
+    assert out_over["clv_ev"] > 0.0 > out_under["clv_ev"]  # over 24.5 against a close of 25.5
+    assert out_over["closing_fair_prob"] + out_under["closing_fair_prob"] == pytest.approx(1.0)
+    assert math.isnan(out_over["clv_price"])
+    assert all(math.isnan(value) for value in blind.values())
+
+    # An explicit spec still takes precedence over the registry.
+    explicit = ledger.record_close(over, MINUS_110, MINUS_110, closing_line=25.5, spec=NEGBIN)
+    by_hand = clv_with_line_move(NEGBIN, "over", 24.5, MINUS_110, 25.5, MINUS_110, MINUS_110)
+    assert _stored_close(explicit) == _stored_close(by_hand) != _stored_close(expected)
+
+    # The bet the registry could not help with is counted, not silently left out.
+    stats = summarize(ledger.to_frame(), n_boot=0)
+    assert stats["clv_n"] == 2 and stats["clv_missing"] == 1
+    assert stats["clv_beat_rate"] == 0.5
+
+
+def test_record_close_whole_line_without_a_recorded_push_probability(ledger: BetLedger) -> None:
+    # Bets typed in by hand: a whole-number line and no push probability.
+    by_hand = _fields(market="player_fantasy_score", line=25, price=2.10, fair_prob=None)
+    bet_id = ledger.add(stake=10, **by_hand)
+    # Two prices say nothing about pushes: with no family the probability is conditional on no push.
+    plain = ledger.record_close(bet_id, 1.90, 1.90)
+    assert plain["closing_fair_prob"] == pytest.approx(0.5) and plain["clv_ev"] == pytest.approx(0.05)
+
+    # With the stat's family the push mass comes off, exactly as for a line that moved.
+    out = ledger.record_close(bet_id, 1.90, 1.90, spec=NEGBIN)
+    expected = clv_with_line_move(NEGBIN, "over", 25, 2.10, 25, 1.90, 1.90)
+    push = expected["push_prob"]
+    assert 0.03 < push < 0.08
+    assert _stored_close(out) == _stored_close(expected)
+    assert out["closing_fair_prob"] == pytest.approx(0.5 * (1 - push))  # P(win), not P(win | no push)
+    assert out["clv_ev"] == pytest.approx(0.05 * (1 - push))
+    assert out["clv_price"] == pytest.approx(2.10 / 1.90 - 1)
+    row = ledger.to_frame().iloc[0]
+    assert row["closing_fair_prob"] == expected["closing_fair_prob"] and row["clv_ev"] == expected["clv_ev"]
+
+    # A market in the registry gets its own family without being asked ...
+    known = ledger.add(stake=10, **dict(by_hand, market="player_points"))
+    family = find_market("nba", "player_points").spec
+    assert _stored_close(ledger.record_close(known, 1.90, 1.90)) == _stored_close(
+        clv_with_line_move(family, "over", 25, 2.10, 25, 1.90, 1.90)
+    )
+    # ... a family that cannot reproduce the close is the caller's error ...
+    with pytest.raises(ValueError, match="cannot reproduce"):
+        ledger.record_close(bet_id, 1.90, 1.90, spec=_StuckSpec("poisson"))
+    # ... and a push probability recorded with the bet is used as it is, whatever the family.
+    recorded = ledger.add(stake=10, **dict(by_hand, line=26, fair_prob=0.45, push_prob=0.10))
+    out = ledger.record_close(recorded, 1.90, 1.90, spec=_StuckSpec("poisson"))
+    assert out["closing_fair_prob"] == pytest.approx(0.45) and out["clv_ev"] == pytest.approx(0.045)
+
+
+def test_record_close_passes_over_a_registered_family_that_does_not_fit(
+    ledger: BetLedger, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _Market:
+        spec = _StuckSpec("poisson")
+
+    monkeypatch.setattr(tracking, "find_market", lambda sport, key: _Market())
+    moved = ledger.add(stake=10, **_fields(line=24.5, price=MINUS_110))
+    whole = ledger.add(stake=10, **_fields(line=25, price=2.10, fair_prob=None))
+
+    # Nobody asked for that family, so its failure must not keep the close from being recorded.
+    blind = ledger.record_close(moved, 1.9, 1.9, closing_line=25.5)
+    assert all(math.isnan(value) for value in blind.values())
+    plain = ledger.record_close(whole, 1.9, 1.9)
+    assert plain["closing_fair_prob"] == pytest.approx(0.5)
+    rows = ledger.to_frame().set_index("bet_id")
+    assert rows.loc[moved, "closing_line"] == 25.5 and rows.loc[moved, "closing_price"] == 1.9
+    # An unknown de-vig method is still reported rather than swallowed with it.
+    with pytest.raises(ValueError, match="de-vig method"):
+        ledger.record_close(moved, 1.9, 1.9, closing_line=25.5, method="nonsense")
+
+
+def test_record_close_refuses_closing_prices_that_look_american(ledger: BetLedger) -> None:
+    bet_id = ledger.add(stake=10, **_fields(price=1.91))
+    with pytest.raises(ValueError, match="closing_over_price must be decimal odds, but 120 looks like American"):
+        ledger.record_close(bet_id, 120, 100)  # +120 / +100 typed as they are displayed
+    with pytest.raises(ValueError, match="closing_under_price must be decimal odds, but 100 looks like American"):
+        ledger.record_close(bet_id, 2.2, 100)
+    assert math.isnan(ledger.to_frame().iloc[0]["closing_price"])  # nothing was stored
+    assert ledger.record_close(bet_id, 2.2, 1.7)["clv_price"] == pytest.approx(1.91 / 2.2 - 1)
 
 
 def test_record_close_rejects_bad_input(ledger: BetLedger) -> None:
@@ -874,6 +1327,144 @@ def test_settle_from_results_without_event_ids_and_by_player_name(ledger: BetLed
     assert ledger.settle_from_results(results) == 2
     rows = ledger.to_frame().set_index("bet_id")
     assert rows.loc[jokic, "result"] == "loss" and rows.loc[doncic, "result"] == "win"
+
+
+def test_settle_from_results_leaves_a_game_that_has_not_started(ledger: BetLedger) -> None:
+    bet_id = ledger.add(
+        stake=10, **_fields(event_id="evt-tonight", line=24.5, price=1.9, commence_time="2099-01-01T00:00:00Z")
+    )
+    box = pd.DataFrame({"player": ["Nikola Jokic"], "market": ["player_points"], "actual": [12]})
+    # Whatever Jokic scored, it was not in a game that is still to be played.
+    assert ledger.settle_from_results(box) == 0
+    assert list(ledger.open_bets()["bet_id"]) == [bet_id]
+    # Not even a row that claims the bet's own event settles it before the start.
+    assert ledger.settle_from_results(box.assign(event_id="evt-tonight")) == 0
+    # A callable is handed the bet and decides for itself (here: the book voided it early).
+    assert ledger.settle_from_results(lambda bet: "void") == 1
+
+
+@pytest.mark.usefixtures("morning_of_the_12th")
+def test_settle_from_results_ties_dated_results_to_the_right_game(
+    ledger: BetLedger, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Four open bets on the same player and market (over 24.5 points), three of them on known games.
+    jokic = _fields(line=24.5)
+    last_night = ledger.add(stake=10, **dict(jokic, event_id="evt-11", commence_time="2026-11-11 19:30-05:00"))
+    tonight = ledger.add(stake=10, **dict(jokic, event_id="evt-12", commence_time="2026-11-12 19:30-05:00"))
+    forgotten = ledger.add(stake=10, **dict(jokic, event_id="evt-09", commence_time="2026-11-09 22:00-05:00"))
+    undated = ledger.add(stake=10, **dict(jokic, event_id=""))
+
+    def results() -> List[str]:
+        return list(ledger.to_frame().set_index("bet_id").loc[[last_night, tonight, forgotten, undated], "result"])
+
+    # The daily job: last night's box score, as the package's game logs carry it
+    # (a stats-feed game_id and a calendar game_date, never the odds feed's event_id).
+    box = pd.DataFrame(
+        {
+            "game_id": ["0022600171"],
+            "game_date": pd.to_datetime(["2026-11-11"]),
+            "player": ["Nikola Jokić"],
+            "market": ["player_points"],
+            "actual": [31.0],
+        }
+    )
+    assert ledger.settle_from_results(box) == 1
+    assert results() == ["win", "", "", ""]
+    assert ledger.to_frame().set_index("bet_id").loc[last_night, "actual"] == 31.0
+
+    # A whole season's log is just as safe: every bet finds its own night, and the
+    # game of the 12th is not graded while it is still to be played.
+    season = pd.DataFrame(
+        {
+            "game_date": ["2026-11-09", "2026-11-11", "2026-11-12"],
+            "player": "Nikola Jokic",
+            "market": "player_points",
+            "actual": [19, 31, 40],
+        }
+    )
+    assert ledger.settle_from_results(season) == 1
+    assert results() == ["win", "", "loss", ""]
+    monkeypatch.setattr(tracking, "_now", lambda: "2026-11-13T12:00:00+00:00")  # the next morning
+    assert ledger.settle_from_results(season) == 1
+    assert results() == ["win", "win", "loss", ""]
+
+    # The bet without a start time is never guessed onto a dated game.  It can only be
+    # settled from a table that leaves the choice of game to the caller, one game at a time.
+    assert ledger.settle_from_results(season) == 0
+    with pytest.raises(ValueError, match=f"{undated}.*3 different results"):
+        ledger.settle_from_results(season.drop(columns="game_date"))
+    assert ledger.settle_from_results(season.iloc[[0]].drop(columns="game_date")) == 1
+    assert results() == ["win", "win", "loss", "loss"]
+
+
+def test_settle_from_results_game_dates_are_calendar_dates_in_tz(
+    ledger: BetLedger, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tracking, "_now", lambda: "2026-11-12T19:00:00+00:00")  # 2 pm in New York
+    # 7:30 pm in New York on 11 November is already the 12th in UTC.
+    ledger.add(stake=10, **_fields(commence_time="2026-11-12T00:30:00Z"))
+    # A 1 pm game on the 12th, under way, the day after the same player's night game.
+    matinee = ledger.add(stake=10, **_fields(event_id="evt2", commence_time="2026-11-12T18:00:00Z"))
+    table = pd.DataFrame(
+        {"game_date": ["2026-11-11"], "player_key": ["nikola jokic"], "market": ["player_points"], "actual": [31]}
+    )
+    with pytest.raises(ValueError, match="unknown time zone 'Mars/Olympus_Mons'"):
+        ledger.settle_from_results(table, tz="Mars/Olympus_Mons")
+    assert ledger.settle_from_results(table, tz="UTC") == 0  # no bet starts on the 11th by UTC dates
+    assert ledger.settle_from_results(table) == 1  # US Eastern, the default: the night game only
+    assert list(ledger.open_bets()["bet_id"]) == [matinee]
+    assert ledger.settle_from_results(table.assign(game_date="2026-11-12"), tz="UTC") == 1
+
+
+@pytest.mark.usefixtures("morning_of_the_12th")
+@pytest.mark.parametrize(
+    "column, value, settled",
+    [
+        ("game_date", "2026-11-11", 1),
+        ("game_date", date(2026, 11, 11), 1),
+        ("game_date", pd.Timestamp("2026-11-11 19:30"), 1),  # a wall-clock time keeps its own date
+        ("game_date", "2026-11-12T00:30:00+00:00", 1),  # an instant: the 11th in New York
+        ("commence_time", "2026-11-12T00:30:00Z", 1),
+        ("commence_time", "2026-11-12 00:40", 1),  # no zone means UTC, as everywhere in the ledger
+        ("game_date", "2026-11-12", 0),
+        ("game_date", "2026-11-10", 0),
+        ("commence_time", "2026-11-13T00:30:00Z", 0),
+        ("game_date", None, 1),  # a row that names no game matches on player and market
+    ],
+)
+def test_settle_from_results_reads_dates_in_every_usual_form(
+    ledger: BetLedger, column: str, value: object, settled: int
+) -> None:
+    ledger.add(stake=10, **_fields(commence_time="2026-11-12T00:30:00Z"))
+    table = pd.DataFrame(
+        {column: [value], "player_key": ["nikola jokic"], "market": ["player_points"], "actual": [31]}
+    )
+    assert ledger.settle_from_results(table) == settled
+
+
+@pytest.mark.usefixtures("morning_of_the_12th")
+def test_settle_from_results_rejects_unreadable_dates_and_doubleheaders(ledger: BetLedger) -> None:
+    bet_id = ledger.add(stake=10, **_fields(commence_time="2026-11-12T00:30:00Z"))
+    table = pd.DataFrame(
+        {"game_date": ["2026-11-11"], "player_key": ["nikola jokic"], "market": ["player_points"], "actual": [31]}
+    )
+    with pytest.raises(ValueError, match="game_date must be a date or a time, not the bare number 20261111"):
+        ledger.settle_from_results(table.assign(game_date=20261111))
+    with pytest.raises(ValueError, match="game_date is not a timestamp"):
+        ledger.settle_from_results(table.assign(game_date="last night"))
+
+    # Two games on one date cannot be told apart by the date.
+    twice = pd.concat([table, table.assign(actual=12)], ignore_index=True)
+    with pytest.raises(ValueError, match=f"{bet_id}.*2 different results"):
+        ledger.settle_from_results(twice)
+
+    # A start time mangled by hand in the file is reported with its bet, not skipped over.
+    raw = pd.read_csv(ledger.path, dtype=str, keep_default_na=False)
+    raw.loc[0, "commence_time"] = "tonight"
+    raw.to_csv(ledger.path, index=False)
+    with pytest.raises(ValueError, match=f"bet '{bet_id}': commence_time is not a timestamp"):
+        ledger.settle_from_results(table)
+    assert len(ledger.open_bets()) == 1
 
 
 def test_settle_from_results_refuses_ambiguous_matches(ledger: BetLedger) -> None:
@@ -1051,7 +1642,8 @@ def test_summarize_bootstrap_interval_matches_normal_theory() -> None:
 def test_summarize_empty_inputs() -> None:
     for frame in (pd.DataFrame(), pd.DataFrame(columns=LEDGER_COLUMNS)):
         stats = summarize(frame)
-        for key in ("n_bets", "n_settled", "n_open", "wins", "losses", "pushes", "voids", "n_model", "clv_n"):
+        for key in ("n_bets", "n_settled", "n_open", "wins", "losses", "pushes", "voids", "n_model", "clv_n",
+                    "clv_missing"):
             assert stats[key] == 0
         for key in ("total_staked", "open_stake", "pnl"):
             assert stats[key] == 0.0
@@ -1107,6 +1699,38 @@ def test_summarize_pnl_column_versus_result() -> None:
     assert summarize(frame, n_boot=0)["pnl"] == 13.0
     frame["result"] = ["win", "loss", ""]  # pnl of an open bet is ignored
     assert summarize(frame, n_boot=0)["pnl"] == 0.0
+
+
+def test_summarize_rejects_a_pnl_that_the_result_rules_out() -> None:
+    frame = pd.DataFrame(
+        {"stake": [25.0, 25.0, 10.0], "price": 2.0, "result": ["win", "loss", ""], "pnl": [25.0, 25.0, 3.0]}
+    )
+    # A loss booked as +25 would turn an even record into a 50% ROI.
+    with pytest.raises(ValueError, match=r"1 bet\(s\) have a pnl that their result rules out.*first at position 1"):
+        summarize(frame, n_boot=0)
+    with pytest.raises(ValueError, match="rules out"):
+        breakdown(frame.assign(market="pts"), by="market")
+    with pytest.raises(ValueError, match="rules out"):
+        calibration_table(frame.assign(fair_prob=0.5))
+    frame.loc[1, "pnl"] = -25.0
+    assert summarize(frame, n_boot=0)["pnl"] == 0.0
+
+
+def test_summarize_counts_closes_that_gave_no_clv() -> None:
+    frame = pd.DataFrame(
+        {
+            "stake": 10.0,
+            "price": 2.0,
+            "result": ["win", "loss", "", "void", "win"],
+            "closing_price": [1.9, 1.9, np.nan, 1.9, np.nan],
+            "closing_other_price": [1.9, np.nan, 1.9, np.nan, np.nan],
+            "clv_ev": [0.02, np.nan, np.nan, np.nan, np.nan],
+        }
+    )
+    stats = summarize(frame, n_boot=0)
+    # One CLV; two closes without one (a single price each); the void and the unclosed bet do not count.
+    assert stats["clv_n"] == 1 and stats["clv_missing"] == 2
+    assert summarize(frame.drop(columns=["closing_price", "closing_other_price"]), n_boot=0)["clv_missing"] == 0
 
 
 def test_summarize_recovers_probability_from_ev() -> None:

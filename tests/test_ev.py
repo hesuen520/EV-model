@@ -308,6 +308,18 @@ class TestFractionalKelly:
         with pytest.raises(ValueError):
             fractional_kelly(0.55, 2.0, fraction=-0.25)
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "BUG (minor): fractional_kelly only rejects fraction < 0, so a NaN or infinite "
+            "fraction passes validation and the recommended stake comes back as nan / inf"
+        ),
+    )
+    @pytest.mark.parametrize("fraction", [NAN, INF])
+    def test_non_finite_fraction_raises(self, fraction: float) -> None:
+        with pytest.raises(ValueError):
+            fractional_kelly(0.55, 2.0, fraction=fraction)
+
     def test_validates_the_bet(self) -> None:
         with pytest.raises(ValueError):
             fractional_kelly(1.2, 2.0)

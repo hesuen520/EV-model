@@ -1,4 +1,9 @@
-# evmodel
+# evmodel (price and EV toolkit)
+
+> This is the original `evmodel` package: odds conversion, vig removal, expected value, Kelly sizing,
+> a sharp-book prop scanner and a bet ledger. It remains fully usable on its own. The multi-sport
+> prediction platform (`sportspred`, see the repository README) keeps prices out of its models and
+> reaches this toolkit only through its separate, optional EV module.
 
 Find +EV (positive expected value) player-prop bets.
 
@@ -209,7 +214,7 @@ need before the edge is statistically distinguishable from zero.
 ## Configuration
 
 Every threshold, book weight and staking rule lives in one TOML file; see
-[`examples/config.toml`](examples/config.toml).
+[`examples/config.toml`](../examples/config.toml).
 
 ```bash
 evmodel scan --odds data/odds/latest.json --config examples/config.toml
@@ -239,7 +244,7 @@ from evmodel.providers.csv_odds import read_odds_csv
 picks = scan(read_odds_csv("odds.csv", sport="nba"), Config())
 ```
 
-[`examples/quickstart.py`](examples/quickstart.py) walks through the pieces.
+[`examples/quickstart.py`](../examples/quickstart.py) walks through the pieces.
 
 ## Layout
 

@@ -32,9 +32,8 @@ __all__ = ["GenericPlugin", "ResultsOnlyPlugin", "GENERIC_LEAGUES"]
 
 _ESPORTS_NOTE = ("Map vetoes, drafts and starting sides are unknown before a match and are never used; "
                  "only roster-level results are rated. Roster changes are not tracked: re-key a team after a rebuild.")
-_TENNIS_NOTE = ("Results-only rating: surface, serve/return statistics, fatigue and best-of format are not "
-                "modelled yet. Keep qualifying and main draw, and singles and doubles, in separate imports. "
-                "Walkovers must not be imported as results.")
+_TENNIS_NOTE = ("Doubles has no reachable data: results-only rating of pairs via CSV import. Singles leagues "
+                "are handled by the tennis plugin. Walkovers must not be imported as results.")
 _MULTI_NOTE = "Field events need a finish-distribution model that is not implemented; results can be stored only."
 
 #: key -> (sport, name, gender, level, discipline, options, notes)
@@ -56,12 +55,6 @@ GENERIC_LEAGUES: Dict[str, Tuple[str, str, str, str, Optional[str], GenericOptio
     "badminton_xd": ("badminton", "Badminton mixed doubles", "mixed", "pro", "doubles", GenericOptions(home_adv=False), ""),
     "tabletennis_ms": ("table_tennis", "Table tennis men's singles", "men", "pro", "singles", GenericOptions(home_adv=False), ""),
     "tabletennis_ws": ("table_tennis", "Table tennis women's singles", "women", "pro", "singles", GenericOptions(home_adv=False), ""),
-    "atp": ("tennis", "ATP Tour main draw singles", "men", "tour", "singles", GenericOptions(home_adv=False), _TENNIS_NOTE),
-    "atp_challenger": ("tennis", "ATP Challenger singles", "men", "challenger", "singles", GenericOptions(home_adv=False), _TENNIS_NOTE),
-    "itf_men": ("tennis", "ITF men's singles", "men", "itf", "singles", GenericOptions(home_adv=False), _TENNIS_NOTE),
-    "wta": ("tennis", "WTA Tour main draw singles", "women", "tour", "singles", GenericOptions(home_adv=False), _TENNIS_NOTE),
-    "wta_125": ("tennis", "WTA 125 singles", "women", "wta125", "singles", GenericOptions(home_adv=False), _TENNIS_NOTE),
-    "itf_women": ("tennis", "ITF women's singles", "women", "itf", "singles", GenericOptions(home_adv=False), _TENNIS_NOTE),
     "atp_doubles": ("tennis", "ATP Tour doubles", "men", "tour", "doubles", GenericOptions(home_adv=False), _TENNIS_NOTE),
     "wta_doubles": ("tennis", "WTA Tour doubles", "women", "tour", "doubles", GenericOptions(home_adv=False), _TENNIS_NOTE),
     "ufc": ("mma", "UFC", "open", "pro", None, GenericOptions(home_adv=False, season_carry=1.0),

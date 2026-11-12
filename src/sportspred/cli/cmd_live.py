@@ -46,6 +46,32 @@ def register(main: click.Group) -> None:
                    f"events; {out['unknown_teams']} rows for teams not in the store were skipped.")
         click.echo("Re-run `sportspred predict` to update statuses.")
 
+    @live.command("nba-injury-report")
+    @pass_ctx
+    def live_nba_report(ctx: Context) -> None:
+        """Official NBA injury report (public archive of every published version)."""
+        from ..adapters.http import Fetcher
+        from ..adapters.nba_injury_report import fetch_and_import
+        from ..core.timeutil import fmt_hst
+        from ..sports import DataUnavailable
+        from ..sports.basketball.adapter import SDV_LEAGUES, current_season_label
+
+        try:
+            out = fetch_and_import(ctx.store, Fetcher(ctx.settings.paths.raw, retries=2),
+                                   current_season_label(SDV_LEAGUES["nba"]))
+        except DataUnavailable as exc:
+            raise click.ClickException(f"{exc}\nNothing was recorded.") from exc
+        if out["version_utc"] is None:
+            click.echo("The archive holds no report version yet.")
+            return
+        click.echo(f"Newest report version in the archive: published {fmt_hst(out['version_utc'])}.")
+        click.echo(f"{out['statements']} availability statements stored; injury-report check logged as reported for "
+                   f"{out['teams_reported']} teams, nothing listed for {out['teams_nothing_listed']}, not yet "
+                   f"submitted for {out['teams_not_submitted']}"
+                   + (f" ({', '.join(out['not_submitted'])})" if out.get("not_submitted") else "") + ".")
+        click.echo("Freshness is judged from the publication time above. The archive lags the league's live report, "
+                   "so a version this old may not satisfy the re-check window. Re-run `sportspred predict`.")
+
     @live.command("scoreboard")
     @click.option("--league", required=True)
     @click.option("--date", "day", default=None, help="US schedule date YYYYMMDD (default: ESPN's current day).")

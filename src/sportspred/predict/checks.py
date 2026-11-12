@@ -1,8 +1,9 @@
 """Evaluation of the configured pregame checks for one event.
 
 A check is COMPLETE only when information is on file, is no older than its
-freshness window, and (where configured) was collected close enough to the
-start.  "The source was checked and listed nothing" completes a check; "the
+freshness window, and (where configured) dates from close enough to the start.
+Age is measured from the source's publication time when it states one,
+otherwise from the time the check was made.  "The source was checked and listed nothing" completes a check; "the
 source has not been checked" does not.
 """
 
@@ -83,12 +84,17 @@ def evaluate_checks(
                 entry.update(state=CheckState.MISSING.value,
                              detail=f"nothing on file for {label}. Needed: {window}.")
             else:
-                checked = pd.Timestamp(hit["checked_at_utc"])
+                # The information is as old as its publication, not as recent
+                # as our download of it: when the source states a publication
+                # time, freshness is measured from that time.
+                has_pub = isinstance(hit["published_at_utc"], str) and hit["published_at_utc"]
+                checked = pd.Timestamp(hit["published_at_utc"] if has_pub else hit["checked_at_utc"])
                 age = (now - checked).total_seconds() / 3600.0
                 entry.update(checked_at_utc=hit["checked_at_utc"], published_at_utc=hit["published_at_utc"],
                              source_id=hit["source_id"])
                 found = "nothing listed" if hit["outcome"] == "nothing_listed" else "report on file"
-                when = f"{found} for {label}, checked {fmt_hst(checked)} ({age:.1f} h ago)"
+                when = (f"{found} for {label}, {'published' if has_pub else 'checked'} {fmt_hst(checked)} "
+                        f"({age:.1f} h ago)")
                 if age > max_age:
                     entry.update(state=CheckState.STALE.value, detail=f"{when}: older than {max_age:g} hours.")
                 elif recheck is not None and (start - checked).total_seconds() / 3600.0 > float(recheck):

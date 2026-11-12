@@ -164,7 +164,7 @@ def predict_league(
         P, low, high = pred["P"][0], pred["low"][0], pred["high"][0]
         k = int(np.argmax(P))
         line = None
-        if "line" in row.index and row["line"] == row["line"]:
+        if frame.outcome == OutcomeType.OVER_UNDER and "line" in row.index and row["line"] == row["line"]:
             line = float(row["line"])
         labels = _class_labels(frame, row, names, line)
         cls = frame.classes[k]
@@ -267,7 +267,7 @@ def predict_league(
             "stage": ev["stage"],
             "side_a": names.get(row["side_a_id"], row["side_a_id"]),
             "side_b": names.get(row["side_b_id"], row["side_b_id"]),
-            "side_a_role": "home" if "home" in frame.classes else "a",
+            "side_a_role": "home" if ev["home_id"] == row["side_a_id"] else "a",
             "start_hst": fmt_hst(ev["start_time_utc"], date_only=precision_date),
             "start_utc": iso_z(ev["start_time_utc"]),
             "venue": ev["venue_name"], "venue_city": ev["venue_city"],

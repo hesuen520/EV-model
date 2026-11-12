@@ -129,6 +129,22 @@ def _by_block(frame: pd.DataFrame, classes: Sequence[str]) -> List[Dict[str, Any
     return rows
 
 
+def _stability(selected: pd.DataFrame, reference: pd.DataFrame, classes: Sequence[str]) -> Dict[str, Any]:
+    """Block-by-block log loss of the selected model against a reference on
+    the same events: does the improvement hold in every season, or only on
+    average?"""
+    ref = reference.set_index("event_id").loc[selected["event_id"]].reset_index()
+    rows = []
+    for block, part in selected.groupby("block", sort=False):
+        other = ref[ref["block"] == block]
+        ll_sel = M.log_loss(_P(part, classes), _y(part))
+        ll_ref = M.log_loss(_P(other, classes), _y(other))
+        rows.append({"block": str(block), "n": int(len(part)), "log_loss_selected": ll_sel,
+                     "log_loss_reference": ll_ref, "improvement": ll_ref - ll_sel})
+    better = sum(1 for r in rows if r["improvement"] > 0)
+    return {"blocks": len(rows), "blocks_improved": better, "by_block": rows}
+
+
 def _pass_rule(frame: pd.DataFrame, classes: Sequence[str], grid: Sequence[float]) -> List[Dict[str, Any]]:
     """Performance and coverage when events whose top probability is below a
     threshold are passed.  Reported, never tuned on the final period."""
@@ -342,6 +358,13 @@ def run_validation(
         "reliability": M.reliability_table(_P(sel_dev, classes), _y(sel_dev)),
         "reliability_selected_outcome": M.reliability_table(_P(sel_dev, classes), _y(sel_dev), top_label=True),
         "pass_rule": _pass_rule(sel_dev, classes, cfg.pass_grid),
+        "stability_vs_baselines": {
+            c.name: _stability(sel_dev, dev_oos[c.name], classes)
+            for c in candidates if c.is_baseline and c.name != selected
+        },
+    }
+    final_block["stability_vs_baselines"] = {
+        n: _stability(sel_final, final_oos[n], classes) for n in report_names if n != selected
     }
 
     # ----------------------------------------------------- market benchmark

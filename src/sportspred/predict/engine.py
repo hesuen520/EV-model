@@ -58,16 +58,31 @@ def load_promoted(store: Any, league: str, market: str) -> FittedModel:
     return FittedModel.load(meta["artifact_path"])
 
 
-def _class_labels(frame: FeatureFrame, row: Mapping[str, Any], names: Mapping[str, str]) -> Dict[str, Tuple[str, str]]:
-    """class name -> (selection id, display label)."""
+def _class_labels(frame: FeatureFrame, row: Mapping[str, Any], names: Mapping[str, str],
+                  line: Optional[float]) -> Dict[str, Tuple[str, str]]:
+    """class name -> (selection id, display label).
+
+    Conventions: for spread markets ``line`` is the handicap applied to side A
+    (the home side), negative when side A is favoured, so side A covers when
+    ``margin_A + line > 0`` and side B's handicap is ``-line``.  For totals
+    the classes are ``under`` / ``over`` at ``line``.
+    """
+    name_a = names.get(row["side_a_id"], row["side_a_id"])
+    name_b = names.get(row["side_b_id"], row["side_b_id"])
     out: Dict[str, Tuple[str, str]] = {}
     for cls in frame.classes:
         if cls in ("home", "a"):
-            out[cls] = (row["side_a_id"], names.get(row["side_a_id"], row["side_a_id"]))
+            out[cls] = (row["side_a_id"], name_a)
         elif cls in ("away", "b"):
-            out[cls] = (row["side_b_id"], names.get(row["side_b_id"], row["side_b_id"]))
+            out[cls] = (row["side_b_id"], name_b)
+        elif cls in ("home_cover", "a_cover"):
+            out[cls] = (row["side_a_id"], name_a if line is None else f"{name_a} {line:+g}")
+        elif cls in ("away_cover", "b_cover"):
+            out[cls] = (row["side_b_id"], name_b if line is None else f"{name_b} {-line:+g}")
+        elif cls in ("over", "under"):
+            out[cls] = (cls, cls.capitalize() if line is None else f"{cls.capitalize()} {line:g}")
         else:
-            out[cls] = (cls, cls.capitalize())
+            out[cls] = (cls, cls.replace("_", " ").capitalize())
     return out
 
 
@@ -148,11 +163,23 @@ def predict_league(
         pred = model.predict(pd.DataFrame([row]))
         P, low, high = pred["P"][0], pred["low"][0], pred["high"][0]
         k = int(np.argmax(P))
-        labels = _class_labels(frame, row, names)
+        line = None
+        if "line" in row.index and row["line"] == row["line"]:
+            line = float(row["line"])
+        labels = _class_labels(frame, row, names, line)
         cls = frame.classes[k]
         selection, selection_label = labels[cls]
-        prob, prob_low, prob_high = float(P[k]), float(low[k]), float(high[k])
-        probs = {labels[c][0]: float(P[i]) for i, c in enumerate(frame.classes)}
+        # A plugin may supply the probability of an exact tie against the line
+        # (``p_push``); the class probabilities are then conditional on no push
+        # and are scaled so that the recorded distribution includes the push.
+        p_push = 0.0
+        if "p_push" in row.index and row["p_push"] == row["p_push"]:
+            p_push = float(min(max(row["p_push"], 0.0), 0.5))
+        scale = 1.0 - p_push
+        prob, prob_low, prob_high = float(P[k]) * scale, float(low[k]) * scale, float(high[k]) * scale
+        probs = {labels[c][0]: float(P[i]) * scale for i, c in enumerate(frame.classes)}
+        if p_push > 0.0:
+            probs["push"] = p_push
 
         checks = evaluate_checks(specs, row, check_log, now=now_ts, settings=settings, names=names)
         missing = [c for c in feature_names if c in row.index and row[c] != row[c]]
@@ -183,7 +210,8 @@ def predict_league(
             reasons.append("Re-run the prediction once these checks are on file; no confirmation time is assumed.")
         else:
             # ---- 3. CONDITIONAL: does the selection survive its own side's doubts sitting out?
-            pick_side = "a" if cls in ("home", "a") else ("b" if cls in ("away", "b") else None)
+            pick_side = ("a" if cls in ("home", "a", "home_cover", "a_cover") else
+                         "b" if cls in ("away", "b", "away_cover", "b_cover") else None)
             doubts = effect.uncertain_a if pick_side == "a" else effect.uncertain_b if pick_side == "b" else []
             if doubts:
                 worst = effect.worst_case_rows.get(pick_side) if pick_side else None
@@ -211,7 +239,7 @@ def predict_league(
         if contrib is not None:
             contributions = {c: float(contrib.iloc[0][c]) for c in contrib.columns}
         row_for_explain = row.copy()
-        row_for_explain["_pick_is_a"] = cls in ("home", "a")
+        row_for_explain["_pick_is_a"] = cls in ("home", "a", "home_cover", "a_cover")
         explanation = plugin.explain(league, market, row_for_explain, frame, contributions)
         explanation.availability_assumptions += effect.applied + effect.unmatched
         for side_name, items in ((names.get(row["side_a_id"]), effect.uncertain_a),
@@ -244,7 +272,7 @@ def predict_league(
             "start_utc": iso_z(ev["start_time_utc"]),
             "venue": ev["venue_name"], "venue_city": ev["venue_city"],
             "neutral_site": None if ev["neutral_site"] != ev["neutral_site"] else bool(ev["neutral_site"]),
-            "market": market, "market_note": decl.note, "line": None,
+            "market": market, "market_note": decl.note, "line": line,
             "status_definition": REC_STATUS_DEFINITIONS[status],
             "last_check_hst": fmt_hst(now_dt),
         }
@@ -256,7 +284,7 @@ def predict_league(
                    for _, r in src.iterrows()]
         snapshot = {c: (None if row[c] != row[c] else float(row[c])) for c in feature_names if c in row.index}
         record: Dict[str, Any] = {
-            "created_at_utc": iso_z(now_dt), "event_id": row["event_id"], "market": market, "line": None,
+            "created_at_utc": iso_z(now_dt), "event_id": row["event_id"], "market": market, "line": line,
             "selection": selection,
             "selection_label": selection_label, "prob": prob, "prob_low": prob_low, "prob_high": prob_high,
             "probs": probs, "model_name": model.model_name, "model_version": model.model_version,

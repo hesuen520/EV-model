@@ -48,6 +48,8 @@ def print_validation(report: dict) -> None:
              "brier": _fmt(c["dev"]["brier"], 5), "ece": _fmt(c["dev"]["ece"])} for c in report["candidates"]]
     click.echo("  " + pd.DataFrame(rows).to_string(index=False).replace("\n", "\n  "))
     click.echo(f"  selected: {report['selected_model']} ({report['selection_note']})")
+    for name, st in (d.get("stability_vs_baselines") or {}).items():
+        click.echo(f"  season-by-season: beats {name} in {st['blocks_improved']} of {st['blocks']} development seasons")
     s = f["selected"]
     click.echo(f"\n  Final test ({s['first_event'][:10]} .. {s['last_event'][:10]}, n={s['n']}):")
     click.echo(f"    accuracy {_fmt(s['accuracy'])} [{_fmt(s['accuracy_ci'][0])}, {_fmt(s['accuracy_ci'][1])}]"

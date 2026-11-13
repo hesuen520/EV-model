@@ -201,6 +201,10 @@ machine's clock, which is stored and hashed with the row, so a prediction
 cannot be written afterwards with an earlier time. And an event that has only
 a date is closed once that date has begun anywhere in the world.
 
+Combos are recorded under the same rules (after their legs, before any leg's
+event, at the machine's time) and `ledger verify` checks them as well. Writers
+are serialised, so two processes recording at once cannot break the chain.
+
 What it cannot prove: that the machine's clock was right, or that the newest
 rows were never removed - `ledger verify` prints the head hash and the count
 so you can keep them somewhere else.

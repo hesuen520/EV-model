@@ -326,9 +326,19 @@ def open_paper_positions(store: Any, evaluations: pd.DataFrame, *, settings: Opt
     settings = settings or Settings()
     if evaluations.empty:
         return 0
+    eligible = evaluations[evaluations["eligible"]]
+    stamp = iso_z(now or utcnow())
+    # Like the ledger: a paper position on a real event is recorded at the machine's own
+    # time, so a track record cannot be assembled afterwards with earlier timestamps.
+    tolerance = getattr(store, "wall_clock_tolerance_seconds", None)
+    if len(eligible) and tolerance is not None:
+        real = store.predictions(include_synthetic=False)
+        if eligible["prediction_id"].isin(set(real["prediction_id"])).any() and abs(
+                (parse_ts(stamp) - utcnow()).total_seconds()) > tolerance:
+            raise ValueError(f"paper positions on real events are recorded at the machine's time, not at {stamp}")
     n = 0
     with store.conn() as con:
-        for _, e in evaluations[evaluations["eligible"]].iterrows():
+        for _, e in eligible.iterrows():
             pid = stable_id("pos", e["prediction_id"], e["price_id"])
             detail = {k: (None if isinstance(e[k], float) and e[k] != e[k] else e[k]) for k in
                       ("model_prob", "raw_implied_prob", "no_vig_prob", "breakeven_prob", "edge", "ev_per_unit",
@@ -336,7 +346,7 @@ def open_paper_positions(store: Any, evaluations: pd.DataFrame, *, settings: Opt
             cur = con.execute(
                 "INSERT OR IGNORE INTO paper_positions (position_id, created_at_utc, prediction_id, price_id, stake, "
                 "detail_json, mode) VALUES (?,?,?,?,?,?, 'paper')",
-                (pid, iso_z(now or utcnow()), e["prediction_id"], e["price_id"], float(settings.ev.paper_stake),
+                (pid, stamp, e["prediction_id"], e["price_id"], float(settings.ev.paper_stake),
                  json.dumps(detail, default=str)))
             n += cur.rowcount
     return n

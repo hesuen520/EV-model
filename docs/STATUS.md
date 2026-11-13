@@ -170,6 +170,43 @@ cancels in every feature); a two-week tennis event counts as finished after
 its first week; eight pairs of college games that may be duplicates were not
 investigated.
 
+**5. The fixes themselves.** Four further reviewers were each given two
+areas and told to try to break the fixes above, not to confirm them. *Held
+under attack:* three-way grading in mixed leagues, the reschedule rule at
+every boundary tried, one current prediction per event and market, combos
+and slates judged on the event's current state, the exact PASS message, the
+ledger's clock rule for predictions (including through the engine and the
+command line), the migration of an older store, conditional status for
+totals and draws, the model-mismatch rule, the push-probability arithmetic,
+supersession of injury reports, the stale-statement and roster-snapshot
+rules, and tennis name matching for CSV fixtures. *Broken or found beside
+them, and fixed* (each with a regression test):
+
+- results and check records imported by CSV could attach to the wrong event
+  when an earlier event had no ID;
+- combos could still be backdated, and two writers at once could break the
+  ledger's hash chain permanently;
+- paper settlement booked a game with no score as a loss; the EV evaluation
+  and the dashboard ignored a cancellation or a move; the dashboard kept
+  showing an earlier combo run;
+- "NaN" was accepted as a score; the same-day timed/untimed check could be
+  bypassed with a different spelling or an event already on file;
+- which injury report is "newest" went by when it was read, not when it was
+  published; a list that dropped a team with no game soon never cleared it;
+- an event marked final without a score counted as a result; short histories
+  gave a wrong "typical break".
+
+@@VERIFY_D@@
+
+*Found and not fixed:* an event imported without an ID and then moved across
+midnight UTC becomes a second event (give events an `event_id`); the
+reschedule rule's window for a date-only event (14 hours before to 36 hours
+after its stored instant) does not know the league's time zone, so a game
+moved to the next local day can fall inside it; a source that stopped less
+than 1.5 typical off-seasons ago, with no unplayed fixtures listed, still
+counts as current; "latest prediction per event and market" would keep only
+one of two players' props for one event (props are not generated yet).
+
 **Not independently audited:** the results-only CSV model beyond its feature
 builder, the EV module's maths, the dashboard, and the adapters written for
 hosts that could not be reached (ESPN, The Odds API). Whether any rule,

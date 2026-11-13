@@ -55,6 +55,13 @@ def graded_frame(store: Any, *, include_synthetic: bool = False) -> pd.DataFrame
     # belongs to the one ``player_prop:points`` model.
     df["ledger_market"] = df["market"]
     df["market"] = [model_market(m) for m in df["market"]]
+    # A push is neither hit nor miss, so what the hit rate is compared with is the
+    # probability given a decision.  ``prob`` here is that; ``prob_recorded`` is the
+    # probability of winning as recorded (the push being an outcome of its own).
+    push = np.array([float(json.loads(p).get("push", 0.0) or 0.0) if isinstance(p, str) else 0.0
+                     for p in df["probs_json"]])
+    df["prob_recorded"] = df["prob"]
+    df["prob"] = df["prob"] / np.clip(1.0 - push, 1e-9, None)
     return df
 
 
@@ -244,6 +251,7 @@ def propose_lessons(store: Any, *, min_reviews: int = 20) -> List[str]:
     if reviews.empty:
         return []
     preds = store.predictions(include_synthetic=True)[["prediction_id", "league", "market"]]
+    preds = preds.assign(market=[model_market(m) for m in preds["market"]])      # one group per model
     df = reviews.merge(preds, on="prediction_id")
     existing = set(lessons(store)["title"])
     created: List[str] = []

@@ -104,6 +104,24 @@ def _total(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> Tuple[
     return ("correct" if (pred["selection"] == "over") == (total > line) else "incorrect"), detail
 
 
+_BOX_CACHE: Dict[Tuple[str, str], Tuple[int, Any]] = {}
+
+
+def _box_score(store: Any, league: str, event_id: str) -> pd.DataFrame:
+    """Box-score rows of one game.  The league's table is read once per file
+    version and grouped by game, not once per graded prediction."""
+    path = store._table_path(league, "player_box")
+    stamp = path.stat().st_mtime_ns
+    cached = _BOX_CACHE.get((str(store.root), league))
+    if cached is None or cached[0] != stamp:
+        box = store.read_table(league, "player_box")
+        cached = (stamp, {k: g for k, g in box.groupby("event_id", sort=False)})
+        _BOX_CACHE.clear()
+        _BOX_CACHE[(str(store.root), league)] = cached
+    game = cached[1].get(event_id)
+    return game if game is not None else pd.DataFrame(columns=["team_id", "player_id", "minutes"])
+
+
 def _player_prop(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> Tuple[str, Dict[str, Any]]:
     # ``player_prop:<stat>:<player id>``; older records carry the player in their display data.
     parts = pred["market"].split(":")
@@ -113,8 +131,13 @@ def _player_prop(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> 
     player_id = parts[2] if len(parts) > 2 else meta.get("player_id")
     if cols is None or player_id is None or not store.has_table(ev["league"], "player_box"):
         return "no_result", {"note": f"cannot grade statistic {stat!r} from the data on file"}
-    box = store.read_table(ev["league"], "player_box")
-    row = box[(box["event_id"] == ev["event_id"]) & (box["player_id"].astype(str) == str(player_id))]
+    game = _box_score(store, ev["league"], ev["event_id"])
+    # "He did not play" can only be read from a box score that is there.  A result can be
+    # on file before its box score; until both teams' players are listed nothing is graded.
+    appeared = game[pd.to_numeric(game["minutes"], errors="coerce") > 0]
+    if appeared["team_id"].nunique() < 2:
+        return "no_result", {"note": "the box score of this game is not on file yet"}
+    row = game[game["player_id"].astype(str) == str(player_id)]
     minutes = row.iloc[0]["minutes"] if len(row) else None
     if row.empty or minutes is None or minutes != minutes or float(minutes) <= 0:
         return "void", {"note": "player did not play"}

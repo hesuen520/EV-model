@@ -28,7 +28,7 @@ import math
 
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Tuple, Any, Dict, List, Optional, Sequence, Union
 
 import pandas as pd
 
@@ -447,6 +447,10 @@ def import_checks(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
     return {"checks": len(rows)}
 
 
+#: A game that started within this many hours of a reading is the one the reading is about.
+_RECENT_START_HOURS = 6.0
+
+
 def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[str] = None,
                       collected_at: Any = None, horizon_hours: float = 72.0) -> Dict[str, int]:
     """Thresholds of player-statistic markets, as read by the user.
@@ -477,6 +481,9 @@ def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[s
     with_id = known.dropna(subset=["provider_event_id"])
     by_native = dict(zip(with_id["provider_event_id"], with_id["event_id"]))
     rosters: Dict[str, pd.DataFrame] = {}
+    team_events = store.events(league, with_results=False, include_synthetic=league.startswith("demo_"))
+    team_events = team_events[~team_events["status"].isin(["canceled", "postponed"])]
+    seen: Dict[tuple, Tuple[float, int]] = {}
     rows = []
     # Real leagues are tied to the machine clock, as the ledger is; synthetic leagues and
     # tests replay other dates (the same switch as ``Store.wall_clock_tolerance_seconds``).
@@ -492,8 +499,8 @@ def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[s
         value = _num(row, "line", line_no, errors)
         if value is None and _cell(row, "line") is None:
             errors.append(f"line {line_no}: line is required")
-        elif value is not None and (value < 0 or (2.0 * value) != round(2.0 * value)):
-            errors.append(f"line {line_no}: line {row['line']!r} must be a whole or half number, zero or more")
+        elif value is not None and (value < 0.5 or (2.0 * value) != round(2.0 * value)):
+            errors.append(f"line {line_no}: line {row['line']!r} must be a whole or half number, one half or more")
         collected = _time(_cell(row, "collected_at"), tz, line_no, "collected_at", errors) or default_collected
         if clock_limit is not None and collected > clock_limit:
             errors.append(f"line {line_no}: collected_at {collected} is in the future; a threshold cannot have "
@@ -517,7 +524,18 @@ def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[s
                 errors.append(f"line {line_no}: no upcoming game {native!r} of {row['team']} on file at {collected}")
                 continue
         else:
-            limit = pd.Timestamp(collected) + pd.Timedelta(hours=horizon_hours)
+            # A threshold read while the team is playing (or just after) belongs to that game,
+            # not to the next one: say so instead of attaching it to a later game.
+            read_at = pd.Timestamp(collected)
+            under_way = team_events[((team_events["home_id"] == team_id) | (team_events["away_id"] == team_id))
+                                    & (team_events["start_time_utc"] <= read_at)
+                                    & (team_events["start_time_utc"] > read_at - pd.Timedelta(hours=_RECENT_START_HOURS))]
+            if len(under_way):
+                began = iso_z(under_way["start_time_utc"].max())
+                errors.append(f"line {line_no}: {row['team']} have a game that started at {began}, before this "
+                              f"threshold was read ({collected}); a threshold for a later game needs its event_id")
+                continue
+            limit = read_at + pd.Timedelta(hours=horizon_hours)
             games = pool[pool["start_time_utc"] <= limit]
             if games.empty:
                 errors.append(f"line {line_no}: {row['team']} have no scheduled game within {horizon_hours:g} hours "
@@ -537,6 +555,13 @@ def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[s
         if not bool(match["modelled"].iloc[0]):
             errors.append(f"line {line_no}: {player!r} is outside the modelled rotation (too few games or minutes)")
             continue
+        market_key = (event_id, str(match["player_id"].iloc[0]), stat, collected)
+        if value is not None and market_key in seen and seen[market_key][0] != value:
+            errors.append(f"line {line_no}: a different threshold ({seen[market_key][0]:g}) for the same player, "
+                          f"statistic and collection time is on line {seen[market_key][1]}; only one can be in force")
+            continue
+        if value is not None:
+            seen.setdefault(market_key, (value, line_no))
         rows.append({"league": league, "event_id": event_id, "team_id": team_id,
                      "player_id": str(match["player_id"].iloc[0]), "player_name": str(match["player_name"].iloc[0]),
                      "stat": stat, "line": value, "book": _cell(row, "book"), "collected_at_utc": collected})

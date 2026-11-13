@@ -60,6 +60,17 @@ def evaluate_checks(
             continue
         max_age = float(settings.selection.max_age_hours.get(spec.key, spec.max_age_hours))
         recheck = settings.selection.recheck_within_hours.get(spec.key, spec.recheck_within_hours)
+        if spec.key == "box_scores_complete":
+            missing = int(row.get("n_box_missing", 0) or 0)
+            out.append({
+                "key": spec.key, "label": spec.label, "subject": "event",
+                "state": (CheckState.COMPLETE if missing == 0 else CheckState.MISSING).value,
+                "detail": ("the box score of every recent game of both sides is on file" if missing == 0 else
+                           f"{missing} recent finished game(s) of these sides have a result but no box score on "
+                           "file; player inputs are a game behind until it is ingested"),
+                "checked_at_utc": iso_z(now), "published_at_utc": None, "source_id": None,
+            })
+            continue
         if spec.key == "prior_games_complete":
             pending = int(row.get("n_pending_prior", 0) or 0)
             out.append({

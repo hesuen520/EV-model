@@ -37,7 +37,7 @@ from sklearn.preprocessing import StandardScaler
 from ..sports.base import Candidate
 
 __all__ = ["CountCandidate", "ColumnMean", "ProductMean", "TwoStageMean", "count_probabilities",
-           "fit_dispersion", "nb_alpha"]
+           "threshold_probabilities", "fit_dispersion", "nb_alpha"]
 
 _MU_FLOOR = 0.05
 
@@ -83,7 +83,30 @@ def count_probabilities(mu: np.ndarray, line: np.ndarray, params: Optional[Tuple
     below = _cdf(np.ceil(line) - 1.0, mu, alpha)                # P(count < line)
     over = np.clip(1.0 - at_or_below, 0.0, 1.0)
     under = np.clip(below, 0.0, 1.0)
-    push = np.clip(1.0 - over - under, 0.0, 1.0)
+    whole = line == np.floor(line)
+    # Off a whole number there is no tie at all - not even a rounding remainder.
+    push = np.where(whole, np.clip(1.0 - over - under, 0.0, 1.0), 0.0)
+    under = np.where(whole, under, 1.0 - over)
+    return under, push, over
+
+
+def threshold_probabilities(over_at: Any, line: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """``(P(under), P(push), P(over))`` from one function of half-point
+    thresholds.
+
+    ``over_at(h)`` gives the (calibrated) probability of finishing above each
+    half-point threshold ``h``.  A whole-number threshold ``L`` is read at the
+    half points either side: over ``L`` is over ``L + 0.5``, under ``L`` is
+    not over ``L - 0.5``, and the tie is what remains.  One event then has one
+    probability whichever threshold it is asked through - "over 23" and "over
+    23.5" are the same event - and the three always sum to one."""
+    line = np.asarray(line, dtype=float)
+    whole = line == np.floor(line)
+    over = np.asarray(over_at(np.where(whole, line + 0.5, line)), dtype=float)
+    not_under = np.asarray(over_at(np.where(whole, np.maximum(line - 0.5, 0.5), line)), dtype=float)
+    under = np.where(whole & (line < 1.0), 0.0, 1.0 - not_under)          # nothing is under zero
+    under = np.minimum(under, 1.0 - over)
+    push = np.where(whole, np.clip(1.0 - over - under, 0.0, 1.0), 0.0)
     return under, push, over
 
 

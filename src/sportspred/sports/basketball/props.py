@@ -96,6 +96,7 @@ class PropConfig:
     rotation_minutes: float = 12.0
     new_absence_games: int = 2         # an absence is "new" while he has missed at most this many
     rate_prior_minutes: float = 3.0    # league-rate minutes added to every per-minute rate (keeps it positive)
+    box_check_games: int = 2           # a box score missing from this many latest games holds a prediction back
     horizon_days: float = 8.0          # upcoming games further ahead get no rows
     burn_in_seasons: int = 1
     starter_minutes: float = 28.0      # boundary of the two reported segments
@@ -154,21 +155,40 @@ FEATURE_NOTES = {
 
 
 # --------------------------------------------------------------------- helpers
+def _hold_within_day(frame: pd.DataFrame, key: str, values: Any) -> Any:
+    """Pregame values of a second game on one day are those of the first.
+
+    A player or team almost never plays twice on one Pacific/Honolulu day, but
+    when one does, the later game must not see the earlier one: every input
+    of a slate comes from earlier days.  Rows that are not the group's first
+    of their day take that first row's values."""
+    later = frame.duplicated([key, "day"], keep="first").to_numpy()
+    if not later.any():
+        return values
+    first = frame.loc[~later, [key, "day"]].reset_index().rename(columns={"index": "_first"})
+    again = frame.loc[later, [key, "day"]].reset_index().rename(columns={"index": "_later"})
+    pairs = again.merge(first, on=[key, "day"], how="left")
+    out = values.copy()
+    out.loc[pairs["_later"].to_numpy()] = out.loc[pairs["_first"].to_numpy()].to_numpy()
+    return out
+
+
 def _ew(frame: pd.DataFrame, key: str, cols: Sequence[str], halflife: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Exponentially weighted means of ``cols`` within each ``key`` group, in
-    row order.  Returns ``(prior, post)``: the mean over the group's earlier
-    rows, and the mean including the row itself.  Rows with missing values
-    (games not played yet) are skipped and carry the last value forward."""
+    row order.  Returns ``(prior, post)``: the mean over the group's rows on
+    earlier days, and the mean including the row itself.  Rows with missing
+    values (games not played yet) are skipped and carry the last value forward."""
     post = frame.groupby(key, sort=False)[list(cols)].ewm(halflife=halflife, ignore_na=True).mean()
     post.index = post.index.droplevel(0)
     post = post.reindex(frame.index)
     prior = post.groupby(frame[key], sort=False).shift(1)
-    return prior, post
+    return _hold_within_day(frame, key, prior), post
 
 
 def _rolling_prior(frame: pd.DataFrame, key: str, col: str, window: int, min_periods: int, how: str) -> pd.Series:
-    """Rolling mean or median of ``col`` over the group's earlier *played* rows.
-    A row not played yet takes the value as it stood after the last game played."""
+    """Rolling mean or median of ``col`` over the group's *played* rows on
+    earlier days.  A row not played yet takes the value as it stood after the
+    last game played."""
     done = frame[frame["played"]]
     roll = done.groupby(key, sort=False)[col].rolling(window, min_periods=min_periods)
     post = roll.median() if how == "median" else roll.mean()        # includes the row itself
@@ -180,7 +200,7 @@ def _rolling_prior(frame: pd.DataFrame, key: str, col: str, window: int, min_per
     latest = pd.Series(last.to_numpy(), index=done.loc[last.index, key].to_numpy())
     ahead = frame.index[~frame["played"].to_numpy()]
     out.loc[ahead] = frame.loc[ahead, key].map(latest).to_numpy()
-    return out
+    return _hold_within_day(frame, key, out)
 
 
 _CACHE: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
@@ -196,7 +216,16 @@ def _cache_key(store: Any, league: str, ev: pd.DataFrame, now_ts: pd.Timestamp, 
         stamps.append(path.stat().st_mtime_ns if path.exists() else None)
     done = ev[ev["done"]]
     ahead = ev[~ev["done"]]
-    reports_cut = now_ts.tz_convert("UTC").strftime("%Y-%m-%dT%H") if stamps[1] is not None else None
+    # Which report versions exist as of ``now``: counted, not rounded to a clock hour
+    # (most versions are published at half past).
+    reports_cut = None
+    if stamps[1] is not None:
+        now_iso = now_ts.tz_convert("UTC").strftime("%Y-%m-%dT%H:%M:%SZ")
+        listed = store.read_table(league, "pregame_report", columns=["published_at_utc"])
+        reports_cut = int((listed["published_at_utc"] <= now_iso).sum())
+        if stamps[2] is not None:
+            games = store.read_table(league, "pregame_report_games", columns=["published_at_utc"])
+            reports_cut = (reports_cut, int((games["published_at_utc"] <= now_iso).sum()))
     return (str(store.root), league, cfg, tuple(stamps), int(len(done)),
             str(done["start_time_utc"].max()) if len(done) else "", str(done["status"].count()),
             hash(tuple(ahead["event_id"])), str(pd.util.hash_pandas_object(
@@ -263,10 +292,10 @@ def _base(store: Any, league: str, now_ts: pd.Timestamp, cfg: PropConfig) -> Dic
 
     g = pg.groupby("player_id", sort=False)
     is_played = pg["played"].astype(float)
-    pg["gp_prior"] = g["played"].cumsum() - is_played
+    pg["gp_prior"] = _hold_within_day(pg, "player_id", g["played"].cumsum() - is_played)
     season_key = pg["player_id"] + "|" + pg["season"].astype(str)
     gs = pg.groupby(season_key, sort=False)
-    pg["gp_season"] = gs["played"].cumsum() - is_played
+    pg["gp_season"] = _hold_within_day(pg, "player_id", gs["played"].cumsum() - is_played)
 
     fast_prior, fast_post = _ew(pg, "player_id", ["minutes", "starter"], cfg.minutes_halflife)
     rate_prior, rate_post = _ew(pg, "player_id", ["minutes", "fga", "fta", "fg3a", *stat_cols], cfg.rate_halflife)
@@ -275,12 +304,12 @@ def _base(store: Any, league: str, now_ts: pd.Timestamp, cfg: PropConfig) -> Dic
     pg["min_long"] = long_prior["minutes"]
     pg["min_last3"] = _rolling_prior(pg, "player_id", "minutes", 3, 2, "mean")
     filled = pg["minutes"].fillna(0.0)
-    season_sum = filled.groupby(season_key, sort=False).cumsum() - filled
+    season_sum = _hold_within_day(pg, "player_id", filled.groupby(season_key, sort=False).cumsum() - filled)
     pg["min_season"] = (season_sum / pg["gp_season"]).where(pg["gp_season"] > 0)
 
     # Days since his previous game.  For a game two ahead that is the upcoming game before it:
     # he is assumed to play it, which is what the schedule says and all that can be known.
-    rest = (pg["day"] - g["day"].shift(1)).clip(upper=10.0)
+    rest = _hold_within_day(pg, "player_id", (pg["day"] - g["day"].shift(1)).clip(upper=10.0))
     pg["rest_days"] = rest
     pg["b2b"] = (rest == 1).astype(float).where(rest.notna())
 
@@ -291,6 +320,18 @@ def _base(store: Any, league: str, now_ts: pd.Timestamp, cfg: PropConfig) -> Dic
     allowed = totals.rename(columns={"team_id": "opp_id", **{c: f"allowed_{c}" for c in stat_cols}})
     tg = tg.merge(allowed, on=["event_id", "opp_id"], how="left")
     allowed_cols = [f"allowed_{c}" for c in stat_cols]
+    # What a row's inputs rest on: earlier games of the season that are not final yet, and
+    # recent finished games whose box score is not on file (a result can arrive before it).
+    tg["has_box"] = tg[stat_cols[0]].notna()
+    not_final = (~tg["done"]).astype(float)
+    team_season = tg["team_id"] + "|" + tg["season"].astype(str)
+    tg["pending_before"] = _hold_within_day(
+        tg, "team_id", not_final.groupby(team_season, sort=False).cumsum() - not_final)
+    no_box = (tg["done"] & ~tg["has_box"]).astype(float)
+    recent = no_box.groupby(tg["team_id"], sort=False).rolling(cfg.box_check_games, min_periods=1).sum()
+    recent.index = recent.index.droplevel(0)
+    recent = recent.reindex(tg.index).groupby(tg["team_id"], sort=False).shift(1).fillna(0.0)
+    tg["box_missing_before"] = _hold_within_day(tg, "team_id", recent)
     opp_prior, _ = _ew(tg, "team_id", ["margin", *allowed_cols], cfg.opponent_halflife)
     tg["margin_ew"] = opp_prior["margin"]
     by_day = tg.groupby("day")[stat_cols].mean()                      # NaN on days with no finished game
@@ -300,12 +341,17 @@ def _base(store: Any, league: str, now_ts: pd.Timestamp, cfg: PropConfig) -> Dic
         tg[f"league_{c}"] = league_on[c].to_numpy()
         tg[f"opp_allow_ratio_{c}"] = (opp_prior[f"allowed_{c}"] / tg[f"league_{c}"]).to_numpy()
 
-    own = tg[["event_id", "team_id", "margin_ew", *[f"league_{c}" for c in stat_cols]]]
+    own = tg[["event_id", "team_id", "margin_ew", "pending_before", "box_missing_before",
+              *[f"league_{c}" for c in stat_cols]]]
     pg = pg.merge(own, on=["event_id", "team_id"], how="left")
-    opp = tg[["event_id", "team_id", "margin_ew", *[f"opp_allow_ratio_{c}" for c in stat_cols]]].rename(
-        columns={"team_id": "opp_id", "margin_ew": "opp_margin_ew"})
+    opp = tg[["event_id", "team_id", "margin_ew", "pending_before", "box_missing_before",
+              *[f"opp_allow_ratio_{c}" for c in stat_cols]]].rename(
+        columns={"team_id": "opp_id", "margin_ew": "opp_margin_ew", "pending_before": "opp_pending_before",
+                 "box_missing_before": "opp_box_missing_before"})
     pg = pg.merge(opp, on=["event_id", "opp_id"], how="left")
     pg["abs_margin_gap"] = (pg["margin_ew"] - pg["opp_margin_ew"]).abs()
+    pg["n_pending_prior"] = (pg["pending_before"].fillna(0) + pg["opp_pending_before"].fillna(0)).astype(int)
+    pg["n_box_missing"] = (pg["box_missing_before"].fillna(0) + pg["opp_box_missing_before"].fillna(0)).astype(int)
 
     # ---- per-minute rates, kept positive by a few minutes at the league rate
     k = cfg.rate_prior_minutes
@@ -319,8 +365,8 @@ def _base(store: Any, league: str, now_ts: pd.Timestamp, cfg: PropConfig) -> Dic
         add[f"log_rate_long_{c}"] = np.log((long_prior[c] + league_pm * k) / (den_long + k))
         add[f"log_opp_ratio_{c}"] = np.log(pg[f"opp_allow_ratio_{c}"].clip(lower=0.5, upper=2.0))
         cur = pg[c].fillna(0.0)
-        add[f"avg_season_{c}"] = ((cur.groupby(season_key, sort=False).cumsum() - cur) / pg["gp_season"]).where(
-            pg["gp_season"] > 0)
+        season_total = _hold_within_day(pg, "player_id", cur.groupby(season_key, sort=False).cumsum() - cur)
+        add[f"avg_season_{c}"] = (season_total / pg["gp_season"]).where(pg["gp_season"] > 0)
         add[f"ref_median_{c}"] = _rolling_prior(pg, "player_id", c, cfg.ref_window, cfg.min_prior_games, "median")
     for c in ("fga", "fta", "fg3a"):
         typical = 0.2                                                 # only sets the size of the floor
@@ -340,7 +386,10 @@ def _base(store: Any, league: str, now_ts: pd.Timestamp, cfg: PropConfig) -> Dic
             add[f"mates_new_out_share_{c}{tag}"] = out[f"_new_out_{c}{tag}"] / typical_total
     pg = pd.concat([pg, pd.DataFrame(add, index=pg.index)], axis=1)
 
-    result = {"pg": pg, "has_reports": covered is not None and len(covered) > 0, "rotation": rotation,
+    # Whether the league has a report history at all - not whether one was published by
+    # ``now``: a frame has the same columns whenever it is built (before the first report
+    # the report-based inputs simply equal the previous-game ones).
+    result = {"pg": pg, "has_reports": covered is not None, "rotation": rotation,
               "n_events": int(ev["done"].sum()), "covered": covered or set()}
     _CACHE.clear()
     _CACHE[key] = result
@@ -358,8 +407,8 @@ def _absences(pg: pd.DataFrame, tg: pd.DataFrame, min_post: np.ndarray, stat_pos
     (all seasons) or, in the ``_rep`` version, when the official report in
     force lists him as out or doubtful (where a report covers the game;
     elsewhere the two versions are equal).  The player's own entry is never
-    counted against himself.  State is updated only after a game, so a row
-    sees games on earlier days only.
+    counted against himself.  State is updated when a day ends, so a row sees
+    games on earlier days only - also in the rare case of two games on one day.
     """
     n, k = len(pg), stat_post.shape[1]
     names = ["mates_out_min", "mates_new_out_min"]
@@ -375,16 +424,38 @@ def _absences(pg: pd.DataFrame, tg: pd.DataFrame, min_post: np.ndarray, stat_pos
     state: Dict[str, Dict[str, Any]] = {}
     team_of: Dict[str, str] = {}
     zero = np.zeros(k)
+    waiting: List[Tuple[str, Any, str]] = []          # games of the current day, applied when the day ends
+
+    def apply_day() -> None:
+        for team, idx, start in waiting:
+            st = state[team]
+            games = st["games"]
+            for i in idx:
+                if not played[i]:
+                    continue
+                pid = player[i]
+                old = team_of.get(pid)
+                if old is not None and old != team and old in state:
+                    state[old]["players"].pop(pid, None)
+                team_of[pid] = team
+                st["players"][pid] = (games, float(min_post[i]), stat_post[i].copy(), keys[i], start)
+            st["games"] += 1
+        waiting.clear()
 
     starts = tg["start_time_utc"].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    for event_id, team, season, done, start in zip(tg["event_id"], tg["team_id"], tg["season"], tg["done"], starts):
+    today = None
+    for event_id, team, season, done, start, day in zip(tg["event_id"], tg["team_id"], tg["season"], tg["done"],
+                                                        starts, tg["day"]):
+        if day != today:
+            apply_day()
+            today = day
         st = state.get(team)
         if st is None or st["season"] != season:
             st = state[team] = {"season": season, "games": 0, "players": {}}
         idx = rows_of.get((event_id, team))
         if idx is None:
-            if done:
-                st["games"] += 1
+            # A finished game with no box score on file tells nothing about who played: it is
+            # not counted as a game anyone missed (the row carries ``n_box_missing`` instead).
             continue
         games = st["games"]
         listed = dict(reports.get((event_id, team), ())) if covered is not None and event_id in covered else None
@@ -424,16 +495,8 @@ def _absences(pg: pd.DataFrame, tg: pd.DataFrame, min_post: np.ndarray, stat_pos
                 out_stat[tag][i] = stats
                 new_stat[tag][i] = new_stats
         if done:
-            for i in idx:
-                if not played[i]:
-                    continue
-                pid = player[i]
-                old = team_of.get(pid)
-                if old is not None and old != team and old in state:
-                    state[old]["players"].pop(pid, None)
-                team_of[pid] = team
-                st["players"][pid] = (games, float(min_post[i]), stat_post[i].copy(), keys[i], start)
-            st["games"] += 1
+            waiting.append((team, idx, start))
+    apply_day()
 
     res["own_missed"] = own_missed
     # Each team's rotation as it stands after its latest game: what a statement published
@@ -491,6 +554,8 @@ def build_prop_frame(store: Any, league: str, stat: str, *, now: Any = None,
         "stat_value": np.where(is_played, value, np.nan),
         "minutes_played": np.where(is_played, src["minutes"].to_numpy(dtype=float), np.nan),
         "league_total": src[f"league_{c}"].to_numpy(dtype=float),
+        "n_pending_prior": src["n_pending_prior"].to_numpy(dtype=int),
+        "n_box_missing": src["n_box_missing"].to_numpy(dtype=int),
         "segment": np.where(src["min_ew"].to_numpy() >= cfg.starter_minutes,
                             f"expected {cfg.starter_minutes:g} minutes or more",
                             f"expected {cfg.min_expected_minutes:g} to {cfg.starter_minutes:g} minutes"),
@@ -609,64 +674,108 @@ def prop_candidates(stat: str, frame: FeatureFrame) -> List[Any]:
 
 # ---------------------------------------------------------------- availability
 _UNCERTAIN = ("questionable", "uncertain", "probable")
+_DOUBT = ("questionable", "uncertain")
 
 
 def apply_prop_availability(row: pd.Series, frame: FeatureFrame, availability: pd.DataFrame, effect: Any) -> Any:
     """Fold published availability into one player's row.
 
-    * The player himself: listed out - no selection can be made (the market
-      would be void); doubtful, questionable or probable - any selection is
-      conditional on him playing, and the effect of limited minutes is not
-      quantified.
-    * Team-mates: where statements for his team are on file, the rotation
-      team-mates listed out or doubtful replace the report-based absence
-      inputs (the same rule the history was built with).  Questionable
-      team-mates are assumed to play; the worst-case row assumes they sit.
+    * **The player himself.**  Listed out: no selection can be made (the
+      market would be void).  Doubtful, questionable or probable: any selection
+      is conditional on him playing, and limited minutes are not quantified.
+    * **Team-mates, when the model reads the report-based inputs and the
+      team's report has been read** (an injury-report check is on file for the
+      team): rotation team-mates listed out or doubtful replace those inputs -
+      the rule the history was built with, including "report read, nobody
+      listed".  Questionable team-mates are assumed to play; the worst-case
+      row assumes they sit.
+    * **Team-mates, otherwise** (the model takes absences from who missed the
+      previous game, or only stray statements are on file): nothing is
+      changed, and every listed team-mate the inputs do not already reflect is
+      a stated condition with an unquantified effect.  A statement never
+      silently counts as applied.
+    * A statement that matches nobody in the rotation is listed as such.
     * The opponent's absences are not an input of this model.
+
+    The engine supplies ``frame.extra["model_features"]`` (what the trained
+    model reads) and ``frame.extra["report_checked_teams"]`` (teams whose
+    injury report has been read).
     """
     effect.quantified = True
-    if availability is None or availability.empty:
-        return effect
     team = row["side_a_id"]
-    mine = availability[availability["team_id"] == team]
-    theirs = availability[availability["team_id"] == row["side_b_id"]]
+    checked = frame.extra.get("report_checked_teams")
+    report_read = checked is not None and team in checked
+    statements = availability if availability is not None else pd.DataFrame(columns=["team_id", "player_name", "status"])
+    mine = statements[statements["team_id"] == team] if len(statements) else statements
+    theirs = statements[statements["team_id"] == row["side_b_id"]] if len(statements) else statements
     if len(theirs):
         listed = "; ".join(f"{r['player_name']} ({r['status']})" for _, r in theirs.iterrows()
                            if str(r["status"]) != "available")
         if listed:
             effect.unmatched.append(f"opponent absences are not an input of this model: {listed}")
-    if mine.empty:
+    if mine.empty and not report_read:
         return effect
+
     rot = (frame.extra.get("rotation") or {}).get(team)
-    last_played = {p["key"]: p.get("last_played_utc") for p in (rot or {}).get("players", [])}
+    players = list((rot or {}).get("players", []))
+    last_played = {p["key"]: p.get("last_played_utc") for p in players}
+    own_key, own_id, name = person_key(row["player_name"]), str(row["player_id"]), row["player_name"]
     status_of: Dict[str, str] = {}
+    own: Optional[str] = None
     for _, r in mine.iterrows():
         key, status = person_key(r["player_name"]), str(r["status"])
+        is_own = key == own_key or str(r.get("player_id")) == own_id
         stated = r.get("published_at_utc")
         stated = stated if isinstance(stated, str) and stated else r.get("collected_at_utc")
-        played = last_played.get(key)
+        played = last_played.get(own_key if is_own else key)
         if status in ("out", "doubtful") and isinstance(stated, str) and played and stated < played:
             # He has played since he was listed: the statement is out of date.
             effect.unmatched.append(f"{r['player_name']} ({status}, stated {stated[:10]}): has played since "
                                     f"(last on {played[:10]}); the statement is out of date and was not applied")
             continue
-        status_of[key] = status
-    own_key = person_key(row["player_name"])
-    own = status_of.get(own_key)
-    name = row["player_name"]
-    blockers = getattr(effect, "blockers", None)
-    if own == "out" and blockers is not None:
-        blockers.append(f"{name} is listed out: a market on him would be void")
+        if is_own:
+            own = status
+        else:
+            status_of[key] = status
+    if own == "out":
+        effect.blockers.append(f"{name} is listed out: a market on him would be void")
     elif own in ("doubtful",) + _UNCERTAIN:
         effect.uncertain_a.append(f"{name} ({own}) - the market is void if he does not play, and his minutes "
                                   "may be limited if he does")
+
+    mates = [p for p in players if p["key"] != own_key and str(p["player_id"]) != own_id]
+    in_rotation = {p["key"] for p in mates}
+    for key, status in status_of.items():
+        if key not in in_rotation and status != "available":
+            effect.unmatched.append(f"{key} ({status}): not in the team's recent rotation, no effect on the model")
+
     block = row.get("block")
+    wrong_season = rot is None or block != block or int(block) != int(rot["season"])
+    features = frame.extra.get("model_features")
     has_rep = "mates_out_min_rep" in row.index
-    if rot is None or block != block or int(block) != int(rot["season"]) or not has_rep:
-        for key, status in status_of.items():
-            if key != own_key and status in ("out", "doubtful"):
-                effect.unmatched.append(f"a team-mate is listed {status} ({key}); not applied to the model inputs")
+    reads_rep = has_rep and (features is None or any(c in features for c in _REPORT_SWAP.values()))
+
+    def describe(p: Dict[str, Any], status: str) -> str:
+        return f"{p['name']} ({status}, {p['min']:.0f} minutes)"
+
+    if wrong_season or not reads_rep or not report_read:
+        # Nothing can be applied.  What the inputs do not already reflect stays a condition.
+        why = ("no rotation on file for this game" if wrong_season else
+               "this model takes team-mates' absences from who missed the previous game" if not reads_rep else
+               "no injury report has been read for this team, only single statements")
+        for p in mates:
+            status = status_of.get(p["key"])
+            if status in ("out", "doubtful"):
+                if not wrong_season and not reads_rep and p["missed"] >= 1:
+                    effect.applied.append(f"{describe(p, status)}: already counted as absent (he missed the "
+                                          "previous game)")
+                else:
+                    effect.uncertain_a.append(f"team-mate {describe(p, status)} - not reflected in the model "
+                                              f"inputs ({why}); effect not quantified")
+            elif status in _DOUBT:
+                effect.uncertain_a.append(f"team-mate {describe(p, status)} - effect not quantified ({why})")
         return effect
+
     j = int(frame.extra["stat_index"])
     new_limit = int(frame.extra.get("new_absence_games", 2))
     typical = float(row["league_total"]) if row.get("league_total") == row.get("league_total") else float("nan")
@@ -674,13 +783,11 @@ def apply_prop_availability(row: pd.Series, frame: FeatureFrame, availability: p
     def inputs(absent_statuses: Tuple[str, ...]) -> Tuple[Dict[str, float], List[str]]:
         minutes = new_minutes = stat = new_stat = 0.0
         who: List[str] = []
-        for p in rot["players"]:
-            if p["key"] == own_key or str(p["player_id"]) == str(row["player_id"]):
-                continue
+        for p in mates:
             status = status_of.get(p["key"])
             if status not in absent_statuses:
                 continue
-            who.append(f"{p['name']} ({status}, {p['min']:.0f} minutes)")
+            who.append(describe(p, status))
             minutes += p["min"]
             stat += p["stats"][j]
             if p["missed"] <= new_limit:
@@ -690,8 +797,8 @@ def apply_prop_availability(row: pd.Series, frame: FeatureFrame, availability: p
                  "mates_out_share_rep": stat / typical, "mates_new_out_share_rep": new_stat / typical}, who)
 
     base, absent = inputs(("out", "doubtful"))
-    worst, _ = inputs(("out", "doubtful", "questionable", "uncertain"))
-    _, doubts = inputs(("questionable", "uncertain"))
+    worst, _ = inputs(("out", "doubtful") + _DOUBT)
+    _, doubts = inputs(_DOUBT)
     new = row.copy()
     for col, value in base.items():
         new[col] = value
@@ -699,7 +806,7 @@ def apply_prop_availability(row: pd.Series, frame: FeatureFrame, availability: p
     if absent:
         effect.applied.append("team-mates treated as not playing: " + "; ".join(absent))
     else:
-        effect.applied.append("no rotation team-mate is listed out or doubtful")
+        effect.applied.append("the team's report lists no rotation team-mate as out or doubtful")
     if doubts:
         effect.uncertain_a += [f"team-mate {d}" for d in doubts]
         if own not in ("doubtful",) + _UNCERTAIN:       # his own doubt cannot be put into a row
@@ -780,6 +887,7 @@ def threshold_sweep(frame: FeatureFrame, candidate: Any, plan: Any) -> Dict[str,
     thresholds, where a tie (push) is possible - on the last development fold
     and on the final test.  Nothing here feeds back into model selection.
     """
+    from ...models.counts import threshold_probabilities
     from ...validation import metrics as M
     from ...validation.backtest import _blind, fit_with_calibration
     from ...validation.splits import make_folds
@@ -790,8 +898,9 @@ def threshold_sweep(frame: FeatureFrame, candidate: Any, plan: Any) -> Dict[str,
     out: Dict[str, Any] = {
         "kind": "threshold_sweep",
         "note": "The selected model scored at thresholds shifted from the reference threshold. A shift of half a "
-                "point gives a whole-number threshold, where an exact tie is a push; ties are left out of the "
-                "over/under score and the predicted and observed tie rates are compared instead.",
+                "point gives a whole-number threshold, where an exact tie is a push: over and under are then read "
+                "from the calibrated probabilities at the half points either side, the tie is what remains, ties "
+                "are left out of the over/under score, and the predicted and observed tie rates are compared.",
         "folds": {},
     }
     targets = [("last_development_fold", folds.dev[-1])] if folds.dev else []
@@ -809,13 +918,19 @@ def threshold_sweep(frame: FeatureFrame, candidate: Any, plan: Any) -> Dict[str,
             if part.empty:
                 continue
             blind = _blind(part, model, plan.block_col)
-            blind["line"] = line[ok]
+
+            def over_at(thresholds: np.ndarray) -> np.ndarray:
+                rows_at = blind.copy()
+                rows_at["line"] = thresholds
+                return M.check_probabilities(cal.transform(M.check_probabilities(model.predict_proba(rows_at))))[:, 1]
+
+            under, p_push, over = threshold_probabilities(over_at, line[ok])
             value = part["stat_value"].to_numpy(dtype=float)
             push = value == line[ok]
-            P = M.check_probabilities(cal.transform(M.check_probabilities(model.predict_proba(blind))))
-            p_push = model.push_prob(blind)
-            y = (value > line[ok]).astype(float)
             decided = ~push
+            y = (value > line[ok]).astype(float)
+            share = np.clip(under + over, 1e-9, None)
+            P = np.column_stack([under / share, over / share])
             rows.append({
                 "shift": float(shift), "n": int(decided.sum()),
                 "over_rate": float(y[decided].mean()), "mean_predicted_over": float(P[decided, 1].mean()),

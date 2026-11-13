@@ -1164,8 +1164,8 @@ class Store:
         payload = []
         for row in rows:
             line = float(row["line"])
-            if not math.isfinite(line) or line < 0:
-                raise StoreError(f"prop threshold {row['line']!r} is not a non-negative number")
+            if not math.isfinite(line) or line < 0.5:
+                raise StoreError(f"prop threshold {row['line']!r} is not a number of one half or more")
             if (2.0 * line) != round(2.0 * line):
                 raise StoreError(f"prop threshold {line!r} is not a whole or half number")
             synthetic = is_demo_league(row["league"])

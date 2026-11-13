@@ -156,7 +156,7 @@ class BasketballPlugin(SportPlugin):
         )
 
     def required_checks(self, league: str, market: str) -> List[CheckSpec]:
-        return [
+        checks = [
             CheckSpec("injury_report", "injury / availability report", scope="team", max_age_hours=24.0,
                       recheck_within_hours=3.0,
                       why="who plays changes team strength more than any other pregame fact"),
@@ -164,6 +164,12 @@ class BasketballPlugin(SportPlugin):
                       max_age_hours=1e9,
                       why="ratings and rest are only current once each team's previous game has been played"),
         ]
+        if split_prop_market(market)[0] is not None:
+            checks.append(CheckSpec(
+                "box_scores_complete", "box scores of both teams' recent games are on file", scope="event",
+                max_age_hours=1e9,
+                why="a player's minutes and rates come from box scores; a result can be on file before its box score"))
+        return checks
 
     # ----------------------------------------------------------- availability
     #: Players below this many expected minutes are outside the rotation; an

@@ -32,6 +32,7 @@ import pandas as pd
 
 from ..config import Settings
 from ..core.enums import REC_STATUS_DEFINITIONS, CheckState, OutcomeType, RecStatus
+from ..core.markets import model_market
 from ..core.timeutil import fmt_hst, iso_z, parse_ts, utcnow
 from ..coverage import coverage_status
 from ..models.fitted import FittedModel
@@ -188,6 +189,89 @@ def _data_quality(row: Mapping[str, Any], frame: FeatureFrame, checks: List[Dict
     }
 
 
+def _outcome_probabilities(model: FittedModel, row: pd.Series, line: Optional[float], count_model: bool
+                           ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """``(P, low, high, push)`` for one row: the probability of each class as it
+    will settle (a push is none of them), the model-uncertainty interval of
+    each, and the probability of a push.
+
+    * A count model at a whole-number threshold ``L`` is read at the half
+      points either side - over ``L`` is over ``L + 0.5``, under ``L`` is under
+      ``L - 0.5`` - so both come from the calibrated model and the push is
+      what remains.  "Over 23" and "over 23.5" are one event and get one
+      probability.
+    * Any other model may carry a push probability in the row (``p_push``);
+      its class probabilities are conditional on a decision and are scaled.
+    """
+    if count_model and line is not None and float(line) == math.floor(float(line)):
+        upper, lower = row.copy(), row.copy()
+        upper["line"], lower["line"] = float(line) + 0.5, max(float(line) - 0.5, 0.5)
+        hi, lo = model.predict(pd.DataFrame([upper])), model.predict(pd.DataFrame([lower]))
+        under = 0.0 if line < 1.0 else float(lo["P"][0][0])
+        over = float(hi["P"][0][1])
+        under = min(under, 1.0 - over)
+        P = np.array([under, over])
+        low = np.array([min(float(lo["low"][0][0]), under), float(hi["low"][0][1])])
+        high = np.array([min(float(lo["high"][0][0]), 1.0 - over), float(hi["high"][0][1])])
+        return P, low, high, float(max(0.0, 1.0 - over - under))
+    pred = model.predict(pd.DataFrame([row]))
+    P, low, high = pred["P"][0].astype(float), pred["low"][0].astype(float), pred["high"][0].astype(float)
+    push = 0.0
+    if not count_model and "p_push" in row.index and row["p_push"] == row["p_push"]:
+        push = float(min(max(row["p_push"], 0.0), 0.5))
+    scale = 1.0 - push
+    return P * scale, low * scale, high * scale, push
+
+
+_JSON_FIELDS = ("probs", "reasons", "checks", "confidence", "factors", "features", "data_quality", "sources", "display")
+
+
+def _withdraw_stale(store: Any, league: str, market: str, kept: set, *, now_dt: Any, horizon: float,
+                    write: bool) -> List[Dict[str, Any]]:
+    """Withdraw selections about a subject the model no longer has a row for.
+
+    A market about one player is recorded under its own key.  If that player
+    drops out of the frame before the game - traded, or no longer in the
+    modelled rotation - no new prediction would ever replace his old one and it
+    would stay the current ledger row.  Each such selection is superseded by a
+    PASS record that says so.  Only timed, scheduled events inside the horizon
+    are touched, and only keys of this model market."""
+    upcoming = store.upcoming(league, now=now_dt, horizon_hours=horizon, include_synthetic=True)
+    upcoming = upcoming[upcoming["time_precision"] == "datetime"]
+    if upcoming.empty:
+        return []
+    prior = store.predictions(event_ids=upcoming["event_id"].tolist(), latest_only=True, include_synthetic=True)
+    out: List[Dict[str, Any]] = []
+    for _, prev in prior.iterrows():
+        key = str(prev["market"])
+        if key == market or model_market(key) != market or prev["rec_status"] == RecStatus.PASS.value:
+            continue
+        if (prev["event_id"], key) in kept:
+            continue
+        record: Dict[str, Any] = {name: json.loads(prev[f"{name}_json"]) for name in _JSON_FIELDS}
+        record["display"] = {**record["display"], "status_definition": REC_STATUS_DEFINITIONS[RecStatus.PASS],
+                             "predicted_at_hst": fmt_hst(now_dt)}
+        record.update({
+            "created_at_utc": iso_z(now_dt), "event_id": prev["event_id"], "market": key,
+            "line": None if prev["line"] != prev["line"] else prev["line"],
+            "selection": prev["selection"], "selection_label": prev["selection_label"], "prob": prev["prob"],
+            "prob_low": prev["prob_low"], "prob_high": prev["prob_high"], "model_name": prev["model_name"],
+            "model_version": prev["model_version"], "validation_status": prev["validation_status"],
+            "rec_status": RecStatus.PASS.value, "supersedes_id": prev["prediction_id"], "withdrawn": True,
+            "reasons": ["withdrawn: the model no longer has a row for this player in this game (his team or his "
+                        "recent minutes changed after the earlier prediction, or the threshold no longer applies); "
+                        "the earlier selection does not stand"],
+        })
+        if write:
+            try:
+                record["prediction_id"] = store.insert_prediction(record)
+            except LedgerError as exc:
+                log.warning("withdrawal for %s %s not written: %s", prev["event_id"], key, exc)
+                record["ledger_error"] = str(exc)
+        out.append(record)
+    return out
+
+
 def predict_league(
     store: Any,
     league: str,
@@ -204,8 +288,20 @@ def predict_league(
     An unchanged prediction (same model, status, selection and probability to
     three decimals) is not written again; a changed one is appended and linked
     to its predecessor through ``supersedes_id`` - nothing is ever rewritten.
+    A selection about a player the model no longer has a row for is withdrawn
+    by a superseding PASS record.
     """
     settings = settings or Settings()
+    out = _predict_league(store, league, market, settings=settings, now=now, horizon_hours=horizon_hours,
+                          write=write)
+    now_dt = utcnow() if now is None else parse_ts(now)
+    horizon = settings.selection.horizon_hours if horizon_hours is None else horizon_hours
+    kept = {(p["event_id"], p["market"]) for p in out}
+    return out + _withdraw_stale(store, league, market, kept, now_dt=now_dt, horizon=horizon, write=write)
+
+
+def _predict_league(store: Any, league: str, market: str, *, settings: Settings, now: Any,
+                    horizon_hours: Optional[float], write: bool) -> List[Dict[str, Any]]:
     now_dt = utcnow() if now is None else parse_ts(now)
     now_ts = pd.Timestamp(now_dt)
     horizon = settings.selection.horizon_hours if horizon_hours is None else horizon_hours
@@ -260,8 +356,15 @@ def predict_league(
     feature_names = model.candidate.feature_names() or frame.feature_cols
     prior = store.predictions(event_ids=rows["_event"].unique().tolist(), latest_only=True, include_synthetic=True)
     prior_by_event = {(r["event_id"], r["market"]): r for _, r in prior.iterrows()}
-    push_fn = getattr(model.candidate, "push_prob", None)
+    count_model = callable(getattr(model.candidate, "push_prob", None))
     projection_fn = getattr(model.candidate, "projection", None)
+    # What the plugin needs to fold availability in honestly: which inputs the trained model
+    # reads, and for which teams a team-level report (injury report, line-up ...) has been read.
+    frame.extra["model_features"] = list(feature_names)
+    team_checks = {c.key for c in specs if c.scope == "team"}
+    read = check_log[check_log["check_key"].isin(team_checks)
+                     & check_log["outcome"].isin(["reported", "nothing_listed"])] if len(check_log) else check_log
+    frame.extra["report_checked_teams"] = set(read["team_id"].dropna()) if len(read) else set()
     subject_col = "player_name" if "player_name" in rows.columns else None
     unit = frame.extra.get("stat_label")
 
@@ -274,30 +377,29 @@ def predict_league(
                                          include_synthetic=True)
         effect = plugin.apply_availability(league, market, base_row, frame, avail)
         row = effect.row
-        pred = model.predict(pd.DataFrame([row]))
-        P, low, high = pred["P"][0], pred["low"][0], pred["high"][0]
-        k = int(np.argmax(P))
         line = None
         if frame.outcome == OutcomeType.OVER_UNDER and "line" in row.index and row["line"] == row["line"]:
             line = float(row["line"])
+        # P: each class as it will settle; a push (exact tie with the line) is none of them.
+        P, low, high, p_push = _outcome_probabilities(model, row, line, count_model)
+        k = int(np.argmax(P))
         subject = str(row[subject_col]) if subject_col else None
         labels = _class_labels(frame, row, names, line, subject, unit if subject else None)
         cls = frame.classes[k]
         selection, selection_label = labels[cls]
-        # A plugin may supply the probability of an exact tie against the line
-        # (``p_push``); the class probabilities are then conditional on no push
-        # and are scaled so that the recorded distribution includes the push.
-        p_push = 0.0
-        if callable(push_fn) and line is not None:
-            # A count model knows the chance of landing exactly on a whole-number threshold.
-            p_push = float(min(max(push_fn(pd.DataFrame([row]))[0], 0.0), 0.5))
-        elif "p_push" in row.index and row["p_push"] == row["p_push"]:
-            p_push = float(min(max(row["p_push"], 0.0), 0.5))
-        scale = 1.0 - p_push
-        prob, prob_low, prob_high = float(P[k]) * scale, float(low[k]) * scale, float(high[k]) * scale
-        probs = {labels[c][0]: float(P[i]) * scale for i, c in enumerate(frame.classes)}
-        if p_push > 0.0:
+        # Recorded: the probability that the selection wins, with the push as an outcome of
+        # its own.  Judged by the rules: the probability given a decision - a push returns the
+        # stake and is graded as neither hit nor miss, so it is what validated hit rates,
+        # the selection minimum and the coin-flip test are about.
+        prob, prob_low, prob_high = float(P[k]), float(low[k]), float(high[k])
+        probs = {labels[c][0]: float(P[i]) for i, c in enumerate(frame.classes)}
+        if p_push > 1e-9:
             probs["push"] = p_push
+        else:
+            p_push = 0.0
+        decided = 1.0 - p_push
+        prob_decided, low_decided, high_decided = prob / decided, prob_low / decided, prob_high / decided
+        given = "" if p_push == 0.0 else (f" given a decision ({prob:.3f} with a {p_push:.3f} chance of a push)")
 
         check_row = row
         if row["event_id"] != event_id:                 # checks are logged against the game, not the player row
@@ -339,11 +441,13 @@ def predict_league(
         if model_mismatch:
             pass_reasons.append(model_mismatch)
         pass_reasons += list(effect.blockers)
-        if prob < min_prob:
-            pass_reasons.append(f"model probability {prob:.3f} is below the selection minimum {min_prob:.2f}")
+        if prob_decided < min_prob:
+            pass_reasons.append(f"model probability {prob_decided:.3f}{given} is below the selection minimum "
+                                f"{min_prob:.2f}")
         elif (settings.selection.require_interval_above_even
-              and frame.outcome in (OutcomeType.BINARY, OutcomeType.OVER_UNDER) and prob_low <= 0.5):
-            pass_reasons.append(f"model-uncertainty interval {prob_low:.3f}-{prob_high:.3f} reaches a coin flip")
+              and frame.outcome in (OutcomeType.BINARY, OutcomeType.OVER_UNDER) and low_decided <= 0.5):
+            pass_reasons.append(f"model-uncertainty interval {low_decided:.3f}-{high_decided:.3f}{given} reaches "
+                                "a coin flip")
         if pass_reasons:
             status, reasons = RecStatus.PASS, pass_reasons
         # ---- 2. PROVISIONAL: checks
@@ -371,15 +475,16 @@ def predict_league(
                     reasons.append(f"holds only if these {whose} players play (effect not quantified): "
                                    + "; ".join(doubts))
                     continue
-                Pw = model.predict(pd.DataFrame([worst]))["P"][0]
-                if int(np.argmax(Pw)) != k or float(Pw[k]) * scale < min_prob:
+                Pw, _, _, push_w = _outcome_probabilities(model, worst, line, count_model)
+                worst_decided = float(Pw[k]) / (1.0 - push_w)
+                if int(np.argmax(Pw)) != k or worst_decided < min_prob:
                     status = RecStatus.CONDITIONAL
                     reasons.append(
                         f"condition: {'; '.join(doubts)} ({whose}) must play. If they sit, the model probability of "
-                        f"{selection_label} becomes {float(Pw[k]) * scale:.3f}, which fails the selection rules.")
+                        f"{selection_label} becomes {worst_decided:.3f}, which fails the selection rules.")
                 else:
                     reasons.append(f"selection holds even if {'; '.join(doubts)} ({whose}) sit "
-                                   f"(probability would be {float(Pw[k]) * scale:.3f}).")
+                                   f"(probability would be {worst_decided:.3f}).")
             if status == RecStatus.FINAL:
                 reasons.insert(0, "all configured pregame checks are complete and fresh")
 
@@ -404,7 +509,7 @@ def predict_league(
         if avail.empty:
             explanation.missing_data.append("no availability report on file for either side")
 
-        confidence = confidence_for(prob, None if model_mismatch else report, settings.confidence)
+        confidence = confidence_for(prob_decided, None if model_mismatch else report, settings.confidence)
         caveat = frame.extra.get("confidence_caveat")
         if caveat:
             # The observed hit rates were not measured on the kind of selection being made
@@ -419,7 +524,11 @@ def predict_league(
             "model_uncertainty": "how far the probability moves when the model is refitted on resampled history",
             "data_quality": "missing or stale inputs and incomplete pregame checks",
         }
-        confidence["event_uncertainty"] = {"prob_selection_loses": 1.0 - prob, "normalised_entropy": _entropy(P)}
+        confidence["event_uncertainty"] = {"prob_selection_loses": max(0.0, 1.0 - prob - p_push),
+                                           "normalised_entropy": _entropy(list(probs.values()))}
+        if p_push > 0.0:
+            confidence["event_uncertainty"]["prob_push"] = p_push
+            confidence["prob_if_decided"] = prob_decided
         confidence["model_uncertainty"] = {
             "interval": [prob_low, prob_high], "level": model.interval_level,
             "method": f"{len(model.replicas)} bootstrap refits (resampled by slate)",

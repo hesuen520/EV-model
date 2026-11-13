@@ -106,7 +106,10 @@ def register(main: click.Group) -> None:
         from ..sports import get_league
 
         click.echo(json.dumps(calibration_monitor(ctx.store, league, market, window=window), indent=1, default=str))
-        preds = ctx.store.predictions(league=league, market=market, latest_only=True)
+        from ..core.markets import model_market
+
+        preds = ctx.store.predictions(league=league, latest_only=True)
+        preds = preds[[model_market(m) == market for m in preds["market"]]]      # per-player keys belong to one model
         if preds.empty:
             click.echo("\nNo recorded predictions: input drift cannot be assessed yet.")
             return

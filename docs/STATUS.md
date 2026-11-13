@@ -15,6 +15,7 @@ covered by the test suite but has not yet happened with real events.
 | Data adapters (public datasets, no key) | NBA, WNBA, NCAA men's and women's basketball; NFL; college football; NHL; MLB (through 2025); men's and women's international soccer; Premier League, La Liga, Bundesliga, Serie A, Ligue 1; tennis singles at eight levels (historical results to mid-2026, non-commercial licence); the official NBA injury report archive | real data |
 | Validation | 26 league-markets validated on real data with the walk-forward protocol and a reserved final test: 17 pass every gate, 9 are experimental (WNBA, NFL spread and total, ITF men, men's international soccer, Premier League, La Liga, Bundesliga, Serie A). Each has four or five recorded runs, because runs were repeated after fixes; every run is listed in the validation report's run history | real data |
 | Point-in-time features | the as-of leakage test passes with zero difference for all 26 league-markets on the real store (`sportspred check-leakage`, and the opt-in test `tests/sportspred/test_real_store_leakage.py`) | real data |
+| NBA availability, point-in-time | the official injury report as published before each slate (archive since 2018-12-17) feeds the roster inputs; the report-aware model was selected on development folds and improves the final test (log loss 0.5959 against 0.5999) | real data |
 | Prediction engine | PROVISIONAL and PASS statuses with pregame checks, availability applied, bootstrap model-uncertainty intervals, validated confidence labels, explanations: 770 real pregame predictions in the ledger (446 current event-markets over seven slates: 338 PROVISIONAL, 108 PASS, none FINAL); the hash chain and the clock audit verify | real data |
 | FINAL and CONDITIONAL statuses | every check complete and fresh; a selection that depends on a doubtful player | tests |
 | Combos | the PASS message and the provisional preview on real slates; the per-league backtest of the selection rule | real data |
@@ -239,16 +240,17 @@ be proved from the record; the run history shows what every run produced.
 
 ## Tests run
 
-`pytest` on 2026-11-13: **4,428 passed, 13 expected failures, 2 skipped** (the
+`pytest` on 2026-11-13: **4,432 passed, 13 expected failures, 2 skipped** (the
 expected failures are in the earlier `evmodel` suite; the two skipped are the
-opt-in real-data tests below). 189 of those are the `tests/sportspred` suite:
+opt-in real-data tests below). 193 of those are the `tests/sportspred` suite:
 time zones and HST display, stable IDs and de-duplication, ledger
 immutability, tamper detection, the clock rule and concurrent writers,
 synthetic isolation, point-in-time availability and report supersession,
 as-of leakage, chronological folds, blinded scoring rows, retrospective and
 price columns, stale and missing checks (including a source that has stopped
 publishing), CSV validation, the results-only builder, tennis, the official
-injury report parser, combo dependencies and the three-leg rule, grading,
+injury report parser and which archived version counts before a slate,
+combo dependencies and the three-leg rule, grading,
 reschedules and correction grades, EV maths and settlement rules, dashboard
 rendering, a regression test for every defect the audits and verifiers
 found, and an end-to-end smoke test.
@@ -267,10 +269,11 @@ current slates, and `sportspred ledger verify`.
 
 ## Next steps, in order of value
 
-1. **Backtest NBA availability honestly.** The archive of as-published NBA
-   injury reports (2018 on) allows the roster features to be validated with
-   what was actually known before each game. This is the largest missing
-   piece of realism.
+1. **Use the later versions of the NBA report.** The availability backtest
+   (done; see the model card) takes the report as it stood an hour before the
+   day's first game. The versions published later in the day, before each
+   game's own tip-off, would capture late scratches; using them needs a
+   per-game information time in the leakage test.
 2. **Collect what history cannot give.** Snapshot injury reports, starting
    goalies, probable pitchers, line-ups and prices with collection timestamps
    from now on, so future validation can use them.

@@ -33,6 +33,7 @@ import numpy as np
 import pandas as pd
 
 from ...core.enums import OutcomeType
+from ...core.ids import person_key
 from ...core.timeutil import DISPLAY_TZ_NAME, parse_ts, utcnow
 from ...features.ratings import EloParams, elo_pregame, offdef_pregame, tune_elo
 from ...features.schedule import team_schedule_features
@@ -71,6 +72,36 @@ WINNER_FEATURES: List[str] = [
 TRAVEL_FEATURES = ("travel_km_a", "travel_km_b", "tz_shift_b")
 
 
+#: Roster inputs after applying the official injury report as it stood before the slate.
+#: They stand in for ``roster_q_diff`` / ``absence_diff`` in the report-aware candidates.
+REPORT_FEATURES = ("roster_q_rep_diff", "absence_rep_diff")
+
+
+def report_features(league: str) -> List[str]:
+    """The winner inputs with the two roster columns replaced by their report-adjusted versions."""
+    swap = {"roster_q_diff": "roster_q_rep_diff", "absence_diff": "absence_rep_diff"}
+    return [swap.get(c, c) for c in winner_features(league)]
+
+
+def _pregame_reports(store: Any, league: str, now_ts: pd.Timestamp):
+    """``({(event, team): [(player key, status)]}, covered event ids)`` from the
+    stored pregame-report table, using only versions published by ``now``;
+    ``({}, None)`` when the league has no such table."""
+    if not store.has_table(league, "pregame_report"):
+        return {}, None
+    now_iso = now_ts.tz_convert("UTC").strftime("%Y-%m-%dT%H:%M:%SZ")
+    listed = store.read_table(league, "pregame_report")
+    listed = listed[listed["published_at_utc"] <= now_iso]
+    reports: Dict[Tuple[str, str], List[Tuple[str, str]]] = {}
+    for eid, team, key, status in zip(listed["event_id"], listed["team_id"], listed["player_key"], listed["status"]):
+        reports.setdefault((eid, team), []).append((key, status))
+    covered: set = set()
+    if store.has_table(league, "pregame_report_games"):
+        games = store.read_table(league, "pregame_report_games")
+        covered = set(games.loc[games["published_at_utc"] <= now_iso, "event_id"])
+    return reports, covered
+
+
 def winner_features(league: str) -> List[str]:
     return [c for c in WINNER_FEATURES if not (league in THIN_HISTORY_LEAGUES and c in TRAVEL_FEATURES)]
 
@@ -86,6 +117,8 @@ FEATURE_LABELS: Dict[str, str] = {
     "orb_edge": "offensive-rebounding matchup",
     "ftr_edge": "free-throw-rate matchup",
     "roster_q_diff": "quality of the expected rotation",
+    "roster_q_rep_diff": "quality of the expected rotation after the official injury report",
+    "absence_rep_diff": "quality missing from the rotation after the official injury report",
     "absence_diff": "quality recently missing from the rotation",
     "rest_diff": "rest days",
     "b2b_a": "home side on a back-to-back",
@@ -142,12 +175,23 @@ def _game_stats(ev: pd.DataFrame, team_box: pd.DataFrame) -> pd.DataFrame:
 
 
 def _roster_features(ev: pd.DataFrame, player_box: Optional[pd.DataFrame], batch: np.ndarray,
-                     season_idx: np.ndarray, completed: np.ndarray, cfg: BasketballConfig) -> pd.DataFrame:
+                     season_idx: np.ndarray, completed: np.ndarray, cfg: BasketballConfig,
+                     reports: Optional[Dict[Tuple[str, str], List[Tuple[str, str]]]] = None) -> pd.DataFrame:
     """Expected-rotation quality per side before each game, plus the
-    retrospective quality of the rotation that actually played."""
+    retrospective quality of the rotation that actually played.
+
+    ``reports`` maps (event, team) to the players an injury report published
+    before the slate listed, as ``(normalised name, status)``.  Where one is
+    given, ``roster_q_rep_*`` / ``absence_rep_*`` are the same quantities
+    after applying it exactly as the live path does (out and doubtful sit,
+    their minutes go to the rest in proportion; a confirmed return takes his
+    longer-run role); without one they equal the unadjusted values.
+    """
     n = len(ev)
-    cols = ("roster_q_a", "roster_q_b", "absence_a", "absence_b", "roster_q_actual_a", "roster_q_actual_b")
+    cols = ("roster_q_a", "roster_q_b", "absence_a", "absence_b", "roster_q_actual_a", "roster_q_actual_b",
+            "roster_q_rep_a", "roster_q_rep_b", "absence_rep_a", "absence_rep_b")
     out = {c: np.full(n, np.nan) for c in cols}
+    reports = reports or {}
     if player_box is None or player_box.empty:
         empty = pd.DataFrame(out)
         empty.attrs["rosters"], empty.attrs["league_rate"] = {}, None
@@ -181,6 +225,7 @@ def _roster_features(ev: pd.DataFrame, player_box: Optional[pd.DataFrame], batch
     # rating is shared by every team that still carries him in its rotation
     # state (after a trade, say), so applying a game's box score at once would
     # let it reach other games of the same slate - including its own opponent.
+    name_key = dict(zip(pidx.tolist(), (person_key(x) for x in pb["player_name"].tolist())))
     pending: List[Tuple[str, np.ndarray, np.ndarray, np.ndarray, Any]] = []
     last_played: Dict[int, Any] = {}        # player -> start of the last game he appeared in
     starts = ev["start_time_utc"].to_numpy()
@@ -234,6 +279,25 @@ def _roster_features(ev: pd.DataFrame, player_box: Optional[pd.DataFrame], batch
                 out[f"absence_{side}"][i] = sum(
                     max(0.0, v[1] - v[0]) * (rating(p) - league_rate) for p, v in st.items()
                 ) / cfg.regulation_minutes
+                out[f"roster_q_rep_{side}"][i] = out[f"roster_q_{side}"][i]
+                out[f"absence_rep_{side}"][i] = out[f"absence_{side}"][i]
+                listed = reports.get((eids[i], team))
+                if listed:
+                    status_of = dict(listed)
+                    gone, back = [], []
+                    for p, v in st.items():
+                        status = status_of.get(name_key[p])
+                        if status in ("out", "doubtful"):
+                            gone.append(p)
+                        elif status == "available" and v[1] > v[0] + 3.0:
+                            back.append(p)
+                    if gone or back:
+                        players = [{"player_id": p, "exp_min": v[0], "role_min": v[1], "rating": rating(p)}
+                                   for p, v in st.items()]
+                        q, ab = roster_quality(players, league_rate, cfg.regulation_minutes, out=gone, back=back)
+                        # With too little of the rotation left to rate, the unadjusted value stands.
+                        if q == q:
+                            out[f"roster_q_rep_{side}"][i], out[f"absence_rep_{side}"][i] = q, ab
             rows = groups.get((eids[i], team))
             if rows is None or not completed[i]:
                 continue
@@ -401,7 +465,8 @@ def build_winner_frame(store: Any, league: str, *, now: Any = None,
         feats["dq_no_team_stats"] = np.ones(len(ev))
 
     player_box = store.read_table(league, "player_box") if store.has_table(league, "player_box") else None
-    roster = _roster_features(ev, player_box, batch, season_idx, completed, cfg)
+    reports, covered = _pregame_reports(store, league, now_ts)
+    roster = _roster_features(ev, player_box, batch, season_idx, completed, cfg, reports)
 
     coords = [city_coords(c) for c in ev["venue_city"]]
     sched_in = ev[["event_id", "start_time_utc", "season", "home_id", "away_id", "neutral_site"]].copy()
@@ -453,6 +518,13 @@ def build_winner_frame(store: Any, league: str, *, now: Any = None,
     df["roster_q_actual_diff"] = roster["roster_q_actual_a"] - roster["roster_q_actual_b"]
     for col in ("roster_q_a", "roster_q_b", "absence_a", "absence_b"):
         df[col] = roster[col]
+    has_reports = covered is not None
+    if has_reports:
+        for col in ("roster_q_rep_a", "roster_q_rep_b", "absence_rep_a", "absence_rep_b"):
+            df[col] = roster[col]
+        df["roster_q_rep_diff"] = roster["roster_q_rep_a"] - roster["roster_q_rep_b"]
+        df["absence_rep_diff"] = roster["absence_rep_a"] - roster["absence_rep_b"]
+        df["report_on_file"] = df["event_id"].isin(covered).astype(float)
     df["rest_diff"] = sched["rest_days_a"] - sched["rest_days_b"]
     df["b2b_a"], df["b2b_b"] = sched["b2b_a"], sched["b2b_b"]
     df["games_7d_diff"] = sched["games_7d_a"] - sched["games_7d_b"]
@@ -469,6 +541,10 @@ def build_winner_frame(store: Any, league: str, *, now: Any = None,
         df["segment"] = np.where(fewest < THIN_HISTORY_GAMES, SEGMENT_THIN, SEGMENT_ESTABLISHED)
 
     limitations = [
+        ("The official injury report is used as it stood one hour before each day's first game, from "
+         "2018-12-17 (before that, and for a game no version covered, the rotation is inferred only from who "
+         "played in earlier games). Later versions of the report, late scratches and confirmed line-ups are "
+         "not in the backtest.") if has_reports else
         "No pregame injury reports or confirmed lineups exist in the historical data, so the backtest "
         "cannot include late availability news. Roster features infer availability only from who played "
         "in earlier games.",
@@ -479,7 +555,8 @@ def build_winner_frame(store: Any, league: str, *, now: Any = None,
         limitations.append("No player box scores on file: roster features are missing.")
     return FeatureFrame(
         league=league, market="winner", outcome=OutcomeType.BINARY, classes=("away", "home"), df=df,
-        feature_cols=winner_features(league), retrospective_cols=["roster_q_actual_diff"],
+        feature_cols=winner_features(league) + (list(REPORT_FEATURES) if has_reports else []),
+        retrospective_cols=["roster_q_actual_diff"],
         feature_notes=dict(FEATURE_LABELS), limitations=limitations, point_in_time=True,
         extra={
             "elo_params": elo_params.__dict__, "elo_tuning_grid_size": len(elo_grid), "slow_lr": slow_lr,

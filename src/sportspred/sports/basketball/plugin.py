@@ -9,7 +9,7 @@ import pandas as pd
 
 from ...core.enums import OutcomeType
 from ...models.candidates import PriorCandidate, gbm_candidate, logit_candidate
-from ...core.ids import norm_text
+from ...core.ids import norm_text, person_key
 from ..base import (
     AvailabilityEffect,
     Candidate,
@@ -23,7 +23,8 @@ from ..base import (
     SportPlugin,
 )
 from .adapter import SDV_LEAGUES, ingest_sdv
-from .features import FEATURE_LABELS, BasketballConfig, build_winner_frame, roster_quality
+from .features import (FEATURE_LABELS, BasketballConfig, build_winner_frame, report_features, roster_quality,
+                       winner_features)
 
 __all__ = ["BasketballPlugin"]
 
@@ -76,7 +77,7 @@ class BasketballPlugin(SportPlugin):
         return build_winner_frame(store, league, now=now, cfg=self._CONFIG.get(league))
 
     def candidates(self, league: str, market: str, frame: FeatureFrame) -> List[Candidate]:
-        f = frame.feature_cols
+        f = winner_features(league)
         team = ["home_edge", "elo_diff", "net_slow_diff"]
         core = team + ["net_fast_diff", "rest_diff", "b2b_a", "b2b_b"]
         return [
@@ -95,6 +96,21 @@ class BasketballPlugin(SportPlugin):
             logit_candidate("oracle_rotation_logit", f + ["roster_q_actual_diff"], complexity=4,
                             uses_retrospective=True,
                             description="full_logit plus the rotation that actually played (not knowable pregame)"),
+        ] + self._report_candidates(league, frame)
+
+    @staticmethod
+    def _report_candidates(league: str, frame: FeatureFrame) -> List[Candidate]:
+        """Candidates that read the official injury report as published before
+        the slate - offered only where that history is on file."""
+        if "roster_q_rep_diff" not in frame.feature_cols:
+            return []
+        r = report_features(league)
+        return [
+            logit_candidate("report_logit", r, complexity=5,
+                            description="full_logit with the expected rotation adjusted by the official injury "
+                                        "report as it stood an hour before the day's first game"),
+            gbm_candidate("report_gbm", r, complexity=7,
+                          description="gradient-boosted trees on the report-adjusted features"),
         ]
 
     def split_plan(self, league: str, market: str, frame: FeatureFrame) -> SplitPlan:
@@ -161,10 +177,10 @@ class BasketballPlugin(SportPlugin):
                         unquantified.add(side)
                 continue
             by_id = {str(p["player_id"]): p for p in players}
-            by_name = {norm_text(p["name"]): p for p in players}
+            by_name = {person_key(p["name"]): p for p in players}
             out, back, doubt = [], [], []
             for _, rep in reports.iterrows():
-                p = by_id.get(str(rep.get("player_id"))) or by_name.get(norm_text(rep["player_name"]))
+                p = by_id.get(str(rep.get("player_id"))) or by_name.get(person_key(rep["player_name"]))
                 status = str(rep["status"])
                 if p is None:
                     effect.unmatched.append(
@@ -205,6 +221,13 @@ class BasketballPlugin(SportPlugin):
             new["absence_a"], new["absence_b"] = aa, ab
             new["roster_q_diff"] = qa - qb
             new["absence_diff"] = aa - ab
+            # The report-aware models read these columns; a statement on file now is newer
+            # than whatever archived report the frame was built with, so it replaces it.
+            if "roster_q_rep_diff" in new.index:
+                new["roster_q_rep_a"], new["roster_q_rep_b"] = qa, qb
+                new["absence_rep_a"], new["absence_rep_b"] = aa, ab
+                new["roster_q_rep_diff"] = qa - qb
+                new["absence_rep_diff"] = aa - ab
             return new
 
         A, B = quality["a"], quality["b"]

@@ -7,9 +7,24 @@ import re
 import unicodedata
 from typing import Any
 
-__all__ = ["norm_text", "slug", "stable_id"]
+__all__ = ["norm_text", "slug", "stable_id", "person_key"]
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
+
+
+_GENERATION = {"jr", "sr", "ii", "iii", "iv", "v"}
+
+
+def person_key(value: Any) -> str:
+    """Comparison key for a person's name: :func:`norm_text` without a trailing
+    generational suffix, so ``"Jimmy Butler"`` and ``"Jimmy Butler III"`` (two
+    sources' spellings of one player) compare equal.  Only ever used to match a
+    name *within one team*, where two different people sharing it is not a
+    practical risk."""
+    words = norm_text(value).split()
+    while len(words) > 2 and words[-1] in _GENERATION:
+        words.pop()
+    return " ".join(words)
 
 
 def norm_text(value: Any) -> str:

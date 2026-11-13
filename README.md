@@ -37,7 +37,7 @@ detail, intervals, calibration charts and limitations:
 | League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | Market benchmark |
 |---|---|---|---|---|---|---|---|---|
 | Major League Baseball | winner | validated | 4,949 | 56.5% | 0.680 | 0.691 | 0.680 |  |
-| NBA | winner | validated | 2,813 | 67.7% | 0.600 | 0.692 | 0.604 |  |
+| NBA | winner | validated | 2,813 | 67.8% | 0.596 | 0.692 | 0.604 |  |
 | NCAA Division I men | winner | validated | 13,251 | 75.0% | 0.488 | 0.627 | 0.511 |  |
 | NCAA Division I women | winner | validated | 12,313 | 78.3% | 0.439 | 0.656 | 0.473 |  |
 | WNBA | winner | experimental | 664 | 65.4% | 0.626 | 0.688 | 0.644 |  |
@@ -99,11 +99,13 @@ How to read this honestly:
   in fifteen is against an opponent with almost no history (mostly
   lower-division teams) and is close to certain. The validation report shows
   each kind separately; see the model card.
-- None of the backtests include **late availability news** (injury reports,
-  confirmed line-ups, starting goalies or pitchers as announced): no
-  as-published history of those was used. Features that need the actual
-  starter are measured separately as retrospective upper bounds and can never
-  be selected.
+- **Availability news is in one backtest only.** The NBA model uses the
+  league's official injury report exactly as it was published before each
+  day's games (archived since December 2018), and that improves it out of
+  sample. No other league has such a history here: their backtests contain no
+  injury reports, confirmed line-ups, starting goalies or pitchers as
+  announced. Features that need the actual starter are measured separately as
+  retrospective upper bounds and can never be selected.
 
 Everything else:
 
@@ -231,8 +233,8 @@ slate and multiply - is back-tested over historical slates
 (`sportspred combos validate --league nba`). That backtest does **not** cover
 the FINAL-status filter (no historical check states exist), combos across
 leagues, or the dependency handling. For NBA three-leg combos on the
-final-test slates the estimated all-win probability averaged 50.8% and 52.2%
-actually won (268 slates). It does not always hold up: on NHL development
+final-test slates the estimated all-win probability averaged 50.7% and 57.2%
+actually won (271 slates). It does not always hold up: on NHL development
 slates the three-leg estimate averaged 38.9% and 31.5% won (317 slates).
 Adding a leg can never raise the probability that every selection wins.
 

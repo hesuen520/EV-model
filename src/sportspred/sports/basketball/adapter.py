@@ -182,6 +182,37 @@ def normalize_player_box(raw: pd.DataFrame) -> pd.DataFrame:
     return out.drop_duplicates(["provider_event_id", "team_espn", "player_id"], keep="last")
 
 
+def _store_pregame_reports(store, league: str, fetcher: Fetcher, seasons: Sequence[int], current: int,
+                           refresh: Optional[bool], report: IngestReport) -> None:
+    """The official injury report as it stood before each slate (see
+    :mod:`.reports`), for every game since the archive begins.  The whole
+    table is rebuilt from the archive each time."""
+    from . import reports as R
+
+    wanted = sorted(set(seasons) | set(range(R.FIRST_REPORT_SEASON, current + 1)))
+    try:
+        listings, fetched = R.load_archive(fetcher, wanted, current, refresh)
+    except DataUnavailable as exc:
+        report.warnings.append(f"injury report archive not reachable ({exc}); pregame reports not updated")
+        return
+    if listings.empty:
+        report.warnings.append("injury report archive returned no listings")
+        return
+    sources = [g.register(store, notes="NBA official injury report archive") for g in fetched]
+    names = pd.DataFrame({"name": sorted(listings["team_name"].dropna().unique())})
+    ids = store.resolve_participants(names, sport="basketball", scope=league, kind="team", create=False)
+    team_ids = {n: i for n, i in zip(names["name"], ids) if i is not None}
+    unknown = sorted(set(names["name"]) - set(team_ids))
+    if unknown:
+        report.warnings.append(f"injury report teams not matched to a team on file: {', '.join(unknown)}")
+    events = store.events(league, with_results=False)
+    listed, covered = R.pregame_reports(listings, events, team_ids)
+    store.write_table(league, R.TABLE, listed, source_ids=sources, mode="replace")
+    store.write_table(league, R.TABLE + "_games", covered, source_ids=sources, mode="replace")
+    report.tables[R.TABLE] = len(listed)
+    report.tables[R.TABLE + "_games"] = len(covered)
+
+
 def ingest_sdv(store, league: str, *, seasons: Optional[Sequence[int]] = None,
                refresh: Optional[bool] = None, fetcher: Optional[Fetcher] = None) -> IngestReport:
     """Download, normalise and store one basketball league."""
@@ -291,6 +322,8 @@ def ingest_sdv(store, league: str, *, seasons: Optional[Sequence[int]] = None,
 
     finish(team_parts, "team_box")
     finish(player_parts, "player_box")
+    if league == "nba":
+        _store_pregame_reports(store, league, fetcher, wanted, current, refresh, report)
 
     stored = store.events(league, with_results=True)
     report.n_events = len(stored)

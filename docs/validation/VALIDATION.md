@@ -11,7 +11,7 @@ A league that was validated again (after a data or defect fix) has had its final
 | Sport | League | Market | Status | Selected model | Final-test period | n | Accuracy (95% interval) | Log loss (95% interval) | Base-rate log loss | Calibration error | Market benchmark log loss |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | baseball | `mlb` | winner | **validated** | core_logit | 2024-03-20 to 2025-11-01 | 4949 | 56.5% (55.3-57.8) | 0.6798 (0.6761-0.6839) | 0.6912 | 0.0073 |  |
-| basketball | `nba` | winner | **validated** | full_logit | 2024-10-22 to 2026-11-12 | 2813 | 67.7% (65.7-69.5) | 0.5999 (0.5839-0.6139) | 0.6920 | 0.0061 |  |
+| basketball | `nba` | winner | **validated** | report_logit | 2024-10-22 to 2026-11-12 | 2813 | 67.8% (66.0-69.6) | 0.5959 (0.5795-0.6101) | 0.6920 | 0.0083 |  |
 | basketball | `ncaam` | winner | **validated** | full_gbm | 2024-11-04 to 2026-11-12 | 13251 | 75.0% (73.7-76.3) | 0.4876 (0.4685-0.5061) | 0.6267 | 0.0052 |  |
 | basketball | `ncaaw` | winner | **validated** | full_gbm | 2024-11-04 to 2026-11-12 | 12313 | 78.3% (77.2-79.3) | 0.4386 (0.4247-0.4525) | 0.6556 | 0.0101 |  |
 | basketball | `wnba` | winner | **experimental** | full_logit | 2025-05-16 to 2026-10-29 | 664 | 65.4% (61.9-68.7) | 0.6261 (0.5965-0.6609) | 0.6880 | 0.0310 |  |
@@ -98,7 +98,7 @@ Limitations:
 
 ## nba - winner
 
-31109 completed events from 2002-10-30 to 2026-11-12; 15 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `full_logit` (lowest pooled development log loss (0.60737)).
+31109 completed events from 2002-10-30 to 2026-11-12; 15 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `report_logit` (lowest pooled development log loss (0.60612)).
 
 ![calibration](charts/nba_winner_calibration.svg)
 ![by season](charts/nba_winner_by_season.svg)
@@ -111,15 +111,17 @@ Season by season on development folds the selected model beat `elo_logit` in 15 
 | elo_logit | 19175 | 66.1% | 0.6136 | 0.2128 |
 | efficiency_logit | 19175 | 66.2% | 0.6129 | 0.2125 |
 | core_logit | 19175 | 66.2% | 0.6112 | 0.2118 |
-| full_logit (selected) | 19175 | 66.7% | 0.6074 | 0.2100 |
+| full_logit | 19175 | 66.7% | 0.6074 | 0.2100 |
 | full_gbm | 19175 | 66.4% | 0.6114 | 0.2118 |
 | oracle_rotation_logit [retrospective] | 19175 | 66.9% | 0.6046 | 0.2087 |
+| report_logit (selected) | 19175 | 66.8% | 0.6061 | 0.2095 |
+| report_gbm | 19175 | 66.5% | 0.6106 | 0.2115 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_logit (selected) | 2813 | 67.7% | 0.5999 | 0.2070 |
+| report_logit (selected) | 2813 | 67.8% | 0.5959 | 0.2053 |
 | baseline base_rate | 2813 | 54.7% | 0.6920 | 0.2494 |
 | baseline elo_logit | 2813 | 67.2% | 0.6036 | 0.2084 |
 | retrospective upper bound oracle_rotation_logit (not a realistic backtest) | 2813 | 68.2% | 0.5933 | 0.2041 |
@@ -128,15 +130,15 @@ After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 2813 | 100.0% | 67.7% (65.9-69.4) | 67.5% |
-| 0.55 | 2361 | 83.9% | 69.8% (67.9-71.6) | 70.3% |
-| 0.60 | 1913 | 68.0% | 73.0% (71.0-75.0) | 73.3% |
-| 0.65 | 1509 | 53.6% | 75.9% (73.7-78.0) | 76.2% |
-| 0.70 | 1126 | 40.0% | 79.1% (76.7-81.4) | 79.2% |
-| 0.75 | 760 | 27.0% | 82.6% (79.8-85.2) | 82.4% |
-| 0.80 | 469 | 16.7% | 85.7% (82.3-88.6) | 85.5% |
+| 0.50 | 2813 | 100.0% | 67.8% (66.1-69.5) | 67.5% |
+| 0.55 | 2357 | 83.8% | 70.2% (68.3-72.0) | 70.4% |
+| 0.60 | 1940 | 69.0% | 73.4% (71.4-75.3) | 73.2% |
+| 0.65 | 1532 | 54.5% | 76.6% (74.4-78.6) | 76.1% |
+| 0.70 | 1124 | 40.0% | 80.2% (77.8-82.5) | 79.2% |
+| 0.75 | 779 | 27.7% | 82.7% (79.9-85.2) | 82.2% |
+| 0.80 | 475 | 16.9% | 86.1% (82.7-88.9) | 85.3% |
 
-Same-slate residual correlation (used by the combo builder): +0.0052 (95% interval -0.0013 to +0.0127, 80517 event pairs).
+Same-slate residual correlation (used by the combo builder): +0.0062 (95% interval -0.0000 to +0.0131, 80517 event pairs).
 
 Gates:
 
@@ -144,12 +146,12 @@ Gates:
 - passed - point in time features: features use only information available before each event
 - passed - final test sample: 2813 final-test events (minimum 300)
 - passed - development folds: 15 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.09207 (95% interval 0.07771 to 0.10736)
-- passed - calibration: final-test expected calibration error 0.0061 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.09607 (95% interval 0.08153 to 0.11169)
+- passed - calibration: final-test expected calibration error 0.0083 (maximum 0.03)
 
 Limitations:
 
-- No pregame injury reports or confirmed lineups exist in the historical data, so the backtest cannot include late availability news. Roster features infer availability only from who played in earlier games.
+- The official injury report is used as it stood one hour before each day's first game, from 2018-12-17 (before that, and for a game no version covered, the rotation is inferred only from who played in earlier games). Later versions of the report, late scratches and confirmed line-ups are not in the backtest.
 - Travel distance is city-level and missing for venues outside the built-in city table.
 - Betting odds are not an input and no timestamped market benchmark is available from this source.
 
@@ -1599,7 +1601,9 @@ Every validation run recorded in the store, oldest first. A re-run replaces the 
 | `nba` | winner | 2026-11-12 23:06 | full_logit | 2813 | 67.7% | 0.5999 | yes |
 | `nba` | winner | 2026-11-13 00:16 | full_logit | 2813 | 67.7% | 0.5999 | yes |
 | `nba` | winner | 2026-11-13 11:18 | full_logit | 2813 | 67.7% | 0.5999 | yes |
-| `nba` | winner | 2026-11-13 12:04 (reported above) | full_logit | 2813 | 67.7% | 0.5999 | yes |
+| `nba` | winner | 2026-11-13 12:04 | full_logit | 2813 | 67.7% | 0.5999 | yes |
+| `nba` | winner | 2026-11-13 20:51 | report_logit | 2813 | 67.8% | 0.5959 | yes |
+| `nba` | winner | 2026-11-13 20:54 (reported above) | report_logit | 2813 | 67.8% | 0.5959 | yes |
 | `ncaaf` | winner | 2026-11-12 22:49 | ratings_logit | 2168 | 71.2% | 0.5525 | yes |
 | `ncaaf` | winner | 2026-11-13 00:04 | full_logit | 2168 | 70.8% | 0.5464 | yes |
 | `ncaaf` | winner | 2026-11-13 11:25 | full_logit | 2168 | 70.8% | 0.5464 | yes |

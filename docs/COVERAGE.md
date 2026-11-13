@@ -14,7 +14,7 @@ Generated from the registry and this installation's store. A status is earned by
 |---|---|---|---|---|---|---|---|---|---|
 | baseball | Major League Baseball (`mlb`) | winner | **validated** | all validation gates passed | 4949 | 56.5% | 0.6798 | 2025-11-01 | Retrosheet game logs and day-by-day files (Chadwick Bureau GitHub mirror) |
 | baseball | Major League Baseball (`mlb`) | total | **unavailable** | no model implemented for this market |  |  |  | 2025-11-01 | Retrosheet game logs and day-by-day files (Chadwick Bureau GitHub mirror) |
-| basketball | NBA (`nba`) | winner | **validated** | all validation gates passed | 2813 | 67.7% | 0.5999 | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
+| basketball | NBA (`nba`) | winner | **validated** | all validation gates passed | 2813 | 67.8% | 0.5959 | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
 | basketball | NBA (`nba`) | spread | **unavailable** | no model implemented for this market |  |  |  | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
 | basketball | NBA (`nba`) | total | **unavailable** | no model implemented for this market |  |  |  | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
 | basketball | NBA (`nba`) | player_prop | **unavailable** | no model implemented for this market |  |  |  | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |

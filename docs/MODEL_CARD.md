@@ -135,15 +135,37 @@ box scores, rest, back-to-backs, congestion, travel, time zones, playoffs.
 <!-- results:start sport=basketball -->
 | League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | Market benchmark |
 |---|---|---|---|---|---|---|---|---|
-| NBA | winner | validated | 2,813 | 67.7% | 0.600 | 0.692 | 0.604 |  |
+| NBA | winner | validated | 2,813 | 67.8% | 0.596 | 0.692 | 0.604 |  |
 | NCAA Division I men | winner | validated | 13,251 | 75.0% | 0.488 | 0.627 | 0.511 |  |
 | NCAA Division I women | winner | validated | 12,313 | 78.3% | 0.439 | 0.656 | 0.473 |  |
 | WNBA | winner | experimental | 664 | 65.4% | 0.626 | 0.688 | 0.644 |  |
 <!-- results:end -->
 
 On development folds the NBA model beat the Elo baseline in 15 of 15 seasons.
-Knowing who actually played (retrospective) would be worth about 0.007 log loss
-in the NBA.
+
+**The NBA model uses the official injury report, validated point-in-time.**
+The league's report is archived in every published version since 2018-12-17.
+For each game the backtest takes the report as it stood one hour before the
+first tip-off of that day - one information time per slate, like every other
+feature - and applies it exactly as the live path does: players listed out or
+doubtful are removed from the expected rotation and their minutes go to the
+rest in proportion; questionable and probable players are assumed to play.
+That gives report-adjusted versions of the two roster inputs, and a candidate
+that uses them in place of the unadjusted ones.
+
+- In the nine development seasons before the archive begins the two
+  candidates are identical, as they must be.
+- In every development season with reports (2019-2024) the report-aware
+  candidate is better; over 2020-2024 by 0.0034 log loss on average.
+- It was selected on development folds, and on the final test it scores
+  0.5959 against 0.5999 for the same model without the report (accuracy
+  67.8% against 67.7%). For scale: adding the rotation that *actually* played
+  - which nobody knows beforehand - scores 0.5933.
+
+What this does not include: versions of the report published later in the day
+(late scratches before a night game), confirmed starting line-ups, and
+anything before December 2018. The live path may see a later version than the
+backtest did, never an earlier one.
 
 *College headline numbers need the segment split.* College schedules include
 games against lower-division opponents, which are close to certain.
@@ -176,10 +198,9 @@ player out can nudge the estimate *up*. History shows the measure does move
 that way when such players sit, but small availability adjustments should be
 read with caution.
 
-The official NBA injury report is ingested from a public archive of every
-published version. That archive also makes an honest point-in-time backtest of
-availability features possible from 2018-19 on; this has **not** been done yet
-(see next steps).
+The WNBA and college leagues have no archived report history, so for them the
+availability rule remains what it was: checked against who actually played,
+not against results.
 
 ### American football (NFL, college FBS)
 
@@ -382,14 +403,15 @@ and the sample size.
 ## Combos
 
 Legs from different games of one league are combined using the validated
-same-slate residual correlation (NBA: +0.005, 95% interval -0.001 to +0.013
+same-slate residual correlation (NBA: +0.006, 95% interval -0.000 to +0.013
 over 80,517 event pairs, so independence is a justified approximation there).
 Same-game legs and repeated participants are rejected. The top-three rule was
-back-tested over historical slates: for the NBA, development slates 50.4%
-estimated versus 49.2% observed (1,746 slates), final-test slates 50.8% versus
-52.2% (268 slates). Selecting the most confident legs also selects the most
-overstated ones: at a leg minimum of 0.80 the development slates show 64.7%
-estimated versus 57.3% observed. The NHL shows the rule failing: on
+back-tested over historical slates: for the NBA, development slates 50.6%
+estimated versus 49.4% observed (1,755 slates), final-test slates 50.7% versus
+57.2% (271 slates, interval 51.2-63.0%: more won than estimated, which one
+favourable stretch can produce). Selecting the most confident legs also
+selects the most overstated ones: at a leg minimum of 0.80 the development
+slates show 64.6% estimated versus 58.7% observed. The NHL shows the rule failing: on
 development slates three-leg combos were estimated at 38.9% and won 31.5%
 (317 slates, interval 26.7-36.9%); its 67 final-test slates went the other
 way (35.0% estimated, 49.3% observed), and the NFL has 40. Those final-test
@@ -399,8 +421,10 @@ FINAL-status filter, combos across leagues, or the dependency handling.
 
 ## Known limitations
 
-- No backtest includes late availability news. Real pregame performance
-  depends on checks the history cannot reproduce.
+- Only the NBA backtest includes availability news, and only the official
+  report as it stood an hour before the day's first game. No other league's
+  backtest has any; late scratches and confirmed line-ups are in none. Real
+  pregame performance depends on checks the history cannot reproduce.
 - Market benchmarks are undated in their sources; no timestamped odds history
   was available, so "does it beat an executable price" is untested.
 - Several final-test periods include the current, partial season.

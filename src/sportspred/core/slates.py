@@ -32,13 +32,17 @@ def predicted_date_only(pred: Mapping[str, Any]) -> bool:
     """Was the event's start only a calendar date when this prediction was made?
 
     Recorded as ``display.date_only``; older rows are recognised by the
-    ``start_time_published`` check the engine attaches to date-only events.
+    ``start_time_published`` check the engine attaches to date-only events,
+    or by the displayed start, which says "start time not published".
     """
     display = _loads(pred.get("display_json", pred.get("display")), {})
     if display.get("date_only"):
         return True
     checks = _loads(pred.get("checks_json", pred.get("checks")), [])
-    return any(isinstance(c, dict) and c.get("key") == "start_time_published" for c in checks)
+    if any(isinstance(c, dict) and c.get("key") == "start_time_published" for c in checks):
+        return True
+    # The earliest ledger rows carry neither marker; their displayed start says it in words.
+    return "start time not published" in str(display.get("start_hst") or "")
 
 
 def slate_date_of(pred: Mapping[str, Any]) -> date:

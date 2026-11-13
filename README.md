@@ -38,13 +38,13 @@ detail, intervals, calibration charts and limitations:
 |---|---|---|---|---|---|---|---|---|
 | Major League Baseball | winner | validated | 4,949 | 56.5% | 0.680 | 0.691 | 0.680 |  |
 | NBA | winner | validated | 2,813 | 67.7% | 0.600 | 0.692 | 0.604 |  |
-| NCAA Division I men | winner | validated | 13,251 | 75.0% | 0.487 | 0.627 | 0.511 |  |
+| NCAA Division I men | winner | validated | 13,251 | 75.0% | 0.488 | 0.627 | 0.511 |  |
 | NCAA Division I women | winner | validated | 12,313 | 78.3% | 0.439 | 0.656 | 0.473 |  |
 | WNBA | winner | experimental | 664 | 65.4% | 0.626 | 0.688 | 0.644 |  |
 | NCAA Division I FBS | winner | validated | 2,168 | 70.8% | 0.546 | 0.675 | 0.578 |  |
-| NFL | spread (at the historical line) | experimental | 695 | 50.2% | 0.694 | (selected) | 0.695 | **0.694** |
-| NFL | total (at the historical line) | experimental | 703 | 47.4% | 0.694 | (selected) | 0.704 | **0.693** |
-| NFL | winner | validated | 704 | 65.5% | 0.626 | 0.693 | 0.630 | **0.603** |
+| NFL | spread (at the historical line) | experimental | 696 | 50.3% | 0.693 | (selected) | 0.695 | **0.694** |
+| NFL | total (at the historical line) | experimental | 704 | 47.3% | 0.694 | (selected) | 0.704 | **0.693** |
+| NFL | winner | validated | 705 | 65.4% | 0.627 | 0.693 | 0.631 | **0.603** |
 | NHL | winner (incl. overtime and shootout) | validated | 3,090 | 57.0% | 0.672 | 0.689 | 0.679 |  |
 | NHL | three-way after regulation | validated | 3,090 | 45.0% | 1.050 | 1.069 | 1.057 |  |
 | German Bundesliga | three-way (home / draw / away) | experimental | 648 | 51.7% | 1.000 | 1.080 | 0.994 | **0.969** |
@@ -54,13 +54,13 @@ detail, intervals, calibration charts and limitations:
 | Italian Serie A | three-way (home / draw / away) | experimental | 810 | 52.6% | 0.980 | 1.093 | 0.991 | **0.962** |
 | Men's international football | three-way (home / draw / away) | experimental | 1,803 | 61.6% | 0.843 | 1.044 | 0.854 |  |
 | Women's international football | three-way (home / draw / away) | validated | 1,350 | 67.3% | 0.772 | 1.006 | 0.797 |  |
-| ATP Tour main draw singles | winner | validated | 3,558 | 65.9% | 0.614 | 0.694 | 0.624 |  |
-| ATP Challenger main draw singles | winner | validated | 8,661 | 63.3% | 0.639 | 0.693 | 0.641 |  |
-| ATP Tour qualifying singles | winner | validated | 1,799 | 64.0% | 0.621 | 0.693 | 0.640 |  |
-| ITF men's singles | winner | experimental | 37,568 | 71.5% | 0.557 | 0.693 | 0.583 |  |
-| ITF women's singles | winner | validated | 21,908 | 70.6% | 0.565 | 0.693 | 0.581 |  |
-| WTA Tour main draw singles | winner | validated | 3,380 | 66.9% | 0.600 | 0.693 | 0.608 |  |
-| WTA 125 main draw singles | winner | validated | 2,044 | 66.8% | 0.611 | 0.694 | 0.621 |  |
+| ATP Tour main draw singles | winner | validated | 3,898 | 66.0% | 0.610 | 0.694 | 0.621 |  |
+| ATP Challenger main draw singles | winner | validated | 9,950 | 63.5% | 0.638 | 0.693 | 0.640 |  |
+| ATP Tour qualifying singles | winner | validated | 1,799 | 65.0% | 0.618 | 0.693 | 0.636 |  |
+| ITF men's singles | winner | experimental | 43,092 | 71.1% | 0.561 | 0.693 | 0.583 |  |
+| ITF women's singles | winner | validated | 25,094 | 70.0% | 0.570 | 0.693 | 0.585 |  |
+| WTA Tour main draw singles | winner | validated | 3,673 | 66.7% | 0.604 | 0.693 | 0.612 |  |
+| WTA 125 main draw singles | winner | validated | 2,341 | 65.6% | 0.611 | 0.694 | 0.618 |  |
 | WTA Tour qualifying singles | winner | validated | 3,278 | 67.5% | 0.590 | 0.693 | 0.599 |  |
 <!-- results:end -->
 

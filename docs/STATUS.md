@@ -13,13 +13,14 @@ covered by the test suite but has not yet happened with real events.
 |---|---|---|
 | Shared foundations | UTC storage with Pacific/Honolulu display; stable IDs; entity matching by provider ID and normalised name; cross-provider event de-duplication; a source record behind every event and result (URL, collection time, content hash, and the publication time where the source states one); event change log; result corrections kept; append-only, hash-chained prediction ledger; synthetic data isolated under `demo_*` keys | real data |
 | Data adapters (public datasets, no key) | NBA, WNBA, NCAA men's and women's basketball; NFL; college football; NHL; MLB (through 2025); men's and women's international soccer; Premier League, La Liga, Bundesliga, Serie A, Ligue 1; tennis singles at eight levels (historical results to mid-2026, non-commercial licence); the official NBA injury report archive | real data |
-| Validation | @@VALIDATION_SUMMARY@@ | real data |
+| Validation | 26 league-markets validated on real data with the walk-forward protocol and a reserved final test: 17 pass every gate, 9 are experimental (WNBA, NFL spread and total, ITF men, men's international soccer, Premier League, La Liga, Bundesliga, Serie A). Each has four or five recorded runs, because runs were repeated after fixes; every run is listed in the validation report's run history | real data |
 | Point-in-time features | the as-of leakage test passes with zero difference for all 26 league-markets on the real store (`sportspred check-leakage`, and the opt-in test `tests/sportspred/test_real_store_leakage.py`) | real data |
-| Prediction engine | PROVISIONAL and PASS statuses with pregame checks, availability applied, bootstrap model-uncertainty intervals, validated confidence labels, explanations: @@PRED_SUMMARY@@ | real data |
+| Prediction engine | PROVISIONAL and PASS statuses with pregame checks, availability applied, bootstrap model-uncertainty intervals, validated confidence labels, explanations: 770 real pregame predictions in the ledger (446 current event-markets over seven slates: 338 PROVISIONAL, 108 PASS, none FINAL); the hash chain and the clock audit verify | real data |
 | FINAL and CONDITIONAL statuses | every check complete and fresh; a selection that depends on a doubtful player | tests |
 | Combos | the PASS message and the provisional preview on real slates; the per-league backtest of the selection rule | real data |
 | Combos that are recommended | a FINAL three-leg combo, alternatives, larger sizes, dependency handling | tests |
-| Ledger: grading, reviews, lessons, drift monitor | grading against results, regrade chain after corrections, reviews (variance / model error / data issue / availability change), lessons with a validation-run requirement | tests |
+| Ledger: grading and reviews | grading against results, linked correction grades, reviews (variance / model error / data issue / availability change): 59 real selections graded and reviewed on 2026-11-13 | real data (one day) |
+| Ledger: lessons and drift monitor | lessons with a validation-run requirement; calibration and input drift | tests |
 | CSV import | events, results, availability, check records; whole-file validation with line numbers | tests |
 | EV module | CSV price import, raw implied / no-vig / fair odds / edge / EV, fee schedules, settlement rules, eligibility presets, paper positions and resettlement | tests |
 | Dashboard and reports | static self-contained HTML dashboard; generated coverage table and validation results with charts | real data |
@@ -32,13 +33,18 @@ covered by the test suite but has not yet happened with real events.
   store, but no real prediction has reached FINAL: the newest official NBA
   report in the public archive is too old to satisfy the three-hour re-check
   rule, and no other availability feed is reachable here.
-- **Grading, reviews, lessons and monitoring on real results.** Tested, but
-  no real prediction has been graded yet. The first were recorded on
-  2026-11-12. When this was written (2026-11-13, 05:30 UTC) the public result
-  files had not yet published the previous evening's NBA, NHL and college
-  games; the one predicted game with a result on file (an NFL game) had only
-  PASS predictions, which are deliberately not graded. Run `sportspred ingest
-  ... && sportspred grade && sportspred review` once results are published.
+- **Lessons and drift monitoring on real results.** Tested, but they need
+  far more graded results than exist. Grading and reviews did run on real
+  results for the first time on 2026-11-13: 59 selections (all PROVISIONAL)
+  were graded, 48 correct and 11 incorrect - 81% against an average stated
+  probability of 85%, on one day of mostly college basketball. That is far
+  too little to say anything about the models. It was enough to expose a
+  defect: six college football predictions made when only the date was known
+  were voided as "rescheduled" once kick-off times were published. The rule
+  was fixed and the six grades withdrawn by linked correction grades. 52 of
+  the 59 reviews are labelled "data issue" because those predictions were
+  made with travel inputs missing - inputs since removed from the college
+  models.
 - **EV evaluation with real prices.** Maths and rules are tested against hand
   calculations; no real quotes were available.
 
@@ -233,22 +239,31 @@ be proved from the record; the run history shows what every run produced.
 
 ## Tests run
 
-`pytest` on 2026-11-13: **4,362 passed, 13 expected failures** (the expected
-failures are in the earlier `evmodel` suite), of which 123 are the
-`tests/sportspred` suite: time zones and HST display, stable IDs and
-de-duplication, ledger immutability and tamper detection, synthetic isolation,
-point-in-time availability, as-of leakage, chronological folds, retrospective
-columns, stale and missing checks (including a source that has stopped
-publishing), CSV validation, the results-only builder, tennis normalisation
-and features, the official injury report parser, combo dependencies and the
-three-leg rule, grading and resettlement, EV maths and settlement rules, the
-wall between predictions and prices, dashboard rendering, regression tests
-for every audit fix, and an end-to-end smoke test.
+`pytest` on 2026-11-13: **4,428 passed, 13 expected failures, 2 skipped** (the
+expected failures are in the earlier `evmodel` suite; the two skipped are the
+opt-in real-data tests below). 189 of those are the `tests/sportspred` suite:
+time zones and HST display, stable IDs and de-duplication, ledger
+immutability, tamper detection, the clock rule and concurrent writers,
+synthetic isolation, point-in-time availability and report supersession,
+as-of leakage, chronological folds, blinded scoring rows, retrospective and
+price columns, stale and missing checks (including a source that has stopped
+publishing), CSV validation, the results-only builder, tennis, the official
+injury report parser, combo dependencies and the three-leg rule, grading,
+reschedules and correction grades, EV maths and settlement rules, dashboard
+rendering, a regression test for every defect the audits and verifiers
+found, and an end-to-end smoke test.
 
-Also run on 2026-11-13, on real data: ingest, validation and training for all
-26 league-markets (logs under `data/logs/`, which is not committed), the NBA
-combo backtest, predictions and combos for the current slates, and
-`sportspred ledger verify`.
+Opt-in tests on the real store (`SPORTSPRED_REAL_STORE=data/store python -m
+pytest tests/sportspred/test_real_store_leakage.py`), run on 2026-11-13 after
+the last change to any feature builder: **52 passed** - for each of the 26
+league-markets, features rebuilt as of past instants equal the full-history
+values, and every candidate predicts the same on blinded rows.
+
+Also run on 2026-11-13, on real data: ingest for every league over 12-13
+November, validation and training for all 26 league-markets (logs under
+`data/logs/`, which is not committed), the NBA combo backtest, grading and
+reviews of the first decided predictions, predictions and combos for the
+current slates, and `sportspred ledger verify`.
 
 ## Next steps, in order of value
 

@@ -206,7 +206,7 @@ def grade_predictions(store: Any, *, now: Any = None, include_synthetic: bool = 
                             league=pred["league"], event_id=pred["event_id"])
             continue
         prev = last.get(pred["prediction_id"])
-        if outcome == "no_result" and (prev is None or prev["outcome"] in ("no_result", "void")):
+        if outcome == "no_result" and (prev is None or prev["outcome"] == "no_result"):
             continue
         # A grade that the data on file no longer supports (the result was withdrawn or
         # lost a field the grade relied on) is withdrawn too, by a linked "no_result" grade.

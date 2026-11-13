@@ -95,7 +95,7 @@ candidate.
 4. **Selection** on pooled development-fold log loss with a one-standard-error
    preference for the simpler candidate.
 5. The selected candidate and the baselines are scored **once per run** on the
-   final test period. Most leagues have two or three recorded runs, because
+   final test period. Every league has four or five recorded runs, because
    data handling and defects found in review were fixed and the run repeated.
    No candidate list, selection rule or gate was changed because of a
    final-test number - a statement of the author's intent that the record
@@ -136,7 +136,7 @@ box scores, rest, back-to-backs, congestion, travel, time zones, playoffs.
 | League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | Market benchmark |
 |---|---|---|---|---|---|---|---|---|
 | NBA | winner | validated | 2,813 | 67.7% | 0.600 | 0.692 | 0.604 |  |
-| NCAA Division I men | winner | validated | 13,251 | 75.0% | 0.487 | 0.627 | 0.511 |  |
+| NCAA Division I men | winner | validated | 13,251 | 75.0% | 0.488 | 0.627 | 0.511 |  |
 | NCAA Division I women | winner | validated | 12,313 | 78.3% | 0.439 | 0.656 | 0.473 |  |
 | WNBA | winner | experimental | 664 | 65.4% | 0.626 | 0.688 | 0.644 |  |
 <!-- results:end -->
@@ -147,7 +147,13 @@ in the NBA.
 
 *College headline numbers need the segment split.* College schedules include
 games against lower-division opponents, which are close to certain.
-@@NCAA_SEGMENTS@@ Travel inputs are not used for the college leagues: the
+In the men's final test 9.6% of games (1,271) involve a side with fewer
+than ten games on file in the previous year; the model picks those at 98.0%
+(log loss 0.095). On the other 90.4% (11,980 games) accuracy is 72.5% and log
+loss 0.529. For women: 7.8% of games at 94.0%, and 76.9% (log loss 0.459) on
+the other 11,349. The pooled headline (75.0% and 78.3%) sits between the two;
+the second figure is the one to compare with Division I games as usually
+understood. The label is known before the game and is never a model input. Travel inputs are not used for the college leagues: the
 built-in venue table locates under a tenth of their games.
 
 *Availability.* A report says who is doubtful now: once a newer report of the
@@ -188,8 +194,8 @@ completed game the starter is the listed quarterback only if he has a stat
 line for that team in that game, otherwise the team's quarterback with the
 most plays.
 
-- **NFL winner** (validated): 704 games, Sep 2024 - Nov 2026, accuracy 65.5%
-  (62.4-68.4), log loss 0.626; Elo 0.630; the de-vigged price in the schedule
+- **NFL winner** (validated): 705 games, Sep 2024 - Nov 2026, accuracy 65.4%
+  (62.0-68.6), log loss 0.627; Elo 0.631; the de-vigged price in the schedule
   file 0.603. Knowing the actual starting quarterback would give 0.619.
   *Live predictions use one input the backtest did not.* The schedule file
   lists a projected starter for upcoming games. It is a third-party
@@ -296,17 +302,22 @@ so the base rate is a coin flip by construction.
 <!-- results:start sport=tennis -->
 | League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | Market benchmark |
 |---|---|---|---|---|---|---|---|---|
-| ATP Tour main draw singles | winner | validated | 3,558 | 65.9% | 0.614 | 0.694 | 0.624 |  |
-| ATP Challenger main draw singles | winner | validated | 8,661 | 63.3% | 0.639 | 0.693 | 0.641 |  |
-| ATP Tour qualifying singles | winner | validated | 1,799 | 64.0% | 0.621 | 0.693 | 0.640 |  |
-| ITF men's singles | winner | experimental | 37,568 | 71.5% | 0.557 | 0.693 | 0.583 |  |
-| ITF women's singles | winner | validated | 21,908 | 70.6% | 0.565 | 0.693 | 0.581 |  |
-| WTA Tour main draw singles | winner | validated | 3,380 | 66.9% | 0.600 | 0.693 | 0.608 |  |
-| WTA 125 main draw singles | winner | validated | 2,044 | 66.8% | 0.611 | 0.694 | 0.621 |  |
+| ATP Tour main draw singles | winner | validated | 3,898 | 66.0% | 0.610 | 0.694 | 0.621 |  |
+| ATP Challenger main draw singles | winner | validated | 9,950 | 63.5% | 0.638 | 0.693 | 0.640 |  |
+| ATP Tour qualifying singles | winner | validated | 1,799 | 65.0% | 0.618 | 0.693 | 0.636 |  |
+| ITF men's singles | winner | experimental | 43,092 | 71.1% | 0.561 | 0.693 | 0.583 |  |
+| ITF women's singles | winner | validated | 25,094 | 70.0% | 0.570 | 0.693 | 0.585 |  |
+| WTA Tour main draw singles | winner | validated | 3,673 | 66.7% | 0.604 | 0.693 | 0.612 |  |
+| WTA 125 main draw singles | winner | validated | 2,341 | 65.6% | 0.611 | 0.694 | 0.618 |  |
 | WTA Tour qualifying singles | winner | validated | 3,278 | 67.5% | 0.590 | 0.693 | 0.599 |  |
 <!-- results:end -->
 
-@@TENNIS_NOTE@@
+Selected: a full logistic model for ATP and WTA main draw and WTA
+qualifying, boosted trees for ATP qualifying, Challenger and both ITF
+leagues, and the two-rating (all-surface plus surface) logistic model for
+WTA 125. On development folds the selected model beat the Elo baseline in
+every season of every tennis league. ITF men is experimental only because
+its history allows two walk-forward folds where the gate asks for three.
 
 What this does **not** establish:
 

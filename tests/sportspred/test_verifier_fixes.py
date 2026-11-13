@@ -287,3 +287,27 @@ def test_ev_evaluation_and_the_dashboard_follow_the_event_as_it_stands_now(store
     assert "This event is now canceled" in page
     combos = page[page.index("<h3>Combos</h3>"):page.index("</section>", page.index("<h3>Combos</h3>"))]
     assert "insufficient support" in combos and "single" not in combos and "nan" not in combos
+
+
+# ------------------------------------------- found by the first real grading run
+def test_an_early_ledger_row_for_a_date_only_event_is_recognised_and_a_wrong_void_is_withdrawn(store, two_teams):
+    """The first rows ever recorded carry neither the date-only flag nor the
+    check that later marked it - only a displayed start saying "start time not
+    published".  Six real college football predictions were voided as
+    'rescheduled' when their kick-off times were published."""
+    from sportspred.core.slates import predicted_date_only
+    from sportspred.ledger import grade_predictions
+
+    assert predicted_date_only({"display_json": '{"start_hst": "Sat Nov 14, 2026 (start time not published)"}',
+                                "checks_json": "[]"})
+    assert not predicted_date_only({"display_json": '{"start_hst": "Sat Nov 14, 2026 2:00 PM HST"}', "checks_json": "[]"})
+
+    eid = _event(store, "nba", "basketball", two_teams, "v1", "2030-03-09T19:00:00Z")
+    pid = store.insert_prediction(prediction(eid, two_teams, rec_status="PROVISIONAL", prob=0.7,
+                                             probs={two_teams[0]: 0.7, two_teams[1]: 0.3}))
+    # A void on file that the data does not support (as written by the earlier rule) ...
+    store.add_grade(pid, "void", {"note": "event was rescheduled after the prediction"})
+    written = grade_predictions(store)                      # ... the event is simply scheduled and unplayed
+    assert list(written["outcome"]) == ["no_result"] and bool(written.iloc[0]["regrade"])
+    assert store.grades().iloc[0]["outcome"] == "no_result" and len(store.grades(latest_only=False)) == 2
+    assert grade_predictions(store).empty                   # and nothing more is written on the next run

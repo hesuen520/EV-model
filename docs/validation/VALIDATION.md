@@ -12,13 +12,13 @@ A league that was validated again (after a data or defect fix) has had its final
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | baseball | `mlb` | winner | **validated** | core_logit | 2024-03-20 to 2025-11-01 | 4949 | 56.5% (55.3-57.8) | 0.6798 (0.6761-0.6839) | 0.6912 | 0.0073 |  |
 | basketball | `nba` | winner | **validated** | full_logit | 2024-10-22 to 2026-11-12 | 2813 | 67.7% (65.7-69.5) | 0.5999 (0.5839-0.6139) | 0.6920 | 0.0061 |  |
-| basketball | `ncaam` | winner | **validated** | full_gbm | 2024-11-04 to 2026-11-12 | 13251 | 75.0% (73.6-76.3) | 0.4874 (0.4682-0.5058) | 0.6267 | 0.0049 |  |
-| basketball | `ncaaw` | winner | **validated** | full_gbm | 2024-11-04 to 2026-11-12 | 12313 | 78.3% (77.2-79.3) | 0.4385 (0.4247-0.4524) | 0.6556 | 0.0096 |  |
+| basketball | `ncaam` | winner | **validated** | full_gbm | 2024-11-04 to 2026-11-12 | 13251 | 75.0% (73.7-76.3) | 0.4876 (0.4685-0.5061) | 0.6267 | 0.0052 |  |
+| basketball | `ncaaw` | winner | **validated** | full_gbm | 2024-11-04 to 2026-11-12 | 12313 | 78.3% (77.2-79.3) | 0.4386 (0.4247-0.4525) | 0.6556 | 0.0101 |  |
 | basketball | `wnba` | winner | **experimental** | full_logit | 2025-05-16 to 2026-10-29 | 664 | 65.4% (61.9-68.7) | 0.6261 (0.5965-0.6609) | 0.6880 | 0.0310 |  |
 | football | `ncaaf` | winner | **validated** | full_logit | 2024-08-24 to 2026-11-08 | 2168 | 70.8% (68.7-72.7) | 0.5464 (0.5268-0.5683) | 0.6745 | 0.0135 |  |
-| football | `nfl` | spread | **experimental** | base_rate | 2024-09-06 to 2026-11-10 | 695 | 50.2% (46.9-53.8) | 0.6935 (0.6912-0.6956) | nan | 0.0137 | 0.6936 (model 0.6935 on the same 695 events) |
-| football | `nfl` | total | **experimental** | base_rate | 2024-09-06 to 2026-11-10 | 703 | 47.4% (43.5-51.1) | 0.6935 (0.6930-0.6941) | nan | 0.0297 | 0.6934 (model 0.6935 on the same 703 events) |
-| football | `nfl` | winner | **validated** | qb_logit | 2024-09-06 to 2026-11-10 | 704 | 65.5% (62.4-68.4) | 0.6263 (0.6043-0.6494) | 0.6929 | 0.0269 | 0.6027 (model 0.6263 on the same 704 events) |
+| football | `nfl` | spread | **experimental** | base_rate | 2024-09-06 to 2026-11-13 | 696 | 50.3% (46.5-53.6) | 0.6935 (0.6913-0.6959) | nan | 0.0130 | 0.6936 (model 0.6935 on the same 696 events) |
+| football | `nfl` | total | **experimental** | base_rate | 2024-09-06 to 2026-11-13 | 704 | 47.3% (43.7-51.3) | 0.6935 (0.6930-0.6940) | nan | 0.0304 | 0.6933 (model 0.6935 on the same 704 events) |
+| football | `nfl` | winner | **validated** | qb_logit | 2024-09-06 to 2026-11-13 | 705 | 65.4% (62.0-68.6) | 0.6266 (0.6046-0.6499) | 0.6931 | 0.0261 | 0.6029 (model 0.6266 on the same 705 events) |
 | hockey | `nhl` | winner | **validated** | core_logit | 2024-10-04 to 2026-11-12 | 3090 | 57.0% (55.3-58.6) | 0.6719 (0.6643-0.6805) | 0.6893 | 0.0245 |  |
 | hockey | `nhl` | winner_3way | **validated** | full_logit | 2024-10-04 to 2026-11-12 | 3090 | 45.0% (43.4-46.6) | 1.0499 (1.0386-1.0620) | 1.0687 | 0.0246 |  |
 | soccer | `bundesliga` | winner_3way | **experimental** | poisson_dc | 2024-08-23 to 2026-09-20 | 648 | 51.7% (47.4-55.9) | 1.0001 (0.9553-1.0470) | 1.0795 | 0.0392 | 0.9690 (model 0.9993 on the same 621 events) |
@@ -28,14 +28,14 @@ A league that was validated again (after a data or defect fix) has had its final
 | soccer | `seriea` | winner_3way | **experimental** | full_logit | 2024-08-17 to 2026-09-20 | 810 | 52.6% (49.6-55.8) | 0.9805 (0.9496-1.0121) | 1.0930 | 0.0330 | 0.9624 (model 0.9801 on the same 780 events) |
 | soccer | `soccer_intl_men` | winner_3way | **experimental** | full_gbm | 2025-01-02 to 2026-10-06 | 1803 | 61.6% (59.0-64.2) | 0.8430 (0.8107-0.8785) | 1.0442 | 0.0334 |  |
 | soccer | `soccer_intl_women` | winner_3way | **validated** | full_logit | 2025-01-02 to 2026-10-13 | 1350 | 67.3% (64.4-70.2) | 0.7719 (0.7240-0.8190) | 1.0057 | 0.0259 |  |
-| tennis | `atp` | winner | **validated** | full_logit | 2025-01-06 to 2026-05-25 | 3558 | 65.9% (64.0-67.9) | 0.6139 (0.5961-0.6308) | 0.6937 | 0.0107 |  |
-| tennis | `atp_challenger` | winner | **validated** | full_gbm | 2025-01-06 to 2026-06-01 | 8661 | 63.3% (62.2-64.4) | 0.6394 (0.6314-0.6469) | 0.6930 | 0.0104 |  |
-| tennis | `atp_qual` | winner | **validated** | full_gbm | 2025-01-06 to 2026-05-17 | 1799 | 64.0% (61.9-66.4) | 0.6213 (0.6065-0.6351) | 0.6935 | 0.0145 |  |
-| tennis | `itf_men` | winner | **experimental** | full_gbm | 2024-01-01 to 2026-06-01 | 37568 | 71.5% (70.9-72.0) | 0.5573 (0.5515-0.5625) | 0.6933 | 0.0082 |  |
-| tennis | `itf_women` | winner | **validated** | full_gbm | 2025-01-06 to 2026-06-01 | 21908 | 70.6% (69.8-71.3) | 0.5648 (0.5587-0.5713) | 0.6931 | 0.0144 |  |
-| tennis | `wta` | winner | **validated** | full_logit | 2025-01-06 to 2026-05-25 | 3380 | 66.9% (65.2-68.3) | 0.6002 (0.5856-0.6169) | 0.6933 | 0.0090 |  |
-| tennis | `wta_125` | winner | **validated** | full_logit | 2025-02-03 to 2026-06-02 | 2044 | 66.8% (64.9-68.5) | 0.6111 (0.5910-0.6292) | 0.6937 | 0.0199 |  |
-| tennis | `wta_qual` | winner | **validated** | full_logit | 2024-01-01 to 2026-05-18 | 3278 | 67.5% (65.7-69.6) | 0.5901 (0.5707-0.6079) | 0.6931 | 0.0137 |  |
+| tennis | `atp` | winner | **validated** | full_logit | 2025-01-06 to 2026-05-25 | 3898 | 66.0% (64.2-67.8) | 0.6099 (0.5926-0.6263) | 0.6938 | 0.0091 |  |
+| tennis | `atp_challenger` | winner | **validated** | full_gbm | 2025-01-06 to 2026-06-01 | 9950 | 63.5% (62.4-64.6) | 0.6382 (0.6306-0.6454) | 0.6930 | 0.0066 |  |
+| tennis | `atp_qual` | winner | **validated** | full_gbm | 2025-01-06 to 2026-05-17 | 1799 | 65.0% (63.0-67.1) | 0.6176 (0.6019-0.6314) | 0.6935 | 0.0135 |  |
+| tennis | `itf_men` | winner | **experimental** | full_gbm | 2024-01-01 to 2026-06-01 | 43092 | 71.1% (70.6-71.6) | 0.5613 (0.5565-0.5660) | 0.6933 | 0.0108 |  |
+| tennis | `itf_women` | winner | **validated** | full_gbm | 2025-01-06 to 2026-06-01 | 25094 | 70.0% (69.4-70.6) | 0.5700 (0.5646-0.5758) | 0.6932 | 0.0138 |  |
+| tennis | `wta` | winner | **validated** | full_logit | 2025-01-06 to 2026-05-25 | 3673 | 66.7% (65.1-68.1) | 0.6036 (0.5895-0.6207) | 0.6935 | 0.0068 |  |
+| tennis | `wta_125` | winner | **validated** | surface_logit | 2025-02-03 to 2026-06-02 | 2341 | 65.6% (63.7-67.2) | 0.6114 (0.5940-0.6265) | 0.6940 | 0.0093 |  |
+| tennis | `wta_qual` | winner | **validated** | full_logit | 2024-01-01 to 2026-05-18 | 3278 | 67.5% (65.9-69.3) | 0.5904 (0.5703-0.6077) | 0.6931 | 0.0140 |  |
 
 ## mlb - winner
 
@@ -155,7 +155,7 @@ Limitations:
 
 ## ncaam - winner
 
-122486 completed events from 2005-11-08 to 2026-11-12; 12 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `full_gbm` (lowest pooled development log loss (0.50559)).
+122486 completed events from 2005-11-08 to 2026-11-12; 12 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `full_gbm` (lowest pooled development log loss (0.50566)).
 
 ![calibration](charts/ncaam_winner_calibration.svg)
 ![by season](charts/ncaam_winner_by_season.svg)
@@ -169,31 +169,38 @@ Season by season on development folds the selected model beat `elo_logit` in 12 
 | efficiency_logit | 70101 | 74.0% | 0.5177 | 0.1732 |
 | core_logit | 70101 | 74.1% | 0.5131 | 0.1718 |
 | full_logit | 70101 | 74.2% | 0.5101 | 0.1706 |
-| full_gbm (selected) | 70101 | 74.3% | 0.5056 | 0.1695 |
+| full_gbm (selected) | 70101 | 74.3% | 0.5057 | 0.1695 |
 | oracle_rotation_logit [retrospective] | 70101 | 74.3% | 0.5101 | 0.1706 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_gbm (selected) | 13251 | 75.0% | 0.4874 | 0.1638 |
+| full_gbm (selected) | 13251 | 75.0% | 0.4876 | 0.1638 |
 | baseline base_rate | 13251 | 67.8% | 0.6267 | 0.2176 |
 | baseline elo_logit | 13251 | 74.2% | 0.5106 | 0.1714 |
-| retrospective upper bound oracle_rotation_logit (not a realistic backtest) | 13251 | 74.9% | 0.4944 | 0.1653 |
+| retrospective upper bound oracle_rotation_logit (not a realistic backtest) | 13251 | 74.8% | 0.4943 | 0.1653 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
 | 0.50 | 13251 | 100.0% | 75.0% (74.2-75.7) | 75.0% |
-| 0.55 | 11900 | 89.8% | 77.4% (76.7-78.2) | 77.5% |
-| 0.60 | 10437 | 78.8% | 80.4% (79.6-81.1) | 80.3% |
-| 0.65 | 8970 | 67.7% | 83.4% (82.6-84.1) | 83.2% |
-| 0.70 | 7605 | 57.4% | 86.2% (85.4-87.0) | 86.0% |
-| 0.75 | 6376 | 48.1% | 89.0% (88.2-89.7) | 88.7% |
-| 0.80 | 5204 | 39.3% | 91.7% (91.0-92.5) | 91.2% |
+| 0.55 | 11916 | 89.9% | 77.4% (76.7-78.2) | 77.5% |
+| 0.60 | 10465 | 79.0% | 80.4% (79.6-81.1) | 80.2% |
+| 0.65 | 9003 | 67.9% | 83.4% (82.6-84.1) | 83.1% |
+| 0.70 | 7618 | 57.5% | 86.1% (85.3-86.9) | 86.0% |
+| 0.75 | 6369 | 48.1% | 88.9% (88.1-89.6) | 88.6% |
+| 0.80 | 5199 | 39.2% | 91.7% (90.9-92.4) | 91.1% |
 
-Same-slate residual correlation (used by the combo builder): +0.0016 (95% interval +0.0001 to +0.0033, 3034989 event pairs).
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| a side with fewer than 10 games on file in the previous year (mostly non-Division-I opponents) | 9.6% | 1271 | 98.0% | 0.0951 | 94.5% |
+| both sides established | 90.4% | 11980 | 72.5% | 0.5293 | 72.9% |
+
+Same-slate residual correlation (used by the combo builder): +0.0019 (95% interval +0.0004 to +0.0036, 3034989 event pairs).
 
 Gates:
 
@@ -201,8 +208,8 @@ Gates:
 - passed - point in time features: features use only information available before each event
 - passed - final test sample: 13251 final-test events (minimum 300)
 - passed - development folds: 12 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.13934 (95% interval 0.13015 to 0.14813)
-- passed - calibration: final-test expected calibration error 0.0049 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.13906 (95% interval 0.12988 to 0.14781)
+- passed - calibration: final-test expected calibration error 0.0052 (maximum 0.03)
 
 Limitations:
 
@@ -212,7 +219,7 @@ Limitations:
 
 ## ncaaw - winner
 
-115282 completed events from 2005-11-10 to 2026-11-12; 12 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `full_gbm` (lowest pooled development log loss (0.47703)).
+115282 completed events from 2005-11-10 to 2026-11-12; 12 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `full_gbm` (lowest pooled development log loss (0.47684)).
 
 ![calibration](charts/ncaaw_winner_calibration.svg)
 ![by season](charts/ncaaw_winner_by_season.svg)
@@ -225,15 +232,15 @@ Season by season on development folds the selected model beat `elo_logit` in 12 
 | elo_logit | 65712 | 75.4% | 0.4974 | 0.1657 |
 | efficiency_logit | 65712 | 75.8% | 0.4911 | 0.1632 |
 | core_logit | 65712 | 76.0% | 0.4853 | 0.1610 |
-| full_logit | 65712 | 76.0% | 0.4925 | 0.1614 |
-| full_gbm (selected) | 65712 | 76.4% | 0.4770 | 0.1580 |
-| oracle_rotation_logit [retrospective] | 65712 | 76.0% | 0.4924 | 0.1614 |
+| full_logit | 65712 | 76.1% | 0.4818 | 0.1597 |
+| full_gbm (selected) | 65712 | 76.3% | 0.4768 | 0.1579 |
+| oracle_rotation_logit [retrospective] | 65712 | 76.1% | 0.4816 | 0.1596 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_gbm (selected) | 12313 | 78.3% | 0.4385 | 0.1449 |
+| full_gbm (selected) | 12313 | 78.3% | 0.4386 | 0.1449 |
 | baseline base_rate | 12313 | 63.7% | 0.6556 | 0.2315 |
 | baseline elo_logit | 12313 | 76.2% | 0.4725 | 0.1574 |
 | retrospective upper bound oracle_rotation_logit (not a realistic backtest) | 12313 | 78.3% | 0.4422 | 0.1459 |
@@ -243,14 +250,21 @@ After the PASS rule (final test):
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
 | 0.50 | 12313 | 100.0% | 78.3% (77.5-79.0) | 78.8% |
-| 0.55 | 11369 | 92.3% | 80.5% (79.7-81.2) | 81.0% |
-| 0.60 | 10439 | 84.8% | 82.5% (81.7-83.2) | 83.1% |
-| 0.65 | 9444 | 76.7% | 85.0% (84.2-85.7) | 85.3% |
-| 0.70 | 8362 | 67.9% | 87.3% (86.6-88.0) | 87.6% |
-| 0.75 | 7327 | 59.5% | 89.8% (89.1-90.5) | 89.7% |
-| 0.80 | 6223 | 50.5% | 92.2% (91.5-92.8) | 91.8% |
+| 0.55 | 11389 | 92.5% | 80.5% (79.8-81.2) | 81.0% |
+| 0.60 | 10431 | 84.7% | 82.6% (81.9-83.3) | 83.1% |
+| 0.65 | 9466 | 76.9% | 84.9% (84.2-85.6) | 85.2% |
+| 0.70 | 8372 | 68.0% | 87.3% (86.6-88.0) | 87.5% |
+| 0.75 | 7332 | 59.5% | 89.7% (89.0-90.4) | 89.7% |
+| 0.80 | 6210 | 50.4% | 92.2% (91.5-92.8) | 91.8% |
 
-Same-slate residual correlation (used by the combo builder): +0.0010 (95% interval -0.0005 to +0.0027, 2481983 event pairs).
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| a side with fewer than 10 games on file in the previous year (mostly non-Division-I opponents) | 7.8% | 964 | 94.0% | 0.1976 | 87.5% |
+| both sides established | 92.2% | 11349 | 76.9% | 0.4590 | 78.1% |
+
+Same-slate residual correlation (used by the combo builder): +0.0012 (95% interval -0.0003 to +0.0028, 2481983 event pairs).
 
 Gates:
 
@@ -258,8 +272,8 @@ Gates:
 - passed - point in time features: features use only information available before each event
 - passed - final test sample: 12313 final-test events (minimum 300)
 - passed - development folds: 12 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.21707 (95% interval 0.20684 to 0.22615)
-- passed - calibration: final-test expected calibration error 0.0096 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.21704 (95% interval 0.20680 to 0.22612)
+- passed - calibration: final-test expected calibration error 0.0101 (maximum 0.03)
 
 Limitations:
 
@@ -379,7 +393,7 @@ Limitations:
 
 ## nfl - spread
 
-7211 completed events from 1999-09-12 to 2026-11-10; 12 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `base_rate` (lowest pooled development log loss (0.69282)).
+7212 completed events from 1999-09-12 to 2026-11-13; 12 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `base_rate` (lowest pooled development log loss (0.69282)).
 
 ![calibration](charts/nfl_spread_calibration.svg)
 ![by season](charts/nfl_spread_by_season.svg)
@@ -400,16 +414,16 @@ Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| base_rate (selected) | 695 | 50.2% | 0.6935 | 0.2502 |
-| baseline elo_margin | 695 | 50.1% | 0.6948 | 0.2508 |
-| retrospective upper bound actual_qb_margin (not a realistic backtest) | 695 | 50.2% | 0.6929 | 0.2499 |
-| market benchmark: de-vigged prices in the nflverse schedule file (undated - the source states neither the bookmaker nor whether the number is an opening or a closing one; a closing number would contain news from after any realistic prediction time) | 695 | 51.4% | 0.6936 | 0.2502 |
+| base_rate (selected) | 696 | 50.3% | 0.6935 | 0.2502 |
+| baseline elo_margin | 696 | 50.0% | 0.6949 | 0.2509 |
+| retrospective upper bound actual_qb_margin (not a realistic backtest) | 696 | 50.3% | 0.6929 | 0.2499 |
+| market benchmark: de-vigged prices in the nflverse schedule file (undated - the source states neither the bookmaker nor whether the number is an opening or a closing one; a closing number would contain news from after any realistic prediction time) | 696 | 51.4% | 0.6936 | 0.2502 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 695 | 100.0% | 50.2% (46.5-53.9) | 51.6% |
+| 0.50 | 696 | 100.0% | 50.3% (46.6-54.0) | 51.6% |
 
 Same-slate residual correlation (used by the combo builder): -0.0069 (95% interval -0.0184 to +0.0053, 18281 event pairs).
 
@@ -417,14 +431,14 @@ Gates:
 
 - passed - real data: real events
 - passed - point in time features: features use only information available before each event
-- passed - final test sample: 695 final-test events (minimum 300)
+- passed - final test sample: 696 final-test events (minimum 300)
 - passed - development folds: 12 walk-forward folds (minimum 3)
 - NOT met - skill over baseline: selected model is the baseline itself
-- passed - calibration: final-test expected calibration error 0.0137 (maximum 0.03)
+- passed - calibration: final-test expected calibration error 0.0130 (maximum 0.03)
 
 Limitations:
 
-- 201 pushes out of 7412 played games have no binary outcome and are excluded from fitting and scoring (they still feed the ratings).
+- 201 pushes out of 7413 played games have no binary outcome and are excluded from fitting and scoring (they still feed the ratings).
 - No pregame injury reports, announced starters or depth charts exist in the historical data, so the backtest cannot include late availability news. The selectable models assume each team starts the quarterback who started its previous game (the listed starter, corrected from the box score when he did not play).
 - The line of each historical bet is the single undated number in the schedule file; the source does not say which bookmaker it is from or whether it is an opening or a closing number.
 - 109 upcoming games have no line on file yet and are not in this market's frame.
@@ -432,7 +446,7 @@ Limitations:
 
 ## nfl - total
 
-7306 completed events from 1999-09-12 to 2026-11-10; 12 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `base_rate` (lowest pooled development log loss (0.69315)).
+7307 completed events from 1999-09-12 to 2026-11-13; 12 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `base_rate` (lowest pooled development log loss (0.69315)).
 
 ![calibration](charts/nfl_total_calibration.svg)
 ![by season](charts/nfl_total_by_season.svg)
@@ -452,16 +466,16 @@ Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| base_rate (selected) | 703 | 47.4% | 0.6935 | 0.2502 |
-| baseline ratings_total | 703 | 47.2% | 0.7038 | 0.2553 |
-| retrospective upper bound weather_total (not a realistic backtest) | 703 | 47.8% | 0.7067 | 0.2567 |
-| market benchmark: de-vigged prices in the nflverse schedule file (undated - the source states neither the bookmaker nor whether the number is an opening or a closing one; a closing number would contain news from after any realistic prediction time) | 703 | 50.4% | 0.6934 | 0.2501 |
+| base_rate (selected) | 704 | 47.3% | 0.6935 | 0.2502 |
+| baseline ratings_total | 704 | 47.2% | 0.7038 | 0.2553 |
+| retrospective upper bound weather_total (not a realistic backtest) | 704 | 47.7% | 0.7068 | 0.2568 |
+| market benchmark: de-vigged prices in the nflverse schedule file (undated - the source states neither the bookmaker nor whether the number is an opening or a closing one; a closing number would contain news from after any realistic prediction time) | 704 | 50.4% | 0.6933 | 0.2501 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 703 | 100.0% | 47.4% (43.7-51.1) | 50.3% |
+| 0.50 | 704 | 100.0% | 47.3% (43.6-51.0) | 50.3% |
 
 Same-slate residual correlation (used by the combo builder): -0.0050 (95% interval -0.0174 to +0.0092, 18840 event pairs).
 
@@ -469,14 +483,14 @@ Gates:
 
 - passed - real data: real events
 - passed - point in time features: features use only information available before each event
-- passed - final test sample: 703 final-test events (minimum 300)
+- passed - final test sample: 704 final-test events (minimum 300)
 - passed - development folds: 12 walk-forward folds (minimum 3)
 - NOT met - skill over baseline: selected model is the baseline itself
-- passed - calibration: final-test expected calibration error 0.0297 (maximum 0.03)
+- NOT met - calibration: final-test expected calibration error 0.0304 (maximum 0.03)
 
 Limitations:
 
-- 106 pushes out of 7412 played games have no binary outcome and are excluded from fitting and scoring (they still feed the ratings).
+- 106 pushes out of 7413 played games have no binary outcome and are excluded from fitting and scoring (they still feed the ratings).
 - No pregame injury reports, announced starters or depth charts exist in the historical data, so the backtest cannot include late availability news. The selectable models assume each team starts the quarterback who started its previous game (the listed starter, corrected from the box score when he did not play).
 - The line of each historical bet is the single undated number in the schedule file; the source does not say which bookmaker it is from or whether it is an opening or a closing number.
 - 109 upcoming games have no line on file yet and are not in this market's frame.
@@ -484,7 +498,7 @@ Limitations:
 
 ## nfl - winner
 
-7396 completed events from 1999-09-12 to 2026-11-10; 12 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `qb_logit` (lowest pooled development log loss (0.62845)).
+7397 completed events from 1999-09-12 to 2026-11-13; 12 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `qb_logit` (lowest pooled development log loss (0.62845)).
 
 ![calibration](charts/nfl_winner_calibration.svg)
 ![by season](charts/nfl_winner_by_season.svg)
@@ -505,22 +519,22 @@ Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| qb_logit (selected) | 704 | 65.5% | 0.6263 | 0.2185 |
-| baseline base_rate | 704 | 53.3% | 0.6929 | 0.2499 |
-| baseline elo_logit | 704 | 64.3% | 0.6302 | 0.2203 |
-| retrospective upper bound actual_qb_logit (not a realistic backtest) | 704 | 66.2% | 0.6185 | 0.2150 |
-| market benchmark: de-vigged prices in the nflverse schedule file (undated - the source states neither the bookmaker nor whether the number is an opening or a closing one; a closing number would contain news from after any realistic prediction time) | 704 | 68.3% | 0.6027 | 0.2077 |
+| qb_logit (selected) | 705 | 65.4% | 0.6266 | 0.2186 |
+| baseline base_rate | 705 | 53.2% | 0.6931 | 0.2500 |
+| baseline elo_logit | 705 | 64.3% | 0.6308 | 0.2205 |
+| retrospective upper bound actual_qb_logit (not a realistic backtest) | 705 | 66.1% | 0.6187 | 0.2151 |
+| market benchmark: de-vigged prices in the nflverse schedule file (undated - the source states neither the bookmaker nor whether the number is an opening or a closing one; a closing number would contain news from after any realistic prediction time) | 705 | 68.2% | 0.6029 | 0.2078 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 704 | 100.0% | 65.5% (61.9-68.9) | 63.2% |
-| 0.55 | 531 | 75.4% | 69.3% (65.3-73.1) | 66.7% |
+| 0.50 | 705 | 100.0% | 65.4% (61.8-68.8) | 63.2% |
+| 0.55 | 532 | 75.5% | 69.2% (65.1-72.9) | 66.7% |
 | 0.60 | 403 | 57.2% | 70.2% (65.6-74.5) | 69.7% |
 | 0.65 | 269 | 38.2% | 75.8% (70.4-80.6) | 73.4% |
 | 0.70 | 174 | 24.7% | 78.7% (72.1-84.2) | 76.6% |
-| 0.75 | 99 | 14.1% | 79.8% (70.8-86.5) | 79.8% |
+| 0.75 | 99 | 14.0% | 79.8% (70.8-86.5) | 79.8% |
 | 0.80 | 41 | 5.8% | 87.8% (74.5-94.7) | 83.5% |
 
 Same-slate residual correlation (used by the combo builder): -0.0089 (95% interval -0.0216 to +0.0053, 19003 event pairs).
@@ -529,14 +543,14 @@ Gates:
 
 - passed - real data: real events
 - passed - point in time features: features use only information available before each event
-- passed - final test sample: 704 final-test events (minimum 300)
+- passed - final test sample: 705 final-test events (minimum 300)
 - passed - development folds: 12 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.06663 (95% interval 0.04607 to 0.08639)
-- passed - calibration: final-test expected calibration error 0.0269 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.06656 (95% interval 0.04577 to 0.08716)
+- passed - calibration: final-test expected calibration error 0.0261 (maximum 0.03)
 
 Limitations:
 
-- 16 tied games out of 7412 played games have no binary outcome and are excluded from fitting and scoring (they still feed the ratings).
+- 16 tied games out of 7413 played games have no binary outcome and are excluded from fitting and scoring (they still feed the ratings).
 - No pregame injury reports, announced starters or depth charts exist in the historical data, so the backtest cannot include late availability news. The selectable models assume each team starts the quarterback who started its previous game (the listed starter, corrected from the box score when he did not play).
 - EPA comes from nflfastR's expected-points model, a fixed play-value scale that was itself estimated on seasons inside the backtest period.
 
@@ -628,6 +642,8 @@ After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
+| 0.40 | 2900 | 93.9% | 45.8% (44.0-47.6) | 48.0% |
+| 0.45 | 1760 | 57.0% | 49.7% (47.4-52.0) | 51.6% |
 | 0.50 | 928 | 30.0% | 54.8% (51.6-58.0) | 55.5% |
 | 0.55 | 399 | 12.9% | 57.6% (52.7-62.4) | 59.7% |
 | 0.60 | 142 | 4.6% | 62.7% (54.5-70.2) | 64.1% |
@@ -684,6 +700,8 @@ After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
+| 0.40 | 507 | 78.2% | 54.2% (49.9-58.5) | 57.2% |
+| 0.45 | 401 | 61.9% | 57.4% (52.5-62.1) | 61.1% |
 | 0.50 | 304 | 46.9% | 63.2% (57.6-68.4) | 65.5% |
 | 0.55 | 234 | 36.1% | 67.5% (61.3-73.2) | 69.4% |
 | 0.60 | 181 | 27.9% | 69.6% (62.6-75.8) | 72.9% |
@@ -741,6 +759,8 @@ After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
+| 0.40 | 702 | 86.7% | 52.3% (48.6-56.0) | 56.2% |
+| 0.45 | 561 | 69.3% | 54.5% (50.4-58.6) | 59.6% |
 | 0.50 | 433 | 53.5% | 58.2% (53.5-62.8) | 63.2% |
 | 0.55 | 330 | 40.7% | 60.0% (54.6-65.1) | 66.6% |
 | 0.60 | 231 | 28.5% | 63.6% (57.3-69.6) | 70.6% |
@@ -797,6 +817,8 @@ After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
+| 0.40 | 657 | 79.3% | 57.5% (53.7-61.3) | 56.6% |
+| 0.45 | 511 | 61.6% | 59.9% (55.6-64.0) | 60.7% |
 | 0.50 | 403 | 48.6% | 63.8% (59.0-68.3) | 64.2% |
 | 0.55 | 305 | 36.8% | 69.5% (64.1-74.4) | 68.0% |
 | 0.60 | 246 | 29.7% | 73.6% (67.7-78.7) | 70.5% |
@@ -854,6 +876,8 @@ After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
+| 0.40 | 540 | 82.3% | 55.2% (51.0-59.3) | 52.7% |
+| 0.45 | 406 | 61.9% | 58.6% (53.8-63.3) | 56.0% |
 | 0.50 | 281 | 42.8% | 64.4% (58.7-69.8) | 59.9% |
 | 0.55 | 174 | 26.5% | 67.8% (60.6-74.3) | 64.5% |
 | 0.60 | 108 | 16.5% | 75.9% (67.1-83.0) | 68.8% |
@@ -911,6 +935,8 @@ After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
+| 0.40 | 668 | 82.5% | 57.2% (53.4-60.9) | 55.9% |
+| 0.45 | 537 | 66.3% | 59.8% (55.6-63.8) | 59.2% |
 | 0.50 | 417 | 51.5% | 61.4% (56.6-65.9) | 62.6% |
 | 0.55 | 320 | 39.5% | 64.1% (58.7-69.1) | 65.6% |
 | 0.60 | 231 | 28.5% | 67.1% (60.8-72.8) | 68.8% |
@@ -967,6 +993,8 @@ After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
+| 0.40 | 1492 | 82.8% | 66.4% (64.0-68.8) | 62.6% |
+| 0.45 | 1277 | 70.8% | 70.3% (67.8-72.8) | 66.0% |
 | 0.50 | 1073 | 59.5% | 73.9% (71.2-76.4) | 69.5% |
 | 0.55 | 899 | 49.9% | 76.9% (74.0-79.5) | 72.8% |
 | 0.60 | 753 | 41.8% | 79.8% (76.8-82.5) | 75.8% |
@@ -1024,6 +1052,8 @@ After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
+| 0.40 | 1316 | 97.5% | 67.7% (65.1-70.2) | 68.0% |
+| 0.45 | 1201 | 89.0% | 69.9% (67.3-72.5) | 70.4% |
 | 0.50 | 1078 | 79.9% | 72.7% (70.0-75.3) | 73.1% |
 | 0.55 | 967 | 71.6% | 75.5% (72.7-78.1) | 75.4% |
 | 0.60 | 834 | 61.8% | 79.9% (77.0-82.4) | 78.2% |
@@ -1053,7 +1083,7 @@ Limitations:
 
 ## atp - winner
 
-64816 completed events from 2000-01-03 to 2026-05-25; 18 walk-forward folds; final test blocks 2025, 2026. Selected: `full_logit` (lowest pooled development log loss (0.58570)).
+71535 completed events from 2000-01-03 to 2026-05-25; 18 walk-forward folds; final test blocks 2025, 2026. Selected: `full_logit` (lowest pooled development log loss (0.58624)).
 
 ![calibration](charts/atp_winner_calibration.svg)
 ![by season](charts/atp_winner_by_season.svg)
@@ -1062,46 +1092,47 @@ Season by season on development folds the selected model beat `elo_logit` in 18 
 
 | Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
 |---|---|---|---|---|
-| base_rate | 42539 | 51.2% | 0.6929 | 0.2499 |
-| elo_logit | 42539 | 67.2% | 0.5977 | 0.2062 |
-| surface_logit | 42539 | 68.0% | 0.5920 | 0.2037 |
-| full_logit (selected) | 42539 | 68.3% | 0.5857 | 0.2013 |
-| full_gbm | 42539 | 68.4% | 0.5862 | 0.2014 |
+| base_rate | 47063 | 51.0% | 0.6930 | 0.2499 |
+| elo_logit | 47063 | 67.4% | 0.5981 | 0.2064 |
+| surface_logit | 47063 | 68.1% | 0.5920 | 0.2037 |
+| full_logit (selected) | 47063 | 68.3% | 0.5862 | 0.2015 |
+| full_gbm | 47063 | 68.2% | 0.5871 | 0.2018 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_logit (selected) | 3558 | 65.9% | 0.6139 | 0.2136 |
-| baseline base_rate | 3558 | 49.5% | 0.6937 | 0.2503 |
-| baseline elo_logit | 3558 | 64.6% | 0.6239 | 0.2178 |
+| full_logit (selected) | 3898 | 66.0% | 0.6099 | 0.2120 |
+| baseline base_rate | 3898 | 49.2% | 0.6938 | 0.2503 |
+| baseline elo_logit | 3898 | 64.9% | 0.6207 | 0.2163 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 3558 | 100.0% | 65.9% (64.3-67.4) | 66.5% |
-| 0.55 | 2867 | 80.6% | 69.0% (67.3-70.7) | 69.8% |
-| 0.60 | 2256 | 63.4% | 72.2% (70.3-74.0) | 73.2% |
-| 0.65 | 1701 | 47.8% | 74.6% (72.5-76.6) | 76.7% |
-| 0.70 | 1240 | 34.9% | 77.7% (75.3-80.0) | 80.1% |
-| 0.75 | 836 | 23.5% | 80.6% (77.8-83.2) | 83.8% |
-| 0.80 | 538 | 15.1% | 84.0% (80.7-86.9) | 87.3% |
+| 0.50 | 3898 | 100.0% | 66.0% (64.5-67.4) | 66.4% |
+| 0.55 | 3151 | 80.8% | 69.9% (68.2-71.4) | 69.7% |
+| 0.60 | 2457 | 63.0% | 72.3% (70.5-74.0) | 73.1% |
+| 0.65 | 1884 | 48.3% | 74.8% (72.8-76.7) | 76.4% |
+| 0.70 | 1362 | 34.9% | 78.0% (75.7-80.1) | 79.8% |
+| 0.75 | 900 | 23.1% | 81.7% (79.0-84.1) | 83.7% |
+| 0.80 | 582 | 14.9% | 86.1% (83.0-88.7) | 87.2% |
 
-Same-slate residual correlation (used by the combo builder): +0.0015 (95% interval -0.0001 to +0.0032, 1704478 event pairs).
+Same-slate residual correlation (used by the combo builder): +0.0014 (95% interval -0.0002 to +0.0031, 2039376 event pairs).
 
 Gates:
 
 - passed - real data: real events
 - passed - point in time features: features use only information available before each event
-- passed - final test sample: 3558 final-test events (minimum 300)
+- passed - final test sample: 3898 final-test events (minimum 300)
 - passed - development folds: 18 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.07977 (95% interval 0.06299 to 0.09765)
-- passed - calibration: final-test expected calibration error 0.0107 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.08386 (95% interval 0.06734 to 0.10124)
+- passed - calibration: final-test expected calibration error 0.0091 (maximum 0.03)
 
 Limitations:
 
-- Matches are dated by tournament week, not by day: a match never uses results from its own tournament, including earlier rounds, so in-tournament form and fatigue are invisible.
+- Matches are dated by tournament week, not by day: a match never uses results from its own tournament or from any tournament starting the same week, including earlier rounds, so in-tournament form and fatigue are invisible.
+- A two-week event counts as finished after its first week, and a tournament dated on a Sunday after one day; this reaches other players' ratings only.
 - No withdrawal, injury or fitness information; no court speed, altitude, indoor/outdoor or weather.
 - Rankings, seedings and head-to-head records are deliberately not inputs.
 - The source is a snapshot mirror ending in mid-2026 with no upcoming matches.
@@ -1110,7 +1141,7 @@ Limitations:
 
 ## atp_challenger - winner
 
-83663 completed events from 2007-12-31 to 2026-06-01; 11 walk-forward folds; final test blocks 2025, 2026. Selected: `full_gbm` (lowest pooled development log loss (0.62671)).
+95564 completed events from 2007-12-31 to 2026-06-01; 11 walk-forward folds; final test blocks 2025, 2026. Selected: `full_gbm` (lowest pooled development log loss (0.62768)).
 
 ![calibration](charts/atp_challenger_winner_calibration.svg)
 ![by season](charts/atp_challenger_winner_by_season.svg)
@@ -1119,46 +1150,47 @@ Season by season on development folds the selected model beat `elo_logit` in 11 
 
 | Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
 |---|---|---|---|---|
-| base_rate | 49747 | 50.3% | 0.6931 | 0.2500 |
-| elo_logit | 49747 | 63.3% | 0.6360 | 0.2230 |
-| surface_logit | 49747 | 63.5% | 0.6343 | 0.2222 |
-| full_logit | 49747 | 64.3% | 0.6283 | 0.2195 |
-| full_gbm (selected) | 49747 | 64.5% | 0.6267 | 0.2187 |
+| base_rate | 56641 | 50.4% | 0.6931 | 0.2500 |
+| elo_logit | 56641 | 63.4% | 0.6357 | 0.2228 |
+| surface_logit | 56641 | 63.5% | 0.6340 | 0.2221 |
+| full_logit | 56641 | 64.3% | 0.6292 | 0.2198 |
+| full_gbm (selected) | 56641 | 64.3% | 0.6277 | 0.2192 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_gbm (selected) | 8661 | 63.3% | 0.6394 | 0.2245 |
-| baseline base_rate | 8661 | 50.9% | 0.6930 | 0.2499 |
-| baseline elo_logit | 8661 | 63.6% | 0.6408 | 0.2250 |
+| full_gbm (selected) | 9950 | 63.5% | 0.6382 | 0.2239 |
+| baseline base_rate | 9950 | 51.2% | 0.6930 | 0.2499 |
+| baseline elo_logit | 9950 | 63.5% | 0.6396 | 0.2244 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 8661 | 100.0% | 63.3% (62.2-64.3) | 63.0% |
-| 0.55 | 6602 | 76.2% | 66.7% (65.6-67.8) | 66.2% |
-| 0.60 | 4776 | 55.1% | 69.0% (67.6-70.3) | 69.6% |
-| 0.65 | 3101 | 35.8% | 72.5% (70.9-74.1) | 73.5% |
-| 0.70 | 1858 | 21.5% | 76.9% (74.9-78.7) | 77.6% |
-| 0.75 | 1071 | 12.4% | 80.3% (77.8-82.6) | 81.4% |
-| 0.80 | 583 | 6.7% | 85.4% (82.3-88.1) | 84.9% |
+| 0.50 | 9950 | 100.0% | 63.5% (62.5-64.4) | 63.4% |
+| 0.55 | 7730 | 77.7% | 66.7% (65.6-67.7) | 66.6% |
+| 0.60 | 5670 | 57.0% | 69.6% (68.3-70.7) | 69.9% |
+| 0.65 | 3797 | 38.2% | 72.1% (70.7-73.5) | 73.6% |
+| 0.70 | 2368 | 23.8% | 76.1% (74.4-77.8) | 77.4% |
+| 0.75 | 1369 | 13.8% | 80.1% (77.9-82.1) | 81.1% |
+| 0.80 | 731 | 7.3% | 83.0% (80.1-85.6) | 84.5% |
 
-Same-slate residual correlation (used by the combo builder): +0.0026 (95% interval +0.0012 to +0.0041, 3396142 event pairs).
+Same-slate residual correlation (used by the combo builder): +0.0022 (95% interval +0.0011 to +0.0034, 4400337 event pairs).
 
 Gates:
 
 - passed - real data: real events
 - passed - point in time features: features use only information available before each event
-- passed - final test sample: 8661 final-test events (minimum 300)
+- passed - final test sample: 9950 final-test events (minimum 300)
 - passed - development folds: 11 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.05362 (95% interval 0.04624 to 0.06166)
-- passed - calibration: final-test expected calibration error 0.0104 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.05474 (95% interval 0.04759 to 0.06242)
+- passed - calibration: final-test expected calibration error 0.0066 (maximum 0.03)
 
 Limitations:
 
-- Matches are dated by tournament week, not by day: a match never uses results from its own tournament, including earlier rounds, so in-tournament form and fatigue are invisible.
+- Matches are dated by tournament week, not by day: a match never uses results from its own tournament or from any tournament starting the same week, including earlier rounds, so in-tournament form and fatigue are invisible.
+- A two-week event counts as finished after its first week, and a tournament dated on a Sunday after one day; this reaches other players' ratings only.
 - No withdrawal, injury or fitness information; no court speed, altitude, indoor/outdoor or weather.
 - Rankings, seedings and head-to-head records are deliberately not inputs.
 - The source is a snapshot mirror ending in mid-2026 with no upcoming matches.
@@ -1167,7 +1199,7 @@ Limitations:
 
 ## atp_qual - winner
 
-27325 completed events from 2007-12-31 to 2026-05-17; 11 walk-forward folds; final test blocks 2025, 2026. Selected: `full_gbm` (lowest pooled development log loss (0.61060)).
+27325 completed events from 2007-12-31 to 2026-05-17; 11 walk-forward folds; final test blocks 2025, 2026. Selected: `full_gbm` (lowest pooled development log loss (0.60866)).
 
 ![calibration](charts/atp_qual_winner_calibration.svg)
 ![by season](charts/atp_qual_winner_by_season.svg)
@@ -1177,32 +1209,32 @@ Season by season on development folds the selected model beat `elo_logit` in 11 
 | Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
 |---|---|---|---|---|
 | base_rate | 14636 | 49.7% | 0.6932 | 0.2500 |
-| elo_logit | 14636 | 64.2% | 0.6228 | 0.2175 |
-| surface_logit | 14636 | 65.0% | 0.6166 | 0.2146 |
-| full_logit | 14636 | 66.0% | 0.6116 | 0.2123 |
-| full_gbm (selected) | 14636 | 66.2% | 0.6106 | 0.2118 |
+| elo_logit | 14636 | 64.3% | 0.6216 | 0.2169 |
+| surface_logit | 14636 | 65.4% | 0.6152 | 0.2139 |
+| full_logit | 14636 | 66.2% | 0.6101 | 0.2116 |
+| full_gbm (selected) | 14636 | 66.5% | 0.6087 | 0.2109 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_gbm (selected) | 1799 | 64.0% | 0.6213 | 0.2169 |
+| full_gbm (selected) | 1799 | 65.0% | 0.6176 | 0.2153 |
 | baseline base_rate | 1799 | 48.4% | 0.6935 | 0.2502 |
-| baseline elo_logit | 1799 | 62.3% | 0.6401 | 0.2257 |
+| baseline elo_logit | 1799 | 63.5% | 0.6362 | 0.2240 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 1799 | 100.0% | 64.0% (61.8-66.2) | 63.8% |
-| 0.55 | 1366 | 75.9% | 68.2% (65.6-70.6) | 67.5% |
-| 0.60 | 1000 | 55.6% | 72.4% (69.5-75.1) | 71.1% |
-| 0.65 | 683 | 38.0% | 76.1% (72.8-79.2) | 75.1% |
-| 0.70 | 440 | 24.5% | 80.7% (76.7-84.1) | 79.4% |
-| 0.75 | 283 | 15.7% | 83.4% (78.6-87.3) | 83.4% |
-| 0.80 | 155 | 8.6% | 87.7% (81.6-92.0) | 88.3% |
+| 0.50 | 1799 | 100.0% | 65.0% (62.8-67.2) | 64.0% |
+| 0.55 | 1395 | 77.5% | 69.2% (66.7-71.5) | 67.4% |
+| 0.60 | 1009 | 56.1% | 73.1% (70.3-75.8) | 71.2% |
+| 0.65 | 699 | 38.9% | 76.5% (73.3-79.5) | 75.1% |
+| 0.70 | 448 | 24.9% | 81.0% (77.1-84.4) | 79.4% |
+| 0.75 | 278 | 15.5% | 82.7% (77.9-86.7) | 83.6% |
+| 0.80 | 166 | 9.2% | 88.0% (82.1-92.1) | 88.0% |
 
-Same-slate residual correlation (used by the combo builder): +0.0007 (95% interval -0.0027 to +0.0046, 479735 event pairs).
+Same-slate residual correlation (used by the combo builder): -0.0000 (95% interval -0.0031 to +0.0035, 479735 event pairs).
 
 Gates:
 
@@ -1210,12 +1242,13 @@ Gates:
 - passed - point in time features: features use only information available before each event
 - passed - final test sample: 1799 final-test events (minimum 300)
 - passed - development folds: 11 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.07216 (95% interval 0.05849 to 0.08706)
-- passed - calibration: final-test expected calibration error 0.0145 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.07585 (95% interval 0.06200 to 0.09182)
+- passed - calibration: final-test expected calibration error 0.0135 (maximum 0.03)
 
 Limitations:
 
-- Matches are dated by tournament week, not by day: a match never uses results from its own tournament, including earlier rounds, so in-tournament form and fatigue are invisible.
+- Matches are dated by tournament week, not by day: a match never uses results from its own tournament or from any tournament starting the same week, including earlier rounds, so in-tournament form and fatigue are invisible.
+- A two-week event counts as finished after its first week, and a tournament dated on a Sunday after one day; this reaches other players' ratings only.
 - No withdrawal, injury or fitness information; no court speed, altitude, indoor/outdoor or weather.
 - Rankings, seedings and head-to-head records are deliberately not inputs.
 - The source is a snapshot mirror ending in mid-2026 with no upcoming matches.
@@ -1224,7 +1257,7 @@ Limitations:
 
 ## itf_men - winner
 
-162277 completed events from 2015-01-05 to 2026-06-01; 2 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `full_gbm` (lowest pooled development log loss (0.57062)).
+186149 completed events from 2015-01-05 to 2026-06-01; 2 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `full_gbm` (lowest pooled development log loss (0.57539)).
 
 ![calibration](charts/itf_men_winner_calibration.svg)
 ![by season](charts/itf_men_winner_by_season.svg)
@@ -1233,46 +1266,47 @@ Season by season on development folds the selected model beat `elo_logit` in 2 o
 
 | Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
 |---|---|---|---|---|
-| base_rate | 29470 | 50.7% | 0.6931 | 0.2500 |
-| elo_logit | 29470 | 67.7% | 0.5937 | 0.2041 |
-| surface_logit | 29470 | 67.7% | 0.5938 | 0.2042 |
-| full_logit | 29470 | 70.0% | 0.5733 | 0.1953 |
-| full_gbm (selected) | 29470 | 70.0% | 0.5706 | 0.1941 |
+| base_rate | 33823 | 50.7% | 0.6931 | 0.2500 |
+| elo_logit | 33823 | 67.2% | 0.5971 | 0.2056 |
+| surface_logit | 33823 | 67.3% | 0.5971 | 0.2056 |
+| full_logit | 33823 | 69.4% | 0.5790 | 0.1977 |
+| full_gbm (selected) | 33823 | 69.7% | 0.5754 | 0.1962 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_gbm (selected) | 37568 | 71.5% | 0.5573 | 0.1886 |
-| baseline base_rate | 37568 | 49.6% | 0.6933 | 0.2501 |
-| baseline elo_logit | 37568 | 68.5% | 0.5834 | 0.1997 |
+| full_gbm (selected) | 43092 | 71.1% | 0.5613 | 0.1902 |
+| baseline base_rate | 43092 | 49.7% | 0.6933 | 0.2501 |
+| baseline elo_logit | 43092 | 68.6% | 0.5834 | 0.1996 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 37568 | 100.0% | 71.5% (71.0-71.9) | 70.6% |
-| 0.55 | 32935 | 87.7% | 74.0% (73.5-74.4) | 73.2% |
-| 0.60 | 28349 | 75.5% | 76.7% (76.2-77.1) | 75.7% |
-| 0.65 | 23317 | 62.1% | 79.6% (79.0-80.1) | 78.6% |
-| 0.70 | 18775 | 50.0% | 82.2% (81.6-82.7) | 81.3% |
-| 0.75 | 14363 | 38.2% | 84.6% (84.0-85.2) | 84.0% |
-| 0.80 | 10054 | 26.8% | 87.7% (87.0-88.3) | 86.8% |
+| 0.50 | 43092 | 100.0% | 71.1% (70.7-71.5) | 70.0% |
+| 0.55 | 37386 | 86.8% | 73.9% (73.4-74.3) | 72.7% |
+| 0.60 | 31767 | 73.7% | 76.6% (76.1-77.0) | 75.4% |
+| 0.65 | 25968 | 60.3% | 79.7% (79.2-80.2) | 78.3% |
+| 0.70 | 20473 | 47.5% | 82.4% (81.9-82.9) | 81.1% |
+| 0.75 | 15522 | 36.0% | 84.9% (84.3-85.5) | 83.9% |
+| 0.80 | 10896 | 25.3% | 87.3% (86.7-87.9) | 86.6% |
 
-Same-slate residual correlation (used by the combo builder): +0.0014 (95% interval +0.0007 to +0.0022, 10971566 event pairs).
+Same-slate residual correlation (used by the combo builder): +0.0013 (95% interval +0.0007 to +0.0021, 14445009 event pairs).
 
 Gates:
 
 - passed - real data: real events
 - passed - point in time features: features use only information available before each event
-- passed - final test sample: 37568 final-test events (minimum 300)
+- passed - final test sample: 43092 final-test events (minimum 300)
 - NOT met - development folds: 2 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.13601 (95% interval 0.13076 to 0.14185)
-- passed - calibration: final-test expected calibration error 0.0082 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.13193 (95% interval 0.12730 to 0.13677)
+- passed - calibration: final-test expected calibration error 0.0108 (maximum 0.03)
 
 Limitations:
 
-- Matches are dated by tournament week, not by day: a match never uses results from its own tournament, including earlier rounds, so in-tournament form and fatigue are invisible.
+- Matches are dated by tournament week, not by day: a match never uses results from its own tournament or from any tournament starting the same week, including earlier rounds, so in-tournament form and fatigue are invisible.
+- A two-week event counts as finished after its first week, and a tournament dated on a Sunday after one day; this reaches other players' ratings only.
 - No withdrawal, injury or fitness information; no court speed, altitude, indoor/outdoor or weather.
 - Rankings, seedings and head-to-head records are deliberately not inputs.
 - The source is a snapshot mirror ending in mid-2026 with no upcoming matches.
@@ -1281,7 +1315,7 @@ Limitations:
 
 ## itf_women - winner
 
-156537 completed events from 2014-12-29 to 2026-06-01; 4 walk-forward folds; final test blocks 2025, 2026. Selected: `full_gbm` (lowest pooled development log loss (0.57803)).
+179424 completed events from 2014-12-29 to 2026-06-01; 4 walk-forward folds; final test blocks 2025, 2026. Selected: `full_gbm` (lowest pooled development log loss (0.58373)).
 
 ![calibration](charts/itf_women_winner_calibration.svg)
 ![by season](charts/itf_women_winner_by_season.svg)
@@ -1290,46 +1324,47 @@ Season by season on development folds the selected model beat `elo_logit` in 4 o
 
 | Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
 |---|---|---|---|---|
-| base_rate | 56600 | 50.0% | 0.6932 | 0.2500 |
-| elo_logit | 56600 | 67.8% | 0.5926 | 0.2038 |
-| surface_logit | 56600 | 67.9% | 0.5920 | 0.2036 |
-| full_logit | 56600 | 69.2% | 0.5808 | 0.1986 |
-| full_gbm (selected) | 56600 | 69.3% | 0.5780 | 0.1975 |
+| base_rate | 64759 | 50.0% | 0.6932 | 0.2500 |
+| elo_logit | 64759 | 67.3% | 0.5980 | 0.2061 |
+| surface_logit | 64759 | 67.3% | 0.5974 | 0.2059 |
+| full_logit | 64759 | 68.8% | 0.5869 | 0.2012 |
+| full_gbm (selected) | 64759 | 68.8% | 0.5837 | 0.1999 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_gbm (selected) | 21908 | 70.6% | 0.5648 | 0.1918 |
-| baseline base_rate | 21908 | 50.2% | 0.6931 | 0.2500 |
-| baseline elo_logit | 21908 | 69.2% | 0.5810 | 0.1988 |
+| full_gbm (selected) | 25094 | 70.0% | 0.5700 | 0.1941 |
+| baseline base_rate | 25094 | 50.0% | 0.6932 | 0.2500 |
+| baseline elo_logit | 25094 | 68.7% | 0.5855 | 0.2008 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 21908 | 100.0% | 70.6% (70.0-71.2) | 69.1% |
-| 0.55 | 18761 | 85.6% | 73.6% (73.0-74.3) | 71.9% |
-| 0.60 | 15752 | 71.9% | 76.4% (75.7-77.1) | 74.7% |
-| 0.65 | 12792 | 58.4% | 79.7% (79.0-80.4) | 77.5% |
-| 0.70 | 9955 | 45.4% | 82.5% (81.7-83.2) | 80.4% |
-| 0.75 | 6978 | 31.9% | 85.7% (84.8-86.5) | 83.8% |
-| 0.80 | 4819 | 22.0% | 88.3% (87.4-89.2) | 86.7% |
+| 0.50 | 25094 | 100.0% | 70.0% (69.5-70.6) | 68.7% |
+| 0.55 | 21260 | 84.7% | 73.1% (72.5-73.7) | 71.6% |
+| 0.60 | 17574 | 70.0% | 76.3% (75.7-76.9) | 74.6% |
+| 0.65 | 14415 | 57.4% | 79.0% (78.4-79.7) | 77.2% |
+| 0.70 | 11128 | 44.3% | 82.2% (81.5-82.9) | 80.1% |
+| 0.75 | 7819 | 31.2% | 85.7% (84.9-86.4) | 83.3% |
+| 0.80 | 5147 | 20.5% | 88.7% (87.8-89.5) | 86.3% |
 
-Same-slate residual correlation (used by the combo builder): +0.0017 (95% interval +0.0010 to +0.0024, 12219182 event pairs).
+Same-slate residual correlation (used by the combo builder): +0.0011 (95% interval +0.0005 to +0.0018, 16013145 event pairs).
 
 Gates:
 
 - passed - real data: real events
 - passed - point in time features: features use only information available before each event
-- passed - final test sample: 21908 final-test events (minimum 300)
+- passed - final test sample: 25094 final-test events (minimum 300)
 - passed - development folds: 4 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.12835 (95% interval 0.12186 to 0.13442)
-- passed - calibration: final-test expected calibration error 0.0144 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.12319 (95% interval 0.11732 to 0.12854)
+- passed - calibration: final-test expected calibration error 0.0138 (maximum 0.03)
 
 Limitations:
 
-- Matches are dated by tournament week, not by day: a match never uses results from its own tournament, including earlier rounds, so in-tournament form and fatigue are invisible.
+- Matches are dated by tournament week, not by day: a match never uses results from its own tournament or from any tournament starting the same week, including earlier rounds, so in-tournament form and fatigue are invisible.
+- A two-week event counts as finished after its first week, and a tournament dated on a Sunday after one day; this reaches other players' ratings only.
 - No withdrawal, injury or fitness information; no court speed, altitude, indoor/outdoor or weather.
 - Rankings, seedings and head-to-head records are deliberately not inputs.
 - The source is a snapshot mirror ending in mid-2026 with no upcoming matches.
@@ -1338,7 +1373,7 @@ Limitations:
 
 ## wta - winner
 
-57952 completed events from 2000-01-03 to 2026-05-25; 18 walk-forward folds; final test blocks 2025, 2026. Selected: `full_logit` (lowest pooled development log loss (0.60038)).
+64220 completed events from 2000-01-03 to 2026-05-25; 18 walk-forward folds; final test blocks 2025, 2026. Selected: `full_logit` (lowest pooled development log loss (0.60025)).
 
 ![calibration](charts/wta_winner_calibration.svg)
 ![by season](charts/wta_winner_by_season.svg)
@@ -1347,46 +1382,47 @@ Season by season on development folds the selected model beat `elo_logit` in 18 
 
 | Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
 |---|---|---|---|---|
-| base_rate | 39123 | 50.8% | 0.6930 | 0.2499 |
-| elo_logit | 39123 | 66.5% | 0.6083 | 0.2106 |
-| surface_logit | 39123 | 66.7% | 0.6050 | 0.2092 |
-| full_logit (selected) | 39123 | 67.2% | 0.6004 | 0.2072 |
-| full_gbm | 39123 | 67.2% | 0.6018 | 0.2077 |
+| base_rate | 43308 | 51.2% | 0.6930 | 0.2499 |
+| elo_logit | 43308 | 66.4% | 0.6072 | 0.2102 |
+| surface_logit | 43308 | 66.7% | 0.6044 | 0.2090 |
+| full_logit (selected) | 43308 | 67.2% | 0.6003 | 0.2072 |
+| full_gbm | 43308 | 67.1% | 0.6015 | 0.2077 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_logit (selected) | 3380 | 66.9% | 0.6002 | 0.2073 |
-| baseline base_rate | 3380 | 49.9% | 0.6933 | 0.2501 |
-| baseline elo_logit | 3380 | 66.5% | 0.6080 | 0.2107 |
+| full_logit (selected) | 3673 | 66.7% | 0.6036 | 0.2087 |
+| baseline base_rate | 3673 | 49.6% | 0.6935 | 0.2502 |
+| baseline elo_logit | 3673 | 66.4% | 0.6123 | 0.2125 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 3380 | 100.0% | 66.9% (65.3-68.4) | 67.4% |
-| 0.55 | 2788 | 82.5% | 70.3% (68.5-71.9) | 70.5% |
-| 0.60 | 2225 | 65.8% | 72.9% (71.1-74.7) | 73.8% |
-| 0.65 | 1777 | 52.6% | 76.1% (74.1-78.1) | 76.6% |
-| 0.70 | 1339 | 39.6% | 79.8% (77.6-81.9) | 79.7% |
-| 0.75 | 913 | 27.0% | 83.4% (80.8-85.6) | 83.0% |
-| 0.80 | 574 | 17.0% | 86.6% (83.6-89.1) | 86.3% |
+| 0.50 | 3673 | 100.0% | 66.7% (65.2-68.2) | 67.4% |
+| 0.55 | 3032 | 82.5% | 69.7% (68.0-71.3) | 70.5% |
+| 0.60 | 2467 | 67.2% | 72.6% (70.8-74.4) | 73.5% |
+| 0.65 | 1929 | 52.5% | 75.7% (73.7-77.5) | 76.6% |
+| 0.70 | 1434 | 39.0% | 79.1% (76.9-81.1) | 79.8% |
+| 0.75 | 1003 | 27.3% | 82.6% (80.1-84.8) | 82.9% |
+| 0.80 | 634 | 17.3% | 85.8% (82.9-88.3) | 86.2% |
 
-Same-slate residual correlation (used by the combo builder): +0.0022 (95% interval +0.0005 to +0.0040, 1566891 event pairs).
+Same-slate residual correlation (used by the combo builder): +0.0007 (95% interval -0.0007 to +0.0023, 1855876 event pairs).
 
 Gates:
 
 - passed - real data: real events
 - passed - point in time features: features use only information available before each event
-- passed - final test sample: 3380 final-test events (minimum 300)
+- passed - final test sample: 3673 final-test events (minimum 300)
 - passed - development folds: 18 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.09313 (95% interval 0.07648 to 0.10780)
-- passed - calibration: final-test expected calibration error 0.0090 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.08984 (95% interval 0.07268 to 0.10384)
+- passed - calibration: final-test expected calibration error 0.0068 (maximum 0.03)
 
 Limitations:
 
-- Matches are dated by tournament week, not by day: a match never uses results from its own tournament, including earlier rounds, so in-tournament form and fatigue are invisible.
+- Matches are dated by tournament week, not by day: a match never uses results from its own tournament or from any tournament starting the same week, including earlier rounds, so in-tournament form and fatigue are invisible.
+- A two-week event counts as finished after its first week, and a tournament dated on a Sunday after one day; this reaches other players' ratings only.
 - No withdrawal, injury or fitness information; no court speed, altitude, indoor/outdoor or weather.
 - Rankings, seedings and head-to-head records are deliberately not inputs.
 - The source is a snapshot mirror ending in mid-2026 with no upcoming matches.
@@ -1395,55 +1431,56 @@ Limitations:
 
 ## wta_125 - winner
 
-6349 completed events from 2012-10-29 to 2026-06-02; 6 walk-forward folds; final test blocks 2025, 2026. Selected: `full_logit` (lowest pooled development log loss (0.60763)).
+7249 completed events from 2012-10-29 to 2026-06-02; 6 walk-forward folds; final test blocks 2025, 2026. Selected: `surface_logit` (one-standard-error rule: surface_logit (log loss 0.61262) is simpler than full_logit (0.61198) and within one SE (0.00157) of it).
 
 ![calibration](charts/wta_125_winner_calibration.svg)
 ![by season](charts/wta_125_winner_by_season.svg)
 
-Season by season on development folds the selected model beat `elo_logit` in 5 of 6 seasons.
+Season by season on development folds the selected model beat `elo_logit` in 6 of 6 seasons.
 
 | Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
 |---|---|---|---|---|
-| base_rate | 3336 | 49.6% | 0.6934 | 0.2501 |
-| elo_logit | 3336 | 65.4% | 0.6164 | 0.2144 |
-| surface_logit | 3336 | 66.3% | 0.6093 | 0.2114 |
-| full_logit (selected) | 3336 | 66.4% | 0.6076 | 0.2107 |
-| full_gbm | 3336 | 64.0% | 0.6303 | 0.2199 |
+| base_rate | 3796 | 50.3% | 0.6933 | 0.2501 |
+| elo_logit | 3796 | 65.1% | 0.6185 | 0.2151 |
+| surface_logit (selected) | 3796 | 66.1% | 0.6126 | 0.2126 |
+| full_logit | 3796 | 65.8% | 0.6120 | 0.2124 |
+| full_gbm | 3796 | 63.9% | 0.6302 | 0.2202 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_logit (selected) | 2044 | 66.8% | 0.6111 | 0.2122 |
-| baseline base_rate | 2044 | 49.9% | 0.6937 | 0.2503 |
-| baseline elo_logit | 2044 | 65.5% | 0.6213 | 0.2167 |
+| surface_logit (selected) | 2341 | 65.6% | 0.6114 | 0.2123 |
+| baseline base_rate | 2341 | 49.7% | 0.6940 | 0.2505 |
+| baseline elo_logit | 2341 | 65.4% | 0.6185 | 0.2154 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 2044 | 100.0% | 66.8% (64.7-68.8) | 65.9% |
-| 0.55 | 1664 | 81.4% | 68.9% (66.7-71.1) | 69.0% |
-| 0.60 | 1305 | 63.8% | 71.6% (69.1-74.0) | 72.2% |
-| 0.65 | 961 | 47.0% | 75.1% (72.3-77.8) | 75.7% |
-| 0.70 | 703 | 34.4% | 79.1% (75.9-81.9) | 78.7% |
-| 0.75 | 451 | 22.1% | 82.9% (79.2-86.1) | 82.2% |
-| 0.80 | 261 | 12.8% | 87.4% (82.8-90.9) | 85.7% |
+| 0.50 | 2341 | 100.0% | 65.6% (63.7-67.5) | 65.5% |
+| 0.55 | 1892 | 80.8% | 68.9% (66.8-71.0) | 68.6% |
+| 0.60 | 1475 | 63.0% | 71.7% (69.4-74.0) | 71.7% |
+| 0.65 | 1092 | 46.6% | 75.5% (72.8-77.9) | 75.0% |
+| 0.70 | 748 | 32.0% | 79.7% (76.6-82.4) | 78.4% |
+| 0.75 | 458 | 19.6% | 83.4% (79.7-86.5) | 82.3% |
+| 0.80 | 275 | 11.7% | 88.0% (83.6-91.3) | 85.6% |
 
-Same-slate residual correlation (used by the combo builder): -0.0030 (95% interval -0.0074 to +0.0015, 119846 event pairs).
+Same-slate residual correlation (used by the combo builder): -0.0012 (95% interval -0.0059 to +0.0045, 155219 event pairs).
 
 Gates:
 
 - passed - real data: real events
 - passed - point in time features: features use only information available before each event
-- passed - final test sample: 2044 final-test events (minimum 300)
+- passed - final test sample: 2341 final-test events (minimum 300)
 - passed - development folds: 6 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.08251 (95% interval 0.06466 to 0.10232)
-- passed - calibration: final-test expected calibration error 0.0199 (maximum 0.03)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.08265 (95% interval 0.06713 to 0.09982)
+- passed - calibration: final-test expected calibration error 0.0093 (maximum 0.03)
 
 Limitations:
 
-- Matches are dated by tournament week, not by day: a match never uses results from its own tournament, including earlier rounds, so in-tournament form and fatigue are invisible.
+- Matches are dated by tournament week, not by day: a match never uses results from its own tournament or from any tournament starting the same week, including earlier rounds, so in-tournament form and fatigue are invisible.
+- A two-week event counts as finished after its first week, and a tournament dated on a Sunday after one day; this reaches other players' ratings only.
 - No withdrawal, injury or fitness information; no court speed, altitude, indoor/outdoor or weather.
 - Rankings, seedings and head-to-head records are deliberately not inputs.
 - The source is a snapshot mirror ending in mid-2026 with no upcoming matches.
@@ -1452,55 +1489,56 @@ Limitations:
 
 ## wta_qual - winner
 
-25947 completed events from 2008-01-14 to 2026-05-18; 9 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `full_logit` (lowest pooled development log loss (0.59945)).
+27392 completed events from 2007-12-31 to 2026-05-18; 10 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `full_logit` (lowest pooled development log loss (0.60103)).
 
 ![calibration](charts/wta_qual_winner_calibration.svg)
 ![by season](charts/wta_qual_winner_by_season.svg)
 
-Season by season on development folds the selected model beat `elo_logit` in 9 of 9 seasons.
+Season by season on development folds the selected model beat `elo_logit` in 10 of 10 seasons.
 
 | Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
 |---|---|---|---|---|
-| base_rate | 12621 | 50.0% | 0.6932 | 0.2500 |
-| elo_logit | 12621 | 65.8% | 0.6103 | 0.2119 |
-| surface_logit | 12621 | 66.1% | 0.6070 | 0.2105 |
-| full_logit (selected) | 12621 | 66.9% | 0.5994 | 0.2071 |
-| full_gbm | 12621 | 66.8% | 0.6039 | 0.2089 |
+| base_rate | 14032 | 50.1% | 0.6932 | 0.2500 |
+| elo_logit | 14032 | 66.2% | 0.6119 | 0.2125 |
+| surface_logit | 14032 | 66.4% | 0.6090 | 0.2112 |
+| full_logit (selected) | 14032 | 67.0% | 0.6010 | 0.2077 |
+| full_gbm | 14032 | 67.0% | 0.6045 | 0.2089 |
 
 Final test:
 
 | Model | n | Accuracy | Log loss | Brier |
 |---|---|---|---|---|
-| full_logit (selected) | 3278 | 67.5% | 0.5901 | 0.2029 |
+| full_logit (selected) | 3278 | 67.5% | 0.5904 | 0.2028 |
 | baseline base_rate | 3278 | 50.3% | 0.6931 | 0.2500 |
-| baseline elo_logit | 3278 | 66.6% | 0.5991 | 0.2073 |
+| baseline elo_logit | 3278 | 66.7% | 0.5985 | 0.2070 |
 
 After the PASS rule (final test):
 
 | Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
 |---|---|---|---|---|
-| 0.50 | 3278 | 100.0% | 67.5% (65.9-69.1) | 68.3% |
-| 0.55 | 2745 | 83.7% | 71.0% (69.3-72.7) | 71.4% |
-| 0.60 | 2211 | 67.4% | 73.6% (71.8-75.4) | 74.8% |
-| 0.65 | 1744 | 53.2% | 77.5% (75.4-79.4) | 78.1% |
-| 0.70 | 1336 | 40.8% | 81.3% (79.1-83.3) | 81.3% |
-| 0.75 | 945 | 28.8% | 85.1% (82.7-87.2) | 84.9% |
-| 0.80 | 669 | 20.4% | 87.3% (84.6-89.6) | 88.0% |
+| 0.50 | 3278 | 100.0% | 67.5% (65.9-69.1) | 68.4% |
+| 0.55 | 2754 | 84.0% | 71.3% (69.6-72.9) | 71.4% |
+| 0.60 | 2216 | 67.6% | 73.9% (72.0-75.7) | 74.8% |
+| 0.65 | 1750 | 53.4% | 76.8% (74.8-78.7) | 78.0% |
+| 0.70 | 1308 | 39.9% | 81.5% (79.3-83.5) | 81.6% |
+| 0.75 | 953 | 29.1% | 84.2% (81.7-86.3) | 85.1% |
+| 0.80 | 669 | 20.4% | 87.7% (85.0-90.0) | 88.3% |
 
-Same-slate residual correlation (used by the combo builder): +0.0033 (95% interval -0.0000 to +0.0067, 449210 event pairs).
+Same-slate residual correlation (used by the combo builder): +0.0024 (95% interval -0.0008 to +0.0055, 482024 event pairs).
 
 Gates:
 
 - passed - real data: real events
 - passed - point in time features: features use only information available before each event
 - passed - final test sample: 3278 final-test events (minimum 300)
-- passed - development folds: 9 walk-forward folds (minimum 3)
-- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.10300 (95% interval 0.08527 to 0.12258)
-- passed - calibration: final-test expected calibration error 0.0137 (maximum 0.03)
+- passed - development folds: 10 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.10276 (95% interval 0.08536 to 0.12282)
+- passed - calibration: final-test expected calibration error 0.0140 (maximum 0.03)
 
 Limitations:
 
-- Matches are dated by tournament week, not by day: a match never uses results from its own tournament, including earlier rounds, so in-tournament form and fatigue are invisible.
+- Matches are dated by tournament week, not by day: a match never uses results from its own tournament or from any tournament starting the same week, including earlier rounds, so in-tournament form and fatigue are invisible.
+- A two-week event counts as finished after its first week, and a tournament dated on a Sunday after one day; this reaches other players' ratings only.
 - No withdrawal, injury or fitness information; no court speed, altitude, indoor/outdoor or weather.
 - Rankings, seedings and head-to-head records are deliberately not inputs.
 - The source is a snapshot mirror ending in mid-2026 with no upcoming matches.
@@ -1514,62 +1552,114 @@ Every validation run recorded in the store, oldest first. A re-run replaces the 
 | League | Market | Run (UTC) | Selected model | Final-test n | Accuracy | Log loss | All gates passed |
 |---|---|---|---|---|---|---|---|
 | `atp` | winner | 2026-11-12 23:30 | full_logit | 3558 | 66.0% | 0.6136 | yes |
-| `atp` | winner | 2026-11-13 00:07 (reported above) | full_logit | 3558 | 65.9% | 0.6139 | yes |
+| `atp` | winner | 2026-11-13 00:07 | full_logit | 3558 | 65.9% | 0.6139 | yes |
+| `atp` | winner | 2026-11-13 10:19 | full_logit | 3898 | 65.9% | 0.6102 | yes |
+| `atp` | winner | 2026-11-13 11:57 (reported above) | full_logit | 3898 | 66.0% | 0.6099 | yes |
 | `atp_challenger` | winner | 2026-11-12 23:32 | full_gbm | 8661 | 63.6% | 0.6372 | yes |
-| `atp_challenger` | winner | 2026-11-13 00:09 (reported above) | full_gbm | 8661 | 63.3% | 0.6394 | yes |
+| `atp_challenger` | winner | 2026-11-13 00:09 | full_gbm | 8661 | 63.3% | 0.6394 | yes |
+| `atp_challenger` | winner | 2026-11-13 10:20 | full_gbm | 9950 | 63.5% | 0.6382 | yes |
+| `atp_challenger` | winner | 2026-11-13 11:58 (reported above) | full_gbm | 9950 | 63.5% | 0.6382 | yes |
 | `atp_qual` | winner | 2026-11-12 23:31 | full_gbm | 1799 | 64.3% | 0.6207 | yes |
-| `atp_qual` | winner | 2026-11-13 00:08 (reported above) | full_gbm | 1799 | 64.0% | 0.6213 | yes |
+| `atp_qual` | winner | 2026-11-13 00:08 | full_gbm | 1799 | 64.0% | 0.6213 | yes |
+| `atp_qual` | winner | 2026-11-13 10:19 | full_gbm | 1799 | 64.9% | 0.6175 | yes |
+| `atp_qual` | winner | 2026-11-13 11:57 (reported above) | full_gbm | 1799 | 65.0% | 0.6176 | yes |
 | `bundesliga` | winner_3way | 2026-11-12 22:37 | poisson_dc | 648 | 51.7% | 1.0001 | no |
 | `bundesliga` | winner_3way | 2026-11-13 00:20 | poisson_dc | 648 | 51.7% | 1.0001 | no |
-| `bundesliga` | winner_3way | 2026-11-13 05:15 (reported above) | poisson_dc | 648 | 51.7% | 1.0001 | no |
+| `bundesliga` | winner_3way | 2026-11-13 05:15 | poisson_dc | 648 | 51.7% | 1.0001 | no |
+| `bundesliga` | winner_3way | 2026-11-13 11:38 | poisson_dc | 648 | 51.7% | 1.0001 | no |
+| `bundesliga` | winner_3way | 2026-11-13 12:10 (reported above) | poisson_dc | 648 | 51.7% | 1.0001 | no |
 | `epl` | winner_3way | 2026-11-12 22:37 | poisson_dc | 810 | 49.6% | 1.0151 | no |
 | `epl` | winner_3way | 2026-11-13 00:20 | poisson_dc | 810 | 49.6% | 1.0151 | no |
-| `epl` | winner_3way | 2026-11-13 05:14 (reported above) | poisson_dc | 810 | 49.6% | 1.0151 | no |
+| `epl` | winner_3way | 2026-11-13 05:14 | poisson_dc | 810 | 49.6% | 1.0151 | no |
+| `epl` | winner_3way | 2026-11-13 11:37 | poisson_dc | 810 | 49.6% | 1.0151 | no |
+| `epl` | winner_3way | 2026-11-13 12:09 (reported above) | poisson_dc | 810 | 49.6% | 1.0151 | no |
 | `itf_men` | winner | 2026-11-12 23:36 | full_gbm | 37568 | 71.6% | 0.5568 | no |
-| `itf_men` | winner | 2026-11-13 00:11 (reported above) | full_gbm | 37568 | 71.5% | 0.5573 | no |
+| `itf_men` | winner | 2026-11-13 00:11 | full_gbm | 37568 | 71.5% | 0.5573 | no |
+| `itf_men` | winner | 2026-11-13 11:04 | full_gbm | 43092 | 71.1% | 0.5613 | no |
+| `itf_men` | winner | 2026-11-13 12:00 (reported above) | full_gbm | 43092 | 71.1% | 0.5613 | no |
 | `itf_women` | winner | 2026-11-12 23:39 | full_gbm | 21908 | 70.7% | 0.5646 | yes |
-| `itf_women` | winner | 2026-11-13 00:14 (reported above) | full_gbm | 21908 | 70.6% | 0.5648 | yes |
+| `itf_women` | winner | 2026-11-13 00:14 | full_gbm | 21908 | 70.6% | 0.5648 | yes |
+| `itf_women` | winner | 2026-11-13 11:08 | full_gbm | 25094 | 70.1% | 0.5699 | yes |
+| `itf_women` | winner | 2026-11-13 12:03 (reported above) | full_gbm | 25094 | 70.0% | 0.5700 | yes |
 | `laliga` | winner_3way | 2026-11-12 22:37 | elo_logit | 829 | 52.6% | 0.9793 | no |
 | `laliga` | winner_3way | 2026-11-13 00:20 | elo_logit | 829 | 52.6% | 0.9793 | no |
-| `laliga` | winner_3way | 2026-11-13 05:15 (reported above) | elo_logit | 829 | 52.6% | 0.9793 | no |
+| `laliga` | winner_3way | 2026-11-13 05:15 | elo_logit | 829 | 52.6% | 0.9793 | no |
+| `laliga` | winner_3way | 2026-11-13 11:38 | elo_logit | 829 | 52.6% | 0.9793 | no |
+| `laliga` | winner_3way | 2026-11-13 12:10 (reported above) | elo_logit | 829 | 52.6% | 0.9793 | no |
 | `ligue1` | winner_3way | 2026-11-12 22:38 | poisson_dc | 656 | 52.4% | 0.9924 | yes |
 | `ligue1` | winner_3way | 2026-11-13 00:21 | poisson_dc | 656 | 52.4% | 0.9924 | yes |
-| `ligue1` | winner_3way | 2026-11-13 05:16 (reported above) | poisson_dc | 656 | 52.4% | 0.9924 | yes |
+| `ligue1` | winner_3way | 2026-11-13 05:16 | poisson_dc | 656 | 52.4% | 0.9924 | yes |
+| `ligue1` | winner_3way | 2026-11-13 11:39 | poisson_dc | 656 | 52.4% | 0.9924 | yes |
+| `ligue1` | winner_3way | 2026-11-13 12:11 (reported above) | poisson_dc | 656 | 52.4% | 0.9924 | yes |
 | `mlb` | winner | 2026-11-12 22:42 | core_logit | 4949 | 56.5% | 0.6798 | yes |
-| `mlb` | winner | 2026-11-13 00:06 (reported above) | core_logit | 4949 | 56.5% | 0.6798 | yes |
+| `mlb` | winner | 2026-11-13 00:06 | core_logit | 4949 | 56.5% | 0.6798 | yes |
+| `mlb` | winner | 2026-11-13 11:26 | core_logit | 4949 | 56.5% | 0.6798 | yes |
+| `mlb` | winner | 2026-11-13 12:06 (reported above) | core_logit | 4949 | 56.5% | 0.6798 | yes |
 | `nba` | winner | 2026-11-12 17:32 | full_logit | 2813 | 67.7% | 0.5999 | yes |
 | `nba` | winner | 2026-11-12 23:06 | full_logit | 2813 | 67.7% | 0.5999 | yes |
-| `nba` | winner | 2026-11-13 00:16 (reported above) | full_logit | 2813 | 67.7% | 0.5999 | yes |
+| `nba` | winner | 2026-11-13 00:16 | full_logit | 2813 | 67.7% | 0.5999 | yes |
+| `nba` | winner | 2026-11-13 11:18 | full_logit | 2813 | 67.7% | 0.5999 | yes |
+| `nba` | winner | 2026-11-13 12:04 (reported above) | full_logit | 2813 | 67.7% | 0.5999 | yes |
 | `ncaaf` | winner | 2026-11-12 22:49 | ratings_logit | 2168 | 71.2% | 0.5525 | yes |
-| `ncaaf` | winner | 2026-11-13 00:04 (reported above) | full_logit | 2168 | 70.8% | 0.5464 | yes |
+| `ncaaf` | winner | 2026-11-13 00:04 | full_logit | 2168 | 70.8% | 0.5464 | yes |
+| `ncaaf` | winner | 2026-11-13 11:25 | full_logit | 2168 | 70.8% | 0.5464 | yes |
+| `ncaaf` | winner | 2026-11-13 12:05 (reported above) | full_logit | 2168 | 70.8% | 0.5464 | yes |
 | `ncaam` | winner | 2026-11-12 22:58 | full_gbm | 13251 | 74.9% | 0.4879 | yes |
-| `ncaam` | winner | 2026-11-13 05:18 (reported above) | full_gbm | 13251 | 75.0% | 0.4874 | yes |
+| `ncaam` | winner | 2026-11-13 05:18 | full_gbm | 13251 | 75.0% | 0.4874 | yes |
+| `ncaam` | winner | 2026-11-13 11:40 | full_gbm | 13251 | 75.0% | 0.4876 | yes |
+| `ncaam` | winner | 2026-11-13 12:12 (reported above) | full_gbm | 13251 | 75.0% | 0.4876 | yes |
 | `ncaaw` | winner | 2026-11-12 23:01 | full_gbm | 12313 | 78.3% | 0.4385 | yes |
-| `ncaaw` | winner | 2026-11-13 05:21 (reported above) | full_gbm | 12313 | 78.3% | 0.4385 | yes |
+| `ncaaw` | winner | 2026-11-13 05:21 | full_gbm | 12313 | 78.3% | 0.4385 | yes |
+| `ncaaw` | winner | 2026-11-13 11:43 | full_gbm | 12313 | 78.3% | 0.4386 | yes |
+| `ncaaw` | winner | 2026-11-13 12:15 (reported above) | full_gbm | 12313 | 78.3% | 0.4386 | yes |
 | `nfl` | spread | 2026-11-12 22:33 | base_rate | 695 | 50.2% | 0.6935 | no |
-| `nfl` | spread | 2026-11-13 00:05 (reported above) | base_rate | 695 | 50.2% | 0.6935 | no |
+| `nfl` | spread | 2026-11-13 00:05 | base_rate | 695 | 50.2% | 0.6935 | no |
+| `nfl` | spread | 2026-11-13 11:27 | base_rate | 696 | 50.3% | 0.6935 | no |
+| `nfl` | spread | 2026-11-13 12:07 (reported above) | base_rate | 696 | 50.3% | 0.6935 | no |
 | `nfl` | total | 2026-11-12 22:34 | base_rate | 703 | 47.4% | 0.6935 | no |
-| `nfl` | total | 2026-11-13 00:05 (reported above) | base_rate | 703 | 47.4% | 0.6935 | no |
+| `nfl` | total | 2026-11-13 00:05 | base_rate | 703 | 47.4% | 0.6935 | no |
+| `nfl` | total | 2026-11-13 11:30 | base_rate | 704 | 47.3% | 0.6935 | no |
+| `nfl` | total | 2026-11-13 12:07 (reported above) | base_rate | 704 | 47.3% | 0.6935 | no |
 | `nfl` | winner | 2026-11-12 22:32 | qb_logit | 704 | 65.2% | 0.6270 | yes |
-| `nfl` | winner | 2026-11-13 00:05 (reported above) | qb_logit | 704 | 65.5% | 0.6263 | yes |
+| `nfl` | winner | 2026-11-13 00:05 | qb_logit | 704 | 65.5% | 0.6263 | yes |
+| `nfl` | winner | 2026-11-13 11:27 | qb_logit | 705 | 65.4% | 0.6266 | yes |
+| `nfl` | winner | 2026-11-13 12:06 (reported above) | qb_logit | 705 | 65.4% | 0.6266 | yes |
 | `nhl` | winner | 2026-11-12 22:45 | core_logit | 3090 | 57.0% | 0.6719 | yes |
 | `nhl` | winner | 2026-11-12 22:46 | core_logit | 3090 | 57.0% | 0.6719 | yes |
-| `nhl` | winner | 2026-11-13 00:17 (reported above) | core_logit | 3090 | 57.0% | 0.6719 | yes |
+| `nhl` | winner | 2026-11-13 00:17 | core_logit | 3090 | 57.0% | 0.6719 | yes |
+| `nhl` | winner | 2026-11-13 11:33 | core_logit | 3090 | 57.0% | 0.6719 | yes |
+| `nhl` | winner | 2026-11-13 12:07 (reported above) | core_logit | 3090 | 57.0% | 0.6719 | yes |
 | `nhl` | winner_3way | 2026-11-12 22:46 | full_logit | 3090 | 45.0% | 1.0499 | yes |
 | `nhl` | winner_3way | 2026-11-12 22:46 | full_logit | 3090 | 45.0% | 1.0499 | yes |
-| `nhl` | winner_3way | 2026-11-13 00:18 (reported above) | full_logit | 3090 | 45.0% | 1.0499 | yes |
+| `nhl` | winner_3way | 2026-11-13 00:18 | full_logit | 3090 | 45.0% | 1.0499 | yes |
+| `nhl` | winner_3way | 2026-11-13 11:35 | full_logit | 3090 | 45.0% | 1.0499 | yes |
+| `nhl` | winner_3way | 2026-11-13 12:08 (reported above) | full_logit | 3090 | 45.0% | 1.0499 | yes |
 | `seriea` | winner_3way | 2026-11-12 22:37 | full_logit | 810 | 53.0% | 0.9804 | yes |
 | `seriea` | winner_3way | 2026-11-13 00:21 | full_logit | 810 | 53.0% | 0.9804 | yes |
-| `seriea` | winner_3way | 2026-11-13 05:16 (reported above) | full_logit | 810 | 52.6% | 0.9805 | no |
+| `seriea` | winner_3way | 2026-11-13 05:16 | full_logit | 810 | 52.6% | 0.9805 | no |
+| `seriea` | winner_3way | 2026-11-13 11:38 | full_logit | 810 | 52.6% | 0.9805 | no |
+| `seriea` | winner_3way | 2026-11-13 12:10 (reported above) | full_logit | 810 | 52.6% | 0.9805 | no |
 | `soccer_intl_men` | winner_3way | 2026-11-12 22:35 | full_gbm | 1803 | 61.5% | 0.8434 | no |
-| `soccer_intl_men` | winner_3way | 2026-11-13 00:18 (reported above) | full_gbm | 1803 | 61.6% | 0.8430 | no |
+| `soccer_intl_men` | winner_3way | 2026-11-13 00:18 | full_gbm | 1803 | 61.6% | 0.8430 | no |
+| `soccer_intl_men` | winner_3way | 2026-11-13 11:36 | full_gbm | 1803 | 61.6% | 0.8430 | no |
+| `soccer_intl_men` | winner_3way | 2026-11-13 12:08 (reported above) | full_gbm | 1803 | 61.6% | 0.8430 | no |
 | `soccer_intl_women` | winner_3way | 2026-11-12 22:36 | full_logit | 1350 | 67.3% | 0.7719 | yes |
-| `soccer_intl_women` | winner_3way | 2026-11-13 00:19 (reported above) | full_logit | 1350 | 67.3% | 0.7719 | yes |
+| `soccer_intl_women` | winner_3way | 2026-11-13 00:19 | full_logit | 1350 | 67.3% | 0.7719 | yes |
+| `soccer_intl_women` | winner_3way | 2026-11-13 11:37 | full_logit | 1350 | 67.3% | 0.7719 | yes |
+| `soccer_intl_women` | winner_3way | 2026-11-13 12:09 (reported above) | full_logit | 1350 | 67.3% | 0.7719 | yes |
 | `wnba` | winner | 2026-11-12 22:48 | full_logit | 664 | 65.4% | 0.6261 | no |
-| `wnba` | winner | 2026-11-13 00:17 (reported above) | full_logit | 664 | 65.4% | 0.6261 | no |
+| `wnba` | winner | 2026-11-13 00:17 | full_logit | 664 | 65.4% | 0.6261 | no |
+| `wnba` | winner | 2026-11-13 11:25 | full_logit | 664 | 65.4% | 0.6261 | no |
+| `wnba` | winner | 2026-11-13 12:05 (reported above) | full_logit | 664 | 65.4% | 0.6261 | no |
 | `wta` | winner | 2026-11-12 23:38 | full_logit | 3380 | 66.8% | 0.6003 | yes |
-| `wta` | winner | 2026-11-13 00:12 (reported above) | full_logit | 3380 | 66.9% | 0.6002 | yes |
+| `wta` | winner | 2026-11-13 00:12 | full_logit | 3380 | 66.9% | 0.6002 | yes |
+| `wta` | winner | 2026-11-13 11:06 | full_logit | 3673 | 66.5% | 0.6037 | yes |
+| `wta` | winner | 2026-11-13 12:01 (reported above) | full_logit | 3673 | 66.7% | 0.6036 | yes |
 | `wta_125` | winner | 2026-11-12 23:39 | full_logit | 2044 | 66.7% | 0.6104 | yes |
-| `wta_125` | winner | 2026-11-13 00:14 (reported above) | full_logit | 2044 | 66.8% | 0.6111 | yes |
+| `wta_125` | winner | 2026-11-13 00:14 | full_logit | 2044 | 66.8% | 0.6111 | yes |
+| `wta_125` | winner | 2026-11-13 11:07 | surface_logit | 2341 | 65.5% | 0.6112 | yes |
+| `wta_125` | winner | 2026-11-13 12:02 (reported above) | surface_logit | 2341 | 65.6% | 0.6114 | yes |
 | `wta_qual` | winner | 2026-11-12 23:38 | full_logit | 3278 | 67.8% | 0.5904 | yes |
-| `wta_qual` | winner | 2026-11-13 00:13 (reported above) | full_logit | 3278 | 67.5% | 0.5901 | yes |
+| `wta_qual` | winner | 2026-11-13 00:13 | full_logit | 3278 | 67.5% | 0.5901 | yes |
+| `wta_qual` | winner | 2026-11-13 11:07 | full_logit | 3278 | 67.5% | 0.5901 | yes |
+| `wta_qual` | winner | 2026-11-13 12:02 (reported above) | full_logit | 3278 | 67.5% | 0.5904 | yes |

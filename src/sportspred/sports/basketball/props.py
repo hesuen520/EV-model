@@ -376,7 +376,8 @@ def _absences(pg: pd.DataFrame, tg: pd.DataFrame, min_post: np.ndarray, stat_pos
     team_of: Dict[str, str] = {}
     zero = np.zeros(k)
 
-    for event_id, team, season, done in zip(tg["event_id"], tg["team_id"], tg["season"], tg["done"]):
+    starts = tg["start_time_utc"].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    for event_id, team, season, done, start in zip(tg["event_id"], tg["team_id"], tg["season"], tg["done"], starts):
         st = state.get(team)
         if st is None or st["season"] != season:
             st = state[team] = {"season": season, "games": 0, "players": {}}
@@ -431,7 +432,7 @@ def _absences(pg: pd.DataFrame, tg: pd.DataFrame, min_post: np.ndarray, stat_pos
                 if old is not None and old != team and old in state:
                     state[old]["players"].pop(pid, None)
                 team_of[pid] = team
-                st["players"][pid] = (games, float(min_post[i]), stat_post[i].copy(), keys[i])
+                st["players"][pid] = (games, float(min_post[i]), stat_post[i].copy(), keys[i], start)
             st["games"] += 1
 
     res["own_missed"] = own_missed
@@ -443,7 +444,8 @@ def _absences(pg: pd.DataFrame, tg: pd.DataFrame, min_post: np.ndarray, stat_pos
     for team, st in state.items():
         rotation[team] = {"season": int(st["season"]), "players": [
             {"player_id": pid, "key": rec[3], "name": name_of.get(pid, pid), "min": float(rec[1]),
-             "stats": [float(v) for v in rec[2]], "missed": int(st["games"] - 1 - rec[0])}
+             "stats": [float(v) for v in rec[2]], "missed": int(st["games"] - 1 - rec[0]),
+             "last_played_utc": rec[4]}
             for pid, rec in st["players"].items()
             if st["games"] - 1 - rec[0] <= cfg.rotation_window and rec[1] >= cfg.rotation_minutes]}
     res["_rotation"] = rotation  # type: ignore[assignment]
@@ -544,6 +546,8 @@ def build_prop_frame(store: Any, league: str, stat: str, *, now: Any = None,
         df=df, feature_cols=feature_cols, feature_notes={k: v for k, v in FEATURE_NOTES.items() if k in feature_cols},
         limitations=limitations,
         extra={"stat": stat, "stat_label": label, "requires_line": True, "gates": [dict(LINES_GATE)],
+               "confidence_caveat": "not rated: hit rates were measured against reference thresholds built from "
+                                    "players' earlier games, not against market thresholds",
                "config": {"first_season": cfg.first_season, "min_prior_games": cfg.min_prior_games,
                           "min_expected_minutes": cfg.min_expected_minutes, "ref_window": cfg.ref_window},
                "burn_in_seasons": cfg.burn_in_seasons, "has_reports": has_reports,
@@ -633,7 +637,20 @@ def apply_prop_availability(row: pd.Series, frame: FeatureFrame, availability: p
             effect.unmatched.append(f"opponent absences are not an input of this model: {listed}")
     if mine.empty:
         return effect
-    status_of = {person_key(r["player_name"]): str(r["status"]) for _, r in mine.iterrows()}
+    rot = (frame.extra.get("rotation") or {}).get(team)
+    last_played = {p["key"]: p.get("last_played_utc") for p in (rot or {}).get("players", [])}
+    status_of: Dict[str, str] = {}
+    for _, r in mine.iterrows():
+        key, status = person_key(r["player_name"]), str(r["status"])
+        stated = r.get("published_at_utc")
+        stated = stated if isinstance(stated, str) and stated else r.get("collected_at_utc")
+        played = last_played.get(key)
+        if status in ("out", "doubtful") and isinstance(stated, str) and played and stated < played:
+            # He has played since he was listed: the statement is out of date.
+            effect.unmatched.append(f"{r['player_name']} ({status}, stated {stated[:10]}): has played since "
+                                    f"(last on {played[:10]}); the statement is out of date and was not applied")
+            continue
+        status_of[key] = status
     own_key = person_key(row["player_name"])
     own = status_of.get(own_key)
     name = row["player_name"]
@@ -643,7 +660,6 @@ def apply_prop_availability(row: pd.Series, frame: FeatureFrame, availability: p
     elif own in ("doubtful",) + _UNCERTAIN:
         effect.uncertain_a.append(f"{name} ({own}) - the market is void if he does not play, and his minutes "
                                   "may be limited if he does")
-    rot = (frame.extra.get("rotation") or {}).get(team)
     block = row.get("block")
     has_rep = "mates_out_min_rep" in row.index
     if rot is None or block != block or int(block) != int(rot["season"]) or not has_rep:
@@ -738,6 +754,10 @@ def explain_prop(row: pd.Series, frame: FeatureFrame, exp: Any) -> Any:
     exp.availability_assumptions.append(
         "Conditional on the player appearing; a statistic market is void when he does not play.")
     exp.missing_data.append("confirmed starting line-ups and announced minutes limits are not available")
+    exp.missing_data.append(
+        "no history of market thresholds: this probability has been checked against reference thresholds built "
+        "from players' earlier games, never against a bookmaker's line, which already reflects most of what the "
+        "model knows and news it does not")
     return exp
 
 

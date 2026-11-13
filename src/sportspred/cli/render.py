@@ -64,11 +64,10 @@ def render_prediction(p: Mapping[str, Any]) -> str:
     head = f"{d['side_b']} at {d['side_a']}" if d.get("side_a_role") == "home" else f"{d['side_a']} v {d['side_b']}"
     venue = ", ".join(x for x in (d.get("venue"), d.get("venue_city")) if x) or "venue not published"
     site = "" if d.get("neutral_site") is None else (" (neutral site)" if d["neutral_site"] else "")
-    line = _line(p.get("line"))
     lines = [
         f"{d['competition']} | {head}",
         f"  Start: {d['start_hst']} | Venue: {venue}{site}",
-        f"  Market: {p['market']}{line} ({d.get('market_note') or ''})",
+        f"  Market: {market_text(p)} ({d.get('market_note') or ''})",
         f"  Status: {p['rec_status']} - {d.get('status_definition', '')}",
         f"  Selection: {p['selection_label']}  model probability {_pct(p.get('prob'))}"
         f"  (validation status: {p['validation_status']}; model {p['model_version']})",

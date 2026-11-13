@@ -85,7 +85,9 @@ def train_league(store: Store, league: str, market: str = "winner", *,
     plan = plugin.split_plan(league, market, frame)
     model = train_production(frame, by_name[chosen], plan, n_replicas=settings.validation.n_replicas,
                              seed=settings.validation.seed, validation_run_id=report.get("run_id"))
-    path = store.models_dir / f"{model.model_version}.joblib"
+    # The version names the market, and a player-statistic market has a colon in its key;
+    # a colon is not a legal file-name character everywhere.
+    path = store.models_dir / f"{model.model_version.replace(':', '_')}.joblib"
     model.save(path)
     store.register_model(
         model_version=model.model_version, sport=spec.sport, league=league, market=market,

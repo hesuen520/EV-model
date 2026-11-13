@@ -179,7 +179,6 @@ def world(tmp_path_factory):
     settings.paths.data_dir = str(tmp_path_factory.mktemp("props"))
     settings.validation.n_boot, settings.validation.n_replicas = 30, 3
     settings.selection.horizon_hours = 240.0
-    Store.wall_clock_tolerance_seconds = None
     store = Store(settings.paths.store)
     info = _build_league(store)
     plugin, _ = get_league(LEAGUE)
@@ -342,6 +341,9 @@ def test_thresholds_are_priced_recorded_and_graded(world, tmp_path):
     assert pa["selection_label"].startswith(a["player_name"]) and pa["selection_label"].endswith("points")
     assert pa["display"]["projection"]["q10"] <= pa["display"]["projection"]["q90"]
     assert pa["validation_status"] == "experimental"
+    # The hit rates on file were measured against reference thresholds: no confidence label is given.
+    assert pb["confidence"]["label"] == "Unrated" and "reference thresholds" in pb["confidence"]["basis"]
+    assert pa["display"]["player_team"] == world["names"][a["side_a_id"]]
     # Far from the threshold the model is sure of the side - and still not FINAL: no injury report was checked.
     assert pb["selection"] == "over" and pb["prob"] > 0.9 and pb["rec_status"] == "PROVISIONAL"
     assert pc["selection"] == "under" and pc["prob"] > 0.9 and "push" not in pc["probs"]
@@ -393,6 +395,11 @@ def test_availability_of_the_player_and_his_team_mates(world):
     out = apply_prop_availability(row, frame, _statements([(team, row["player_name"], "out")]),
                                   AvailabilityEffect(row=row.copy()))
     assert out.blockers and "void" in out.blockers[0]
+
+    # An "out" statement from before his last game is out of date: he has played since.
+    stale = _statements([(team, row["player_name"], "out")]).assign(collected_at_utc="2020-01-01T00:00:00Z")
+    old = apply_prop_availability(row, frame, stale, AvailabilityEffect(row=row.copy()))
+    assert not old.blockers and any("out of date" in text for text in old.unmatched)
 
     doubt = apply_prop_availability(row, frame, _statements([(team, row["player_name"], "questionable")]),
                                     AvailabilityEffect(row=row.copy()))
@@ -446,3 +453,31 @@ def test_projection_table_lists_players_without_recording_anything(world):
     one = projection_table(world["store"], LEAGUE, "points", settings=world["settings"], now=NOW, team="Prop Team A")
     assert len(one) and set(one["team"]) == {"Prop Team A"}
     assert len(world["store"].predictions()) == before
+
+
+def test_a_threshold_dated_in_the_future_is_refused_when_the_clock_rule_is_on(world, tmp_path, monkeypatch):
+    """This league's games are dated 2027, so with the clock rule in force (as it
+    is outside the tests) a reading stamped then cannot have happened yet."""
+    _, up = _upcoming(world)
+    row = up.iloc[0]
+    path = _lines_csv(tmp_path, [{"team": world["names"][row["side_a_id"]], "player": row["player_name"],
+                                  "stat": "points", "line": 9.5, "collected_at": NOW}], "future.csv")
+    monkeypatch.setattr(Store, "wall_clock_tolerance_seconds", 300.0)
+    before = len(world["store"].prop_lines_as_of(LEAGUE, "2099-01-01T00:00:00Z"))
+    with pytest.raises(CsvImportError, match="in the future"):
+        import_prop_lines(world["store"], LEAGUE, path)
+    assert len(world["store"].prop_lines_as_of(LEAGUE, "2099-01-01T00:00:00Z")) == before
+
+
+def test_two_team_mates_with_one_name_cannot_be_told_apart(world, tmp_path, monkeypatch):
+    _, up = _upcoming(world)
+    row = up.iloc[0]
+    plugin = world["plugin"]
+    pool = plugin.prop_players(world["store"], LEAGUE, now=NOW)
+    twin = pool[(pool["event_id"] == row["game_id"]) & (pool["player_id"] == row["player_id"])].copy()
+    twin["player_id"] = "999999"
+    monkeypatch.setattr(type(plugin), "prop_players", lambda self, store, league, now=None: pd.concat([pool, twin]))
+    path = _lines_csv(tmp_path, [{"team": world["names"][row["side_a_id"]], "player": row["player_name"],
+                                  "stat": "points", "line": 9.5}], "twin.csv")
+    with pytest.raises(CsvImportError, match="more than one"):
+        import_prop_lines(world["store"], LEAGUE, path, collected_at=NOW)

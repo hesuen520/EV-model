@@ -478,6 +478,12 @@ def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[s
     by_native = dict(zip(with_id["provider_event_id"], with_id["event_id"]))
     rosters: Dict[str, pd.DataFrame] = {}
     rows = []
+    # Real leagues are tied to the machine clock, as the ledger is; synthetic leagues and
+    # tests replay other dates (the same switch as ``Store.wall_clock_tolerance_seconds``).
+    tolerance = getattr(store, "wall_clock_tolerance_seconds", None)
+    clock_limit = None
+    if tolerance is not None and not league.startswith("demo_"):
+        clock_limit = iso_z(utcnow() + pd.Timedelta(seconds=float(tolerance)))
     for i, row in df.iterrows():
         line_no = i + 2
         stat = (_cell(row, "stat") or "").lower()
@@ -489,6 +495,10 @@ def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[s
         elif value is not None and (value < 0 or (2.0 * value) != round(2.0 * value)):
             errors.append(f"line {line_no}: line {row['line']!r} must be a whole or half number, zero or more")
         collected = _time(_cell(row, "collected_at"), tz, line_no, "collected_at", errors) or default_collected
+        if clock_limit is not None and collected > clock_limit:
+            errors.append(f"line {line_no}: collected_at {collected} is in the future; a threshold cannot have "
+                          "been read yet")
+            continue
         team_id = team_ids.get(_cell(row, "team") or "")
         player = _cell(row, "player")
         if not player:
@@ -519,6 +529,10 @@ def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[s
         if match.empty:
             errors.append(f"line {line_no}: {player!r} has not played for {row['team']} in their recent games; "
                           "check the spelling and the team")
+            continue
+        if match["player_id"].nunique() > 1:
+            errors.append(f"line {line_no}: {player!r} matches more than one {row['team']} player; the name alone "
+                          "cannot tell them apart")
             continue
         if not bool(match["modelled"].iloc[0]):
             errors.append(f"line {line_no}: {player!r} is outside the modelled rotation (too few games or minutes)")

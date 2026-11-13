@@ -140,8 +140,10 @@ imported threshold there is no selection for that player.
   statistic the league does not model, or a threshold that is not a whole or
   half number is an error with its line number, and nothing is stored.
 - A later reading of the same market is a new row; the threshold in force for
-  a prediction is the newest one collected by the prediction time. Importing
-  the same reading twice stores it once.
+  a prediction is the newest one collected by the prediction time, whichever
+  `book` it came from - one threshold per player and statistic at a time.
+  Importing the same reading twice stores it once. A collection time in the
+  future is refused.
 - A whole-number threshold can be tied. The prediction then records three
   probabilities - over, under and push - that sum to one.
 - A prediction is recorded under the key `player_prop:<stat>:<player id>`, so

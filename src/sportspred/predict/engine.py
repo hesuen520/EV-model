@@ -405,6 +405,15 @@ def predict_league(
             explanation.missing_data.append("no availability report on file for either side")
 
         confidence = confidence_for(prob, None if model_mismatch else report, settings.confidence)
+        caveat = frame.extra.get("confidence_caveat")
+        if caveat:
+            # The observed hit rates were not measured on the kind of selection being made
+            # (reference thresholds, not market thresholds): the label is withheld, the
+            # measurement is still shown for what it is.
+            if confidence.get("label") != "Unrated":
+                confidence["measured_label"] = confidence["label"]
+            confidence["label"] = "Unrated"
+            confidence["basis"] = f"{caveat} ({confidence['basis']})"
         confidence["definitions"] = {
             "event_uncertainty": "chance the selection loses even if the probability is exactly right",
             "model_uncertainty": "how far the probability moves when the model is refitted on resampled history",
@@ -419,16 +428,19 @@ def predict_league(
         display = {
             "competition": spec.name, "league": league, "sport": spec.sport, "season": ev["season"],
             "stage": ev["stage"],
-            "side_a": names.get(row["side_a_id"], row["side_a_id"]),
-            "side_b": names.get(row["side_b_id"], row["side_b_id"]),
-            "side_a_role": "home" if ev["home_id"] == row["side_a_id"] and ev["neutral_site"] != 1 else "a",
+            # A row about one player has his team as side A; the event is shown as it is played.
+            "side_a": names.get(ev["home_id"] if subject else row["side_a_id"], row["side_a_id"]),
+            "side_b": names.get(ev["away_id"] if subject else row["side_b_id"], row["side_b_id"]),
+            "side_a_role": "home" if (subject or ev["home_id"] == row["side_a_id"]) and ev["neutral_site"] != 1
+            else "a",
             "start_hst": fmt_hst(ev["start_time_utc"], date_only=precision_date),
             "start_utc": iso_z(ev["start_time_utc"]),
             "venue": ev["venue_name"], "venue_city": ev["venue_city"],
             "neutral_site": None if ev["neutral_site"] != ev["neutral_site"] else bool(ev["neutral_site"]),
             "market": market, "market_note": decl.note, "line": line,
             **({"player": subject, "player_id": str(row["player_id"]), "stat": frame.extra.get("stat"),
-                "projection": projection} if subject else {}),
+                "player_team": names.get(row["side_a_id"], row["side_a_id"]), "projection": projection}
+               if subject else {}),
             "status_definition": REC_STATUS_DEFINITIONS[status],
             # When this prediction was made - not when any source was last read; each
             # check carries its own time.

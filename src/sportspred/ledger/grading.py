@@ -116,7 +116,10 @@ def _player_prop(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> 
     minutes = row.iloc[0]["minutes"] if len(row) else None
     if row.empty or minutes is None or minutes != minutes or float(minutes) <= 0:
         return "void", {"note": "player did not play"}
-    value = float(sum(float(row.iloc[0][c] or 0) for c in cols))
+    stats = [row.iloc[0][c] for c in cols]
+    if any(v is None or v != v for v in stats) or pred.get("line") is None or pred["line"] != pred["line"]:
+        return "no_result", {"note": f"statistic {stat!r} or the line is missing; not graded"}
+    value = float(sum(float(v) for v in stats))
     line = float(pred["line"])
     detail = {"stat": stat, "value": value, "line": line}
     if value == line:
@@ -202,9 +205,11 @@ def grade_predictions(store: Any, *, now: Any = None, include_synthetic: bool = 
             store.log_issue("grading_failed", f"{pred['prediction_id']}: {type(exc).__name__}: {exc}",
                             league=pred["league"], event_id=pred["event_id"])
             continue
-        if outcome == "no_result":
-            continue
         prev = last.get(pred["prediction_id"])
+        if outcome == "no_result" and (prev is None or prev["outcome"] in ("no_result", "void")):
+            continue
+        # A grade that the data on file no longer supports (the result was withdrawn or
+        # lost a field the grade relied on) is withdrawn too, by a linked "no_result" grade.
         if prev is not None and prev["outcome"] == outcome and json.loads(prev["result_json"]) == json.loads(
                 json.dumps(detail, default=str)):
             continue

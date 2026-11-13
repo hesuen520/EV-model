@@ -136,6 +136,7 @@ class BasketballPlugin(SportPlugin):
         if availability is None or availability.empty:
             return effect
         quality: Dict[str, Dict[str, float]] = {}
+        unquantified: set = set()
         roster_block = frame.extra.get("roster_block") or {}
         block = row.get("block")
         for side, team in (("a", row["side_a_id"]), ("b", row["side_b_id"])):
@@ -152,6 +153,12 @@ class BasketballPlugin(SportPlugin):
                 for _, rep in reports.iterrows():
                     effect.unmatched.append(f"{rep['player_name']} ({rep['status']}): no rotation on file for this "
                                             "game, not applied to the model")
+                    # What cannot be applied cannot be assumed away either: a listed absence
+                    # or doubt on this side stays a stated condition of any selection.
+                    if str(rep["status"]) in ("out", "doubtful", "questionable", "uncertain"):
+                        (effect.uncertain_a if side == "a" else effect.uncertain_b).append(
+                            f"{rep['player_name']} ({rep['status']}; effect on the model not quantified)")
+                        unquantified.add(side)
                 continue
             by_id = {str(p["player_id"]): p for p in players}
             by_name = {norm_text(p["name"]): p for p in players}
@@ -206,6 +213,8 @@ class BasketballPlugin(SportPlugin):
             "a": with_values(A["wq"], A["wab"], B["q"], B["ab"]),
             "b": with_values(A["q"], A["ab"], B["wq"], B["wab"]),
         }
+        for side in unquantified:              # no worst case can be computed: the engine treats it as a condition
+            effect.worst_case_rows.pop(side, None)
         return effect
 
     # ------------------------------------------------------------ explanation

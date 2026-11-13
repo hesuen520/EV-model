@@ -93,8 +93,10 @@ def evaluate_checks(
                 has_pub = isinstance(hit["published_at_utc"], str) and hit["published_at_utc"]
                 checked = pd.Timestamp(hit["published_at_utc"] if has_pub else hit["checked_at_utc"])
                 age = (now - checked).total_seconds() / 3600.0
-                entry.update(checked_at_utc=hit["checked_at_utc"], published_at_utc=hit["published_at_utc"],
-                             source_id=hit["source_id"])
+                # A value missing in the check log arrives as NaN; record it as absent.
+                entry.update(checked_at_utc=hit["checked_at_utc"],
+                             published_at_utc=hit["published_at_utc"] if has_pub else None,
+                             source_id=hit["source_id"] if isinstance(hit["source_id"], str) else None)
                 found = "nothing listed" if hit["outcome"] == "nothing_listed" else "report on file"
                 when = (f"{found} for {label}, {'published' if has_pub else 'checked'} {fmt_hst(checked)} "
                         f"({age:.1f} h ago)")

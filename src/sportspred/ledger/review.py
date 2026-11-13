@@ -106,12 +106,15 @@ def review_predictions(store: Any, *, now: Any = None, include_synthetic: bool =
             "status_at_prediction_time": row["rec_status"],
         }
         # News collected after the prediction and before the start.
+        ev = store.events(event_ids=[row["event_id"]], with_results=False, include_synthetic=True)
+        teams = set(ev[["home_id", "away_id"]].iloc[0].dropna()) if len(ev) else set()
+        # Until the event actually started - which, for an event that had only a date when it
+        # was predicted, is later than the placeholder the prediction recorded.
+        started = max(row["event_start_utc"], iso_z(ev.iloc[0]["start_time_utc"])) if len(ev) else row["event_start_utc"]
         avail = store.query(
             "SELECT player_name, status, team_id, collected_at_utc FROM availability "
             "WHERE league=? AND collected_at_utc > ? AND collected_at_utc < ? AND (event_id IS NULL OR event_id=?)",
-            [row["league"], row["created_at_utc"], row["event_start_utc"], row["event_id"]])
-        ev = store.events(event_ids=[row["event_id"]], with_results=False, include_synthetic=True)
-        teams = set(ev[["home_id", "away_id"]].iloc[0].dropna()) if len(ev) else set()
+            [row["league"], row["created_at_utc"], started, row["event_id"]])
         late = avail[avail["team_id"].isin(teams) & avail["status"].isin(["out", "doubtful"])]
         event_issues = issues[issues["event_id"] == row["event_id"]]
         shortfall = _band_shortfall(df, row) if row["outcome"] == "incorrect" else None

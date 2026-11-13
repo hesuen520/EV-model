@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from itertools import combinations
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -29,6 +29,7 @@ import pandas as pd
 from ..config import ComboConfig, Settings
 from ..core.enums import RecStatus
 from ..core.timeutil import hst_date, iso_z, parse_ts, utcnow
+from ..storage.store import DATE_ONLY_LEAD_HOURS
 from .dependency import JointResult, Leg, joint_probability
 
 __all__ = ["PASS_MESSAGE", "MONOTONE_NOTE", "ComboCandidate", "SlateCombos", "candidate_status", "legs_from_ledger",
@@ -116,7 +117,7 @@ def legs_from_ledger(store: Any, predictions: pd.DataFrame) -> List[Leg]:
             rec_status=p["rec_status"], validation_status=p["validation_status"],
             start_utc=p["event_start_utc"], participants=frozenset(participants), entities=frozenset(entities),
             event_label=label, event_status=str(ev["status"]), current_start_utc=iso_z(ev["start_time_utc"]),
-            is_synthetic=bool(int(p["is_synthetic"])),
+            is_synthetic=bool(int(p["is_synthetic"])), date_only=str(ev["time_precision"]) != "datetime",
         ))
     return legs
 
@@ -136,6 +137,9 @@ def _eligibility(leg: Leg, cfg: ComboConfig, statuses: Sequence[str], now_iso: s
     # First, because it is final: nothing is ever selected after the start.
     if leg.start_utc <= now_iso or (leg.current_start_utc or "") and leg.current_start_utc <= now_iso:
         return "event has started"
+    if leg.date_only and iso_z(parse_ts(leg.current_start_utc or leg.start_utc)
+                               - timedelta(hours=DATE_ONLY_LEAD_HOURS)) <= now_iso:
+        return "event has only a date, and that date has begun: it may have started"
     # The prediction describes the event as it stood; what matters is the event as it stands now.
     if leg.event_status != "scheduled":
         return f"event is now {leg.event_status}"
@@ -247,7 +251,10 @@ def build_slate_combos(store: Any, day: Optional[date] = None, *, settings: Opti
     if cfg.show_provisional_preview and not result.three_leg:
         statuses = sorted(set(cfg.leg_statuses) | {RecStatus.FINAL.value, RecStatus.PROVISIONAL.value})
         preview = _assemble(day.isoformat(), legs, cfg, statuses, now_iso, corr)
-        if preview.three_leg or preview.singles:
+        # A preview exists to show what unfinished checks are holding back.  If every
+        # usable leg is already FINAL there is nothing of that kind to show.
+        waiting = any(l.rec_status != RecStatus.FINAL.value for l in preview.eligible)
+        if waiting and (preview.three_leg or preview.singles):
             preview.status = RecStatus.PROVISIONAL
             preview.message = (
                 "PROVISIONAL preview only - not a recommendation. These legs still have required pregame "

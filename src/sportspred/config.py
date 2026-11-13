@@ -75,6 +75,10 @@ class SelectionConfig:
     #: gap between result days).  Ordinary off-seasons pass; a source that has
     #: simply stopped does not.
     results_break_margin: float = 1.5
+    #: An earlier event of either side with no result on file makes results "out
+    #: of date" only if it is at most this many days old.  An older one is a
+    #: permanent gap in the source, not something a refresh will fill.
+    unresolved_window_days: float = 45.0
     #: Freshness overrides per check key (hours), e.g. {"injury_report": 12}.
     max_age_hours: Dict[str, float] = field(default_factory=dict)
     recheck_within_hours: Dict[str, float] = field(default_factory=dict)

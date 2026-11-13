@@ -58,6 +58,7 @@ class Leg:
     event_status: str = "scheduled"  # the event's status now, not when the prediction was made
     current_start_utc: Optional[str] = None      # the event's start now
     is_synthetic: bool = False
+    date_only: bool = False          # the event has only a date: it is closed 14 hours before the stored instant
 
     @property
     def market_family(self) -> str:

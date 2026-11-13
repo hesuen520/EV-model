@@ -201,8 +201,24 @@ def no_vig(quotes: pd.DataFrame, quote: Mapping[str, Any], method: str) -> Optio
     return float(fair[same["selection"].tolist().index(quote["selection"])])
 
 
+def event_state_reasons(pred: Mapping[str, Any], event: Optional[Mapping[str, Any]], now_iso: str) -> List[str]:
+    """Why a recorded prediction can no longer be acted on, judged against its
+    event as it stands now (the prediction itself is a snapshot)."""
+    if event is None:
+        return ["the event is no longer on file"]
+    start = iso_z(event["start_time_utc"])
+    reasons: List[str] = []
+    if event["status"] != "scheduled":
+        reasons.append(f"event is now {event['status']}")
+    if start != pred["event_start_utc"]:
+        reasons.append("the event's start has changed since this prediction; re-run predict")
+    if min(start, pred["event_start_utc"]) <= now_iso:
+        reasons.append("event has started")
+    return reasons
+
+
 def evaluate_one(pred: Mapping[str, Any], quote: Mapping[str, Any], quotes: pd.DataFrame, cfg: EvConfig,
-                 now_iso: str) -> Dict[str, Any]:
+                 now_iso: str, event_reasons: Sequence[str] = ()) -> Dict[str, Any]:
     """Compare one ledger prediction with one quote of the same selection."""
     p = float(pred["prob"])
     probs = json.loads(pred["probs_json"])
@@ -215,7 +231,7 @@ def evaluate_one(pred: Mapping[str, Any], quote: Mapping[str, Any], quotes: pd.D
         "quoted_at_utc": quote["quoted_at_utc"], "rules_key": quote["rules_key"], "model_prob": p,
         "fair_odds_decimal": 1.0 / p, "rec_status": pred["rec_status"],
     }
-    reasons: List[str] = []
+    reasons: List[str] = list(event_reasons)
     ok, why = comparable(pred["market"], rules, pred.get("sport"))
     if not ok:
         return {**out, "status": "not comparable", "eligible": False, "reasons": [why]}
@@ -279,8 +295,12 @@ def evaluate(store: Any, *, settings: Optional[Settings] = None, day: Any = None
     preds = preds[preds["rec_status"] != "PASS"]
     quotes = _quotes(store, preds["event_id"].unique().tolist())
     quotes = quotes[quotes["quoted_at_utc"] <= now_iso]
+    current = store.events(event_ids=preds["event_id"].unique().tolist(), with_results=False,
+                           include_synthetic=True).set_index("event_id")
     rows: List[Dict[str, Any]] = []
     for _, pred in preds.iterrows():
+        event = current.loc[pred["event_id"]] if pred["event_id"] in current.index else None
+        stale = event_state_reasons(pred, event, now_iso)
         mine = quotes[(quotes["event_id"] == pred["event_id"]) & (quotes["market"] == pred["market"])
                       & (quotes["selection"] == pred["selection"])]
         if pred["line"] == pred["line"] and pred["line"] is not None:
@@ -294,7 +314,7 @@ def evaluate(store: Any, *, settings: Optional[Settings] = None, day: Any = None
                          "reasons": ["no price on file for this selection at this exact line"]})
             continue
         for _, quote in mine.sort_values("quoted_at_utc").groupby("venue").tail(1).iterrows():
-            rows.append(evaluate_one(pred, quote, quotes, settings.ev, now_iso))
+            rows.append(evaluate_one(pred, quote, quotes, settings.ev, now_iso, stale))
     return pd.DataFrame(rows)
 
 

@@ -18,7 +18,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Tuple
 
-from ..core.results import flag, regulation_result
+from ..core.results import clean_row, flag, regulation_result
 
 __all__ = ["FeeSchedule", "FEES", "fee_for", "SettlementRules", "RULES", "comparable", "settle_outcome"]
 
@@ -139,6 +139,7 @@ def settle_outcome(rules: SettlementRules, market: str, selection: str, line: Op
     """Outcome of a position under ``rules``: ``win | loss | push | void | half``
     plus a note, or ``("unsettled", reason)`` when the data on file cannot
     decide it.  ``event`` is an event row joined with its result."""
+    event = clean_row(event)          # a missing value read back from a frame is NaN, and NaN is not "false"
     status = event.get("status")
     if status in ("canceled", "postponed"):
         return ("half" if rules.canceled == "half" else "void"), f"event {status}"

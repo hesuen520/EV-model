@@ -20,6 +20,7 @@ require_interval_above_even = true # PASS when the model-uncertainty interval re
 horizon_hours = 36.0               # only events starting within this window are predicted
 results_break_margin = 1.5         # results are "out of date" when the newest one is older than 1.5 times the
                                    # league's typical longest yearly break (median over its own history)
+unresolved_window_days = 45        # an unplayed or unscored earlier game blocks "results current" only this long
 
 [selection.min_prob_overrides]
 # "nba:winner" = 0.62

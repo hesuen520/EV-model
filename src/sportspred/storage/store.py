@@ -78,8 +78,23 @@ class UpsertReport:
         )
 
 
+def _no_nan(value: Any) -> Any:
+    """``NaN`` / ``inf`` are not JSON.  A missing value read back from a
+    frame arrives as ``NaN``; it is stored as ``null``."""
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _no_nan(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_no_nan(v) for v in value]
+    if value is pd.NA or value is pd.NaT:
+        return None
+    return value
+
+
 def _json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, default=_json_default, separators=(",", ":"))
+    return json.dumps(_no_nan(value), sort_keys=True, default=_json_default, separators=(",", ":"),
+                      allow_nan=False)
 
 
 def _json_default(obj: Any) -> Any:
@@ -179,9 +194,10 @@ class Store:
             )
             # Stores created before the column existed: add it (earlier rows keep NULL
             # and their hashes, which never covered it, still verify).
-            cols = {r["name"] for r in con.execute("PRAGMA table_info(predictions)")}
-            if "recorded_at_utc" not in cols:
-                con.execute("ALTER TABLE predictions ADD COLUMN recorded_at_utc TEXT")
+            for table in ("predictions", "combos"):
+                cols = {r["name"] for r in con.execute(f"PRAGMA table_info({table})")}
+                if "recorded_at_utc" not in cols:
+                    con.execute(f"ALTER TABLE {table} ADD COLUMN recorded_at_utc TEXT")
 
     def query(self, sql: str, params: Sequence[Any] = ()) -> pd.DataFrame:
         with self.conn() as con:
@@ -541,8 +557,11 @@ class Store:
                     changes = self._event_changes(old, rec, primary=not matched_other)
                     if (changes.get("status") in ("scheduled", "unknown", "live") and old.get("status") == "final"
                             and eid in has_result):
-                        # A stale schedule row must not reopen a game whose result is on file.
+                        # A stale schedule row must not reopen a game whose result is on file,
+                        # nor move it: the result belongs to the game as it was played.
                         del changes["status"]
+                        changes.pop("start_time_utc", None)
+                        changes.pop("time_precision", None)
                         msg = (f"{provider}:{prov_eid or start} lists a finished game as {rec['status']}; "
                                "the result on file was kept")
                         report.issues.append(msg)
@@ -1033,35 +1052,68 @@ class Store:
 
     def _drop_superseded_reports(self, statements: pd.DataFrame, league: str, cutoff: str,
                                  include_synthetic: bool) -> pd.DataFrame:
-        """Remove statements whose team has since had a newer report of the same kind."""
+        """Remove statements whose team has since had a newer report of the same kind.
+
+        A *report* is one import: a source read at one time.  Its statements
+        carry that source and collection time, and the check it logged carries
+        the same pair, which is how a statement finds its report and the
+        report's kind (``check_key``).  For each team and kind the report in
+        force is the one with the newest *information* - by publication time
+        where the source states one, otherwise by the time it was read, the
+        same order the engine uses to pick the check it shows.  Statements of
+        any other report of that kind are dropped.
+        """
         checks = self.checks_as_of(league, cutoff, include_synthetic=include_synthetic)
-        checks = checks[checks["outcome"].isin(["reported", "nothing_listed"]) & checks["team_id"].notna()
-                        & checks["source_id"].notna()]
+        checks = checks[checks["outcome"].isin(["reported", "nothing_listed"]) & checks["team_id"].notna()]
         if checks.empty:
             return statements
-        kinds: Dict[str, set] = {}
-        for src, key in zip(checks["source_id"], checks["check_key"]):
-            kinds.setdefault(src, set()).add(key)
-        newest = (checks.sort_values("checked_at_utc").drop_duplicates(["team_id", "check_key"], keep="last")
-                  .set_index(["team_id", "check_key"])[["source_id", "checked_at_utc"]])
+
+        def report_key(source: Any, read_at: Any) -> Tuple[str, str]:
+            return ("" if _is_missing(source) else str(source), str(read_at))
+
+        kinds: Dict[Tuple[str, str], set] = {}
+        for src, read_at, key in zip(checks["source_id"], checks["checked_at_utc"], checks["check_key"]):
+            kinds.setdefault(report_key(src, read_at), set()).add(key)
+        info = checks["published_at_utc"].where(checks["published_at_utc"].notna(), checks["checked_at_utc"])
+        ranked = checks.assign(_info=info).sort_values(["_info", "checked_at_utc"])
+        newest = ranked.drop_duplicates(["team_id", "check_key"], keep="last").set_index(["team_id", "check_key"])
         keep = []
         for src, team, collected in zip(statements["source_id"], statements["team_id"],
                                         statements["collected_at_utc"]):
-            mine = kinds.get(src)
-            if not mine or team is None or team != team:
+            mine = report_key(src, collected)
+            of_kinds = kinds.get(mine)
+            if not of_kinds or _is_missing(team):
                 keep.append(True)                       # no report of a known kind behind this statement
                 continue
             current = False
-            for kind in mine:
+            for kind in of_kinds:
                 if (team, kind) not in newest.index:
                     current = True
                     break
                 latest = newest.loc[(team, kind)]
-                if latest["source_id"] == src or latest["checked_at_utc"] <= collected:
+                if report_key(latest["source_id"], latest["checked_at_utc"]) == mine:
                     current = True
                     break
             keep.append(current)
         return statements.loc[keep]
+
+    def teams_with_statements(self, league: str, check_key: str, as_of: Any, *,
+                              include_synthetic: bool = False) -> set:
+        """Teams that still carry a statement from a report of this kind.
+
+        An importer of a league-wide report calls this to find the teams the
+        new report no longer mentions: it must log "nothing listed" for them,
+        or their old statements would stay in force for ever."""
+        cutoff = iso_z(as_of)
+        current = self.availability_as_of(league, cutoff, include_synthetic=include_synthetic)
+        if current.empty:
+            return set()
+        checks = self.checks_as_of(league, cutoff, include_synthetic=include_synthetic)
+        checks = checks[checks["check_key"] == check_key]
+        reports = {("" if _is_missing(s) else str(s), str(t)) for s, t in zip(checks["source_id"], checks["checked_at_utc"])}
+        mine = [("" if _is_missing(s) else str(s), str(t)) in reports
+                for s, t in zip(current["source_id"], current["collected_at_utc"])]
+        return set(current.loc[mine, "team_id"].dropna())
 
     def log_check(
         self,
@@ -1181,6 +1233,9 @@ class Store:
                 raise LedgerError(f"{key}={val} is outside [0, 1]")
 
         with self.conn() as con:
+            # The row's hash chains to the newest row.  Take the write lock before reading
+            # it, or two writers at once would both chain to the same row and break the chain.
+            con.execute("BEGIN IMMEDIATE")
             ev = con.execute("SELECT * FROM events WHERE event_id=?", (rec["event_id"],)).fetchone()
             if ev is None:
                 raise LedgerError(f"prediction refers to unknown event {rec['event_id']}")
@@ -1227,7 +1282,13 @@ class Store:
             pid = _opt(rec.get("prediction_id")) or stable_id(
                 "prd", rec["event_id"], rec["market"], "" if line is None else repr(float(line)),
                 rec["selection"], rec["model_version"], created, status, start,
+                str(rec["validation_status"]), _json(rec.get("reasons") or []),
+                "" if prob is None else repr(round(float(prob), 6)), str(rec["model_name"]),
             )
+            # Whether the event had only a date is part of the record: grading needs it
+            # later to tell a published start time from a reschedule.
+            if ev["time_precision"] != TimePrecision.DATETIME.value:
+                rec["display"] = {**dict(rec.get("display") or {}), "date_only": True}
             payload: Dict[str, Any] = {
                 "prediction_id": pid,
                 "created_at_utc": created,
@@ -1335,18 +1396,39 @@ class Store:
             df = df.loc[df["seq"].isin(set(current.tolist()))].reset_index(drop=True)
         return df
 
+    _COMBO_HASHED = ("combo_id", "created_at_utc", "slate_date_hst", "n_legs", "role", "leg_ids_json", "joint_prob",
+                     "joint_prob_low", "joint_method", "dependency_json", "rec_status", "message", "rules_json",
+                     "is_synthetic")
+    _LEDGER_TRIGGERS = ("predictions_no_update", "predictions_no_delete", "predictions_no_replace",
+                        "combos_no_update", "combos_no_delete", "combos_no_replace")
+
     def verify_ledger(self) -> Tuple[bool, List[str]]:
-        """Recompute the hash chain; returns ``(ok, problems)``."""
+        """Audit the ledger; returns ``(ok, problems)``.
+
+        Predictions: the hash chain (an edited, removed or reordered row), the
+        immutability triggers, and the clock evidence - a real event's row
+        whose recorded clock time is at or after the event's start, or far
+        from its stated creation time, was not written pregame.  Combos: each
+        row's content hash and the triggers.
+
+        Not detectable from inside the database: removal of the newest rows,
+        or a wrong machine clock.  Keep the head hash and the count elsewhere.
+        """
         problems: List[str] = []
         with self.conn() as con:
             rows = [dict(r) for r in con.execute("SELECT * FROM predictions ORDER BY seq")]
+            combos = [dict(r) for r in con.execute("SELECT * FROM combos ORDER BY seq")]
             triggers = {
                 r["name"] for r in con.execute("SELECT name FROM sqlite_master WHERE type='trigger'")
             }
-        for name in ("predictions_no_update", "predictions_no_delete"):
+        for name in self._LEDGER_TRIGGERS:
             if name not in triggers:
                 problems.append(f"immutability trigger {name} is missing")
         prev: Optional[str] = None
+        clock_seen = False
+        # The clock evidence is audited whenever the clock rule is in force (it always is,
+        # outside the test-suite, which replays fixed dates in temporary stores).
+        slack = self.wall_clock_tolerance_seconds
         for row in rows:
             if row["prev_hash"] != prev:
                 problems.append(f"{row['prediction_id']}: chain broken (a row was removed or reordered)")
@@ -1354,6 +1436,25 @@ class Store:
             if expect != row["content_hash"]:
                 problems.append(f"{row['prediction_id']}: content does not match its hash (row was edited)")
             prev = row["content_hash"]
+            recorded = row.get("recorded_at_utc")
+            if recorded is None:
+                if clock_seen:
+                    problems.append(f"{row['prediction_id']}: no recorded clock time, although earlier rows have one")
+                continue
+            clock_seen = True
+            if not row["is_synthetic"] and slack is not None:
+                if recorded >= row["event_start_utc"]:
+                    problems.append(f"{row['prediction_id']}: written at {recorded}, not before the event start "
+                                    f"{row['event_start_utc']}")
+                elif abs((parse_ts(recorded) - parse_ts(row["created_at_utc"])).total_seconds()) > slack:
+                    problems.append(f"{row['prediction_id']}: stated time {row['created_at_utc']} differs from the "
+                                    f"clock time {recorded} at which it was written")
+        for row in combos:
+            body = {k: row[k] for k in self._COMBO_HASHED}
+            if row.get("recorded_at_utc") is not None:
+                body["recorded_at_utc"] = row["recorded_at_utc"]
+            if self._hash(body, None) != row["content_hash"]:
+                problems.append(f"{row['combo_id']}: combo content does not match its hash (row was edited)")
         return (not problems), problems
 
     def insert_combo(self, record: Mapping[str, Any]) -> str:
@@ -1361,7 +1462,8 @@ class Store:
         created = iso_z(rec["created_at_utc"])
         legs = [str(x) for x in rec.get("leg_ids", [])]
         cid = _opt(rec.get("combo_id")) or stable_id(
-            "cmb", created, rec["role"], rec.get("slate_date_hst"), *(legs or ["none"])
+            "cmb", created, rec["role"], rec.get("slate_date_hst"), *(legs or ["none"]),
+            *(["synthetic"] if rec.get("is_synthetic") else []),      # a demo run never shares an id with a real one
         )
         payload = {
             "combo_id": cid,
@@ -1379,18 +1481,40 @@ class Store:
             "rules_json": _json(rec.get("rules") or {}),
             "is_synthetic": int(bool(rec.get("is_synthetic"))),
         }
-        payload["content_hash"] = self._hash(payload, None)
+        recorded = iso_z(utcnow())
         with self.conn() as con:
-            known = {
-                r["prediction_id"]
+            rows = {
+                r["prediction_id"]: dict(r)
                 for r in con.execute(
-                    f"SELECT prediction_id FROM predictions WHERE prediction_id IN ({','.join('?' * len(legs)) or 'NULL'})",
+                    "SELECT prediction_id, created_at_utc, event_start_utc, rec_status, is_synthetic FROM predictions "
+                    f"WHERE prediction_id IN ({','.join('?' * len(legs)) or 'NULL'})",
                     legs,
                 )
             }
-            unknown = [x for x in legs if x not in known]
+            unknown = [x for x in legs if x not in rows]
             if unknown:
                 raise LedgerError(f"combo refers to predictions not in the ledger: {unknown}")
+            # A combo is a pregame record like its legs: made after every leg was predicted,
+            # before any leg's event starts, and - for real events - at the time the clock says.
+            synthetic = bool(payload["is_synthetic"])
+            if rows:
+                if any(bool(r["is_synthetic"]) != synthetic for r in rows.values()):
+                    raise LedgerError("a combo cannot mix synthetic and real legs, nor be labelled as the other kind")
+                if created < max(r["created_at_utc"] for r in rows.values()):
+                    raise LedgerError("a combo cannot be dated before one of its own legs was predicted")
+                if created >= min(r["event_start_utc"] for r in rows.values()):
+                    raise LedgerError("a combo cannot be recorded once one of its events has started")
+                if payload["rec_status"] == RecStatus.FINAL.value and any(
+                        r["rec_status"] != RecStatus.FINAL.value for r in rows.values()):
+                    raise LedgerError("a combo is only as final as its least final leg")
+            tolerance = self.wall_clock_tolerance_seconds
+            if not synthetic and tolerance is not None and abs(
+                    (parse_ts(created) - parse_ts(recorded)).total_seconds()) > tolerance:
+                raise LedgerError(
+                    f"combo time {created} does not match this machine's clock ({recorded}); a record of real "
+                    "events cannot be written with another time")
+            payload["recorded_at_utc"] = recorded
+            payload["content_hash"] = self._hash({k: v for k, v in payload.items()}, None)
             cols = list(payload)
             con.execute(
                 f"INSERT OR IGNORE INTO combos ({','.join(cols)}) VALUES ({','.join(':' + c for c in cols)})",

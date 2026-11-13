@@ -74,9 +74,14 @@ def slate_views(store: Any, *, include_synthetic: bool = False) -> Dict[str, Lis
     """Latest prediction per event and market, grouped by HST slate date."""
     df = store.predictions(latest_only=True, include_synthetic=include_synthetic)
     out: Dict[str, List[Dict[str, Any]]] = {}
+    now_state = {}
+    if len(df):
+        ev = store.events(event_ids=df["event_id"].unique().tolist(), with_results=False, include_synthetic=True)
+        now_state = {e: (s, iso_z(t)) for e, s, t in zip(ev["event_id"], ev["status"], ev["start_time_utc"])}
     for rec in df.to_dict("records"):
         for key in _JSON:
             rec[key] = json.loads(rec.pop(f"{key}_json"))
+        rec["event_status_now"], rec["event_start_now"] = now_state.get(rec["event_id"], (None, None))
         out.setdefault(slate_date_of(rec).isoformat(), []).append(rec)
     for day in out:
         out[day].sort(key=lambda p: (p["event_start_utc"], p["league"], p["market"]))
@@ -85,8 +90,17 @@ def slate_views(store: Any, *, include_synthetic: bool = False) -> Dict[str, Lis
 
 def _prediction_card(p: Mapping[str, Any], now_iso: Optional[str] = None) -> str:
     d, c, f, q = p["display"], p["confidence"], p["factors"], p["data_quality"]
-    started = ('<p class="started">This event has started. What follows is the pregame record, not a live '
-               'selection.</p>' if now_iso and str(p["event_start_utc"]) <= now_iso else "")
+    # The record is a snapshot; say what has happened to the event since.
+    status_now, start_now = p.get("event_status_now"), p.get("event_start_now")
+    notes = []
+    if status_now in ("canceled", "postponed"):
+        notes.append(f"This event is now {status_now}. What follows is the prediction made before that.")
+    elif start_now and start_now != str(p["event_start_utc"]):
+        notes.append(f"The start has changed since this prediction (now {fmt_hst(start_now)}). It is not a current "
+                     "selection until the event is predicted again.")
+    if now_iso and min(str(p["event_start_utc"]), start_now or "9") <= now_iso and status_now not in ("canceled", "postponed"):
+        notes.append("This event has started. What follows is the pregame record, not a live selection.")
+    started = "".join(f'<p class="started">{_e(n)}</p>' for n in notes)
     title = (f"{d.get('side_b')} at {d.get('side_a')}" if d.get("side_a_role") == "home"
              else f"{d.get('side_a')} v {d.get('side_b')}")
     venue = ", ".join(x for x in (d.get("venue"), d.get("venue_city")) if x) or "venue not published"
@@ -150,14 +164,17 @@ def _slate_section(slates: Mapping[str, List[Dict[str, Any]]], combos: pd.DataFr
     blocks = []
     for day, preds in slates.items():
         day_combos = combos[combos["slate_date_hst"] == day] if len(combos) else combos
-        latest = day_combos.sort_values("seq").drop_duplicates("role", keep="last") if len(day_combos) else day_combos
+        # Only the newest run for the slate: an earlier run's recommendation is history, not advice.
+        latest = day_combos[day_combos["created_at_utc"] == day_combos["created_at_utc"].max()].sort_values("seq") \
+            if len(day_combos) else day_combos
         combo_html = ""
         for _, cb in latest.iterrows():
             legs = [labels.get(x, x) for x in json.loads(cb["leg_ids_json"])]
             prob = "" if pd.isna(cb["joint_prob"]) else f" - all-win probability {_pct(cb['joint_prob'])} (conservative {_pct(cb['joint_prob_low'])})"
             combo_html += (f"<li>{_chip(cb['rec_status'], _STATUS_KIND.get(cb['rec_status'], 'muted'))} "
                            f"<b>{_e(cb['role'].replace('_', ' '))}</b>{_e(prob)}"
-                           + (f"<br><span class='muted'>{_e(cb['message'])}</span>" if cb["message"] else "")
+                           + (f"<br><span class='muted'>{_e(cb['message'])}</span>"
+                              if isinstance(cb["message"], str) and cb["message"] else "")
                            + ("<br>" + " + ".join(_e(x) for x in legs) if legs else "") + "</li>")
         combos_block = (f"<section class='combos'><h3>Combos</h3><ul>{combo_html}</ul>"
                         "<p class='muted'>Adding a leg can never raise the probability that every selection wins.</p></section>"

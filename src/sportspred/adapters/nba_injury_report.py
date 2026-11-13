@@ -111,6 +111,9 @@ def import_latest_report(store: Any, raw: pd.DataFrame, *, now: Any = None, sour
         if pair & (reported | waiting):
             in_report |= pair
     clean = in_report - reported - waiting
+    # A team that is about to play, carried statements from an earlier version and is not
+    # in this one at all: the newest version lists nobody for it.
+    clean |= (store.teams_with_statements(league, "injury_report", collected) & playing) - reported - waiting
     for team, outcome in ([(t, "reported") for t in reported] + [(t, "not_published") for t in waiting]
                           + [(t, "nothing_listed") for t in clean]):
         store.log_check(league, "injury_report", outcome, checked_at=collected, published_at=published,

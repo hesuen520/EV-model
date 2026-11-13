@@ -261,6 +261,11 @@ CREATE TRIGGER IF NOT EXISTS predictions_no_update BEFORE UPDATE ON predictions
 BEGIN SELECT RAISE(ABORT, 'predictions are immutable: insert a superseding prediction instead'); END;
 CREATE TRIGGER IF NOT EXISTS predictions_no_delete BEFORE DELETE ON predictions
 BEGIN SELECT RAISE(ABORT, 'predictions are immutable: they cannot be deleted'); END;
+-- INSERT OR REPLACE deletes the old row without firing the DELETE trigger unless recursive
+-- triggers are on for that connection.  This one does not depend on any connection setting.
+CREATE TRIGGER IF NOT EXISTS predictions_no_replace BEFORE INSERT ON predictions
+WHEN EXISTS (SELECT 1 FROM predictions WHERE prediction_id = NEW.prediction_id)
+BEGIN SELECT RAISE(ABORT, 'predictions are immutable: a prediction with this id already exists'); END;
 
 CREATE TABLE IF NOT EXISTS combos (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -278,12 +283,17 @@ CREATE TABLE IF NOT EXISTS combos (
   message TEXT,
   rules_json TEXT NOT NULL,
   is_synthetic INTEGER NOT NULL DEFAULT 0,
-  content_hash TEXT NOT NULL
+  content_hash TEXT NOT NULL,
+  recorded_at_utc TEXT                     -- this machine's clock when the row was written (hashed when present)
 );
 CREATE TRIGGER IF NOT EXISTS combos_no_update BEFORE UPDATE ON combos
 BEGIN SELECT RAISE(ABORT, 'combos are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS combos_no_delete BEFORE DELETE ON combos
 BEGIN SELECT RAISE(ABORT, 'combos are immutable'); END;
+-- An identical combo recorded twice is skipped; a different one under an existing id is never written.
+CREATE TRIGGER IF NOT EXISTS combos_no_replace BEFORE INSERT ON combos
+WHEN EXISTS (SELECT 1 FROM combos WHERE combo_id = NEW.combo_id)
+BEGIN SELECT RAISE(IGNORE); END;
 
 -- Grading a prediction against the verified sporting result (no prices involved).
 CREATE TABLE IF NOT EXISTS grades (

@@ -24,6 +24,8 @@ Rules enforced on every file:
 
 from __future__ import annotations
 
+import math
+
 import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
@@ -76,10 +78,13 @@ def _num(row: pd.Series, name: str, line: int, errors: List[str]) -> Optional[fl
     if value is None:
         return None
     try:
-        return float(value)
+        number = float(value)
     except ValueError:
+        number = float("nan")
+    if not math.isfinite(number):                 # "NaN" and "inf" parse as floats but are not scores
         errors.append(f"line {line}: {name} {value!r} is not a number")
         return None
+    return number
 
 
 def _time(value: Optional[str], tz: Optional[str], line: int, name: str, errors: List[str]) -> Optional[str]:
@@ -109,8 +114,7 @@ def _participants(store: Any, league: str, names: Sequence[str], *, create: bool
         errors.append("unknown participant(s): " + ", ".join(sorted(unknown)[:15])
                       + (" ..." if len(unknown) > 15 else "")
                       + " - fix the spelling, or pass --create-participants if they are new")
-        return {n: pid for n, pid in zip(unique, found) if pid is not None}
-    return dict(zip(unique, found))
+    return {n: pid for n, pid in zip(unique, found) if pid is not None}
 
 
 def import_events(store: Any, league: str, path: PathLike, *, tz: Optional[str] = None,
@@ -127,6 +131,7 @@ def import_events(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
     scores), ``draw`` (1 for a drawn event), ``method``.
     """
     plugin, spec = get_league(league)
+    is_synth = league.startswith("demo_")
     df = _read(path, ["season", "start_time", "status", "home", "away"])
     errors: List[str] = []
     valid = {s.value for s in EventStatus}
@@ -142,8 +147,12 @@ def import_events(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
         precision = (_cell(row, "time_precision") or "datetime").lower()
         if precision not in ("datetime", "date", "period"):
             errors.append(f"line {line}: time_precision {precision!r} must be datetime, date or period")
-        start = _time(_cell(row, "start_time"), tz if precision == "datetime" else (tz or "UTC"), line,
+        # A row with only a date is stored at 00:00Z of that date: converting local midnight
+        # to UTC would put a date east of Greenwich on the previous day.
+        start = _time(_cell(row, "start_time"), tz if precision == "datetime" else "UTC", line,
                       "start_time", errors)
+        if precision != "datetime" and start is not None:
+            start = start[:10] + "T00:00:00Z"
         home, away = _cell(row, "home"), _cell(row, "away")
         if not home or not away:
             errors.append(f"line {line}: home and away are both required")
@@ -152,9 +161,18 @@ def import_events(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
             errors.append(f"line {line}: home and away are the same ({home})")
         if not _cell(row, "season"):
             errors.append(f"line {line}: season is required")
-        key = _cell(row, "event_id") or f"{start}|{norm_text(home)}|{norm_text(away)}"
-        if key in seen:
-            errors.append(f"line {line}: duplicate event ({key})")
+        game_no = _cell(row, "game_number")
+        if _cell(row, "event_id"):
+            key = "id:" + _cell(row, "event_id")
+        else:
+            # Without an ID the store identifies an event by date, sides and game number, so two
+            # such rows on one date would silently become one event.
+            key = f"{(start or '')[:10]}|{norm_text(home)}|{norm_text(away)}|{game_no or 1}"
+        if key in seen and _cell(row, "event_id"):
+            errors.append(f"line {line}: duplicate event ({_cell(row, 'event_id')})")
+        elif key in seen:
+            errors.append(f"line {line}: a second event for the same sides on {(start or '')[:10]}; give each "
+                          "an event_id or a game_number, or they would be stored as one event")
         seen.add(key)
         neutral = _cell(row, "neutral_site")
         if neutral is not None and neutral not in ("0", "1"):
@@ -194,29 +212,49 @@ def import_events(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
                         "method": _cell(row, "method"), "has": has_result})
         day_keys.append((start or "")[:10])
         precisions.append(precision)
+    # Names are resolved first (without creating anyone), so that two spellings of one
+    # competitor are recognised as one in the checks below.
+    ids = _participants(store, league, names, create=create_participants, kind="team", errors=errors)
+
+    def who(name: Optional[str]) -> str:
+        return ids.get(name) or "new:" + norm_text(name or "")
+
+    for idx, r in enumerate(rows):
+        if who(r["home_name"]) == who(r["away_name"]) and norm_text(r["home_name"]) != norm_text(r["away_name"]):
+            errors.append(f"line {idx + 2}: {r['home_name']!r} and {r['away_name']!r} are the same participant")
     # One competitor, one date, one event with a start time and another without: which came
     # first cannot be known, so the earlier-looking one could be rated with the other's result.
-    by_day: Dict[tuple, List[int]] = {}
+    # Events already in the store count too.
+    by_day: Dict[tuple, List[tuple]] = {}
     for idx, r in enumerate(rows):
-        for who in (r["home_name"], r["away_name"]):
-            by_day.setdefault((norm_text(who or ""), day_keys[idx], who), []).append(idx)
-    for (key, day, who), idxs in by_day.items():
-        kinds = {precisions[j] == "datetime" for j in idxs}
-        if key and day and len(kinds) > 1:
+        pair = frozenset((who(r["home_name"]), who(r["away_name"])))
+        for name in (r["home_name"], r["away_name"]):
+            by_day.setdefault((who(name), day_keys[idx]), []).append(
+                (f"line {idx + 2}", precisions[idx] == "datetime", pair, name))
+    if by_day:
+        stored = store.events(league, with_results=False, include_synthetic=is_synth)
+        stored = stored[~stored["status"].isin(["canceled"])]
+        for _, ev in stored.iterrows():
+            day = ev["start_time_utc"].strftime("%Y-%m-%d")
+            pair = frozenset((ev["home_id"], ev["away_id"]))
+            for pid in (ev["home_id"], ev["away_id"]):
+                group = by_day.get((pid, day))
+                if group is None or any(g[2] == pair for g in group):
+                    continue                          # not involved, or the same game being imported again
+                group.append(("an event already on file", ev["time_precision"] == "datetime", pair, None))
+    for (key, day), group in by_day.items():
+        if key and day and len({g[1] for g in group}) > 1:
+            name = next(g[3] for g in group if g[3])
             errors.append(
-                f"lines {', '.join(str(j + 2) for j in idxs)}: {who} has {len(idxs)} events on {day}, some with a "
-                "start time and some without; give all of them a start time, or none, so their order is not guessed")
-    ids: Dict[str, str] = {}
-    if not create_participants:
-        ids = _participants(store, league, names, create=False, kind="team", errors=errors)
+                f"{', '.join(g[0] for g in group)}: {name} has {len(group)} events on {day}, some with a start "
+                "time and some without; give all of them a start time, or none, so their order is not guessed")
     if errors:
         raise CsvImportError(path, errors)
     source = _source(store, path, "events", league)
     if create_participants:
         frame = pd.DataFrame({"name": [n for n in dict.fromkeys(names) if n]})
         made = store.resolve_participants(frame, sport=spec.sport, scope=plugin.participant_scope(league),
-                                          kind=plugin.participant_kind(league),
-                                          is_synthetic=league.startswith("demo_"))
+                                          kind=plugin.participant_kind(league), is_synthetic=is_synth)
         ids = dict(zip(frame["name"], made))
     events = pd.DataFrame(rows)
     events["home_id"] = events["home_name"].map(ids)
@@ -249,7 +287,8 @@ def import_results(store: Any, league: str, path: PathLike) -> Dict[str, int]:
     df = _read(path, ["event_id"])
     errors: List[str] = []
     known = store.query("SELECT provider_event_id, event_id FROM events WHERE league=?", [league])
-    by_native = dict(zip(known["provider_event_id"].dropna(), known["event_id"]))
+    with_id = known.dropna(subset=["provider_event_id"])          # both columns together: never misaligned
+    by_native = dict(zip(with_id["provider_event_id"], with_id["event_id"]))
     by_id = set(known["event_id"])
     names = store.participant_names()
     events = store.events(league, with_results=False, include_synthetic=True).set_index("event_id")
@@ -265,6 +304,12 @@ def import_results(store: Any, league: str, path: PathLike) -> Dict[str, int]:
         winner, draw = _cell(row, "winner"), _cell(row, "draw") == "1"
         if hs is None and aw is None and winner is None and not draw:
             errors.append(f"line {line}: no score, winner or draw given")
+        if (hs is None) != (aw is None):
+            errors.append(f"line {line}: give both scores or neither")
+        if (hs is not None and hs < 0) or (aw is not None and aw < 0):
+            errors.append(f"line {line}: a score is negative")
+        if winner is not None and draw:
+            errors.append(f"line {line}: both a winner and a draw are given")
         winner_id = None
         if winner is not None:
             ev = events.loc[eid]
@@ -273,6 +318,8 @@ def import_results(store: Any, league: str, path: PathLike) -> Dict[str, int]:
                 errors.append(f"line {line}: winner {winner!r} is not a participant of event {key}")
             else:
                 winner_id = match[0]
+                if hs is not None and aw is not None and hs != aw and (winner_id == ev["home_id"]) != (hs > aw):
+                    errors.append(f"line {line}: winner {winner!r} contradicts the scores {hs:g}-{aw:g}")
         rows.append({"event_id": eid, "home_score": hs, "away_score": aw, "winner_id": winner_id,
                      "is_draw": int(draw), "method": _cell(row, "method"),
                      "is_synthetic": league.startswith("demo_")})
@@ -347,7 +394,11 @@ def import_availability(store: Any, league: str, path: PathLike, *, tz: Optional
     if league_wide:
         upcoming = store.upcoming(league, now=default_collected, horizon_hours=horizon_hours,
                                   include_synthetic=league.startswith("demo_"))
-        for team in (set(upcoming["home_id"].dropna()) | set(upcoming["away_id"].dropna())) - set(listed):
+        # Teams with a game coming up, and teams that still carry statements from an earlier
+        # report of this kind: a complete report that does not list them has cleared them.
+        carried = store.teams_with_statements(league, check_key, default_collected,
+                                              include_synthetic=league.startswith("demo_"))
+        for team in (set(upcoming["home_id"].dropna()) | set(upcoming["away_id"].dropna()) | carried) - set(listed):
             store.log_check(league, check_key, "nothing_listed", checked_at=default_collected, team_id=team,
                             source_id=source, published_at=report_published,
                             detail="league-wide report; team not listed",
@@ -366,7 +417,8 @@ def import_checks(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
     teams = [t for t in df.get("team", pd.Series(dtype=str)) if t]
     ids = _participants(store, league, teams, create=False, kind="team", errors=errors)
     known = store.query("SELECT provider_event_id, event_id FROM events WHERE league=?", [league])
-    by_native = dict(zip(known["provider_event_id"].dropna(), known["event_id"]))
+    with_id = known.dropna(subset=["provider_event_id"])
+    by_native = dict(zip(with_id["provider_event_id"], with_id["event_id"]))
     rows = []
     for i, row in df.iterrows():
         line = i + 2

@@ -220,3 +220,70 @@ def test_same_day_events_of_one_competitor_must_all_have_start_times_or_none(sto
                       + "m1,2030,2030-04-02,scheduled,date,Alpha,Beta,1,,,,\n"
                       + "m2,2030,2030-04-02,scheduled,date,Alpha,Gamma,1,,,,\n", "ok.csv")
     assert import_events(store, LEAGUE, both_dated, create_participants=True)["events_new"] == 2
+
+
+def test_results_and_checks_attach_to_the_right_event_when_an_earlier_event_has_no_id(store, tmp_path):
+    """The id -> event lookup dropped missing ids from one column only, shifting
+    every later id onto the previous event."""
+    events = _csv(tmp_path, HEADER
+                  + ",2030,2030-04-01T14:00:00Z,scheduled,Alpha,Beta,0,,,,\n"          # no event_id
+                  + "e2,2030,2030-04-02T14:00:00Z,scheduled,Gamma,Delta,0,,,,\n"
+                  + "e3,2030,2030-04-03T14:00:00Z,scheduled,Epsilon,Zeta,0,,,,\n")
+    import_events(store, LEAGUE, events, create_participants=True)
+    results = _csv(tmp_path, "event_id,home_score,away_score\ne2,150,140\ne3,99,120\n", "res.csv")
+    assert import_results(store, LEAGUE, results)["results_new"] == 2
+    got = store.events(LEAGUE)
+    names = store.participant_names()
+    by_home = {names[h]: (st, hs) for h, st, hs in zip(got["home_id"], got["status"], got["home_score"])}
+    assert by_home["Alpha"][0] == "scheduled"                    # the id-less event was not touched
+    assert by_home["Gamma"] == ("final", 150.0) and by_home["Epsilon"] == ("final", 99.0)
+    checks = _csv(tmp_path, "check_key,outcome,checked_at,event_id\nlineup,reported,2030-04-03T10:00:00Z,e3\n", "chk.csv")
+    import_checks(store, LEAGUE, checks)
+    logged = store.checks_as_of(LEAGUE, "2030-04-03T11:00:00Z").iloc[0]["event_id"]
+    assert names[got.set_index("event_id").loc[logged, "home_id"]] == "Epsilon"
+
+
+def test_scores_must_be_real_numbers_and_a_bad_results_file_writes_nothing(store, tmp_path):
+    bad = _csv(tmp_path, HEADER
+               + "g1,2030,2030-04-02T14:00:00Z,final,Alpha,Beta,0,180,170,,\n"
+               + "b1,2030,2030-04-03T14:00:00Z,final,Gamma,Delta,0,NaN,NaN,,\n"
+               + "b2,2030,2030-04-04T14:00:00Z,final,Alpha,Gamma,0,inf,inf,,\n")
+    with pytest.raises(CsvImportError) as err:
+        import_events(store, LEAGUE, bad, create_participants=True)
+    assert "line 3: home_score 'NaN' is not a number" in str(err.value) and "line 4: home_score 'inf'" in str(err.value)
+    assert store.events(LEAGUE).empty and not store.participant_names()
+
+    import_events(store, LEAGUE, _csv(tmp_path, HEADER + "g1,2030,2030-04-02T14:00:00Z,scheduled,Alpha,Beta,0,,,,\n",
+                                      "ok.csv"), create_participants=True)
+    res = _csv(tmp_path, "event_id,home_score,away_score,winner,draw\ng1,30,27,Beta,\n", "r1.csv")
+    with pytest.raises(CsvImportError, match="contradicts the scores"):
+        import_results(store, LEAGUE, res)
+    res = _csv(tmp_path, "event_id,home_score,away_score,winner,draw\ng1,30,,,\n", "r2.csv")
+    with pytest.raises(CsvImportError, match="both scores or neither"):
+        import_results(store, LEAGUE, res)
+    assert store.events(LEAGUE).iloc[0]["status"] == "scheduled"
+
+
+def test_two_spellings_of_one_competitor_and_events_already_on_file_are_seen_by_the_checks(store, tmp_path):
+    hdr = HEADER.replace("status,", "status,time_precision,")
+    import_events(store, LEAGUE, _csv(tmp_path, hdr + "a1,2030,2030-04-02T13:00:00Z,scheduled,datetime,Alpha,Beta,1,,,,\n"),
+                  create_participants=True)
+    # Another event for Alpha on the same date, this time without a start time, in a later file.
+    later = _csv(tmp_path, hdr + "a2,2030,2030-04-02,scheduled,date,ALPHA,Gamma,1,,,,\n", "later.csv")
+    with pytest.raises(CsvImportError, match="an event already on file"):
+        import_events(store, LEAGUE, later, create_participants=True)
+    # The same game imported again with its start time now known is not a conflict.
+    again = _csv(tmp_path, hdr + "a1,2030,2030-04-02T15:00:00Z,scheduled,datetime,Alpha,Beta,1,,,,\n", "again.csv")
+    assert import_events(store, LEAGUE, again)["events_updated"] == 1
+    # Two id-less rows for the same sides on one date would become one event: refused.
+    twice = _csv(tmp_path, HEADER + ",2030,2030-05-01T17:00:00Z,final,Alpha,Beta,0,3,1,,\n"
+                                  + ",2030,2030-05-01T21:00:00Z,final,Alpha,Beta,0,2,5,,\n", "twice.csv")
+    with pytest.raises(CsvImportError, match="give each an event_id or a game_number"):
+        import_events(store, LEAGUE, twice)
+
+
+def test_a_date_only_row_keeps_its_calendar_date_whatever_the_time_zone_option(store, tmp_path):
+    hdr = HEADER.replace("status,", "status,time_precision,")
+    import_events(store, LEAGUE, _csv(tmp_path, hdr + "d1,2030,2030-07-10,scheduled,date,Alpha,Beta,1,,,,\n"),
+                  tz="Europe/London", create_participants=True)
+    assert store.events(LEAGUE).iloc[0]["start_time_utc"] == pd.Timestamp("2030-07-10T00:00:00Z")

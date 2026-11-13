@@ -25,10 +25,11 @@ def register(main: click.Group) -> None:
 
     def _run(fn, *args, **kwargs) -> None:
         from ..adapters.csv_import import CsvImportError
+        from ..storage.store import StoreError
 
         try:
             click.echo(", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in fn(*args, **kwargs).items()))
-        except (CsvImportError, KeyError) as exc:
+        except (CsvImportError, KeyError, StoreError) as exc:
             raise click.ClickException(str(exc)) from exc
 
     @import_group.command("events")

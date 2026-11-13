@@ -124,4 +124,7 @@ def test_no_rotation_for_this_game_leaves_the_inputs_alone_instead_of_blanking_t
     empty = FeatureFrame("nba", "winner", OutcomeType.BINARY, ("away", "home"), pd.DataFrame(), [],
                          extra={"rosters": {HOME: [], AWAY: ROSTER}, "league_rate": RATE, "regulation_minutes": 240.0})
     effect = PLUGIN.apply_availability("nba", "winner", row, empty, _report((HOME, "Anybody", "questionable")))
-    assert effect.row["roster_q_a"] == pytest.approx(row["roster_q_a"]) and not effect.uncertain_a
+    assert effect.row["roster_q_a"] == pytest.approx(row["roster_q_a"])
+    # What cannot be applied is not assumed away: it becomes a stated, unquantified condition
+    # (no worst-case row for that side, so the engine makes a selection CONDITIONAL).
+    assert effect.uncertain_a and "not quantified" in effect.uncertain_a[0] and "a" not in effect.worst_case_rows

@@ -134,7 +134,8 @@ def parse_injuries(payload: Mapping[str, Any]) -> pd.DataFrame:
 def import_injuries(store: Any, league: str, payload: Mapping[str, Any], *, collected_at: Any = None,
                     source_id: Optional[str] = None, horizon_hours: float = 48.0) -> Dict[str, int]:
     """Store the injury list and log the ``injury_report`` check for every
-    team with an event starting within ``horizon_hours``.
+    team it lists, every team with an event starting within ``horizon_hours``
+    and every team whose earlier statements it no longer carries.
 
     Teams ESPN lists that this store does not know are skipped and counted
     (``unknown_teams``); they are never matched by guesswork.
@@ -160,8 +161,12 @@ def import_injuries(store: Any, league: str, payload: Mapping[str, Any], *, coll
         })
         n = store.add_availability(frame)
     upcoming = store.upcoming(league, now=collected, horizon_hours=horizon_hours)
-    teams = set(upcoming["home_id"].dropna()) | set(upcoming["away_id"].dropna())
     listed = set(reports["team_id"])
+    # The list is league-wide.  A check is logged for every team it lists (so that a later
+    # list can supersede these statements), for every team with a game coming up, and for
+    # every team still carrying statements from an earlier list that this one has dropped.
+    teams = (set(upcoming["home_id"].dropna()) | set(upcoming["away_id"].dropna()) | listed
+             | store.teams_with_statements(league, "injury_report", collected))
     for team in teams:
         store.log_check(league, "injury_report", "reported" if team in listed else "nothing_listed",
                         checked_at=collected, team_id=team, source_id=source_id,

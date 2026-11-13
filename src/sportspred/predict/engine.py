@@ -88,32 +88,43 @@ def _class_labels(frame: FeatureFrame, row: Mapping[str, Any], names: Mapping[st
     return out
 
 
-def _unresolved_past_events(store: Any, league: str, now_ts: pd.Timestamp
+def _unresolved_past_events(store: Any, league: str, now_ts: pd.Timestamp, window_days: float = 45.0
                             ) -> Tuple[Dict[str, int], str, Optional[pd.Timestamp], Optional[float]]:
-    """Per participant: events that should have been played by ``now`` but
-    have no result on file (postponed and cancelled events excluded); the date
-    of the latest result in the store; that latest result's instant; and the
-    league's typical longest yearly break between results, in days.
+    """Per participant: events of the last ``window_days`` that should have been
+    played by ``now`` but have no result on file (postponed and cancelled events
+    excluded); the date of the latest result in the store; that latest result's
+    instant; and the league's typical longest yearly break between results, in days.
 
-    The break is the median, over the calendar years on file, of each year's
-    longest gap between consecutive result days (``None`` with fewer than
-    three years).  It is what lets a source that has simply stopped - with no
-    unplayed fixtures listed - be told apart from an ordinary off-season."""
+    "No result" includes an event the source marks final without a score: the
+    rating builders cannot use it either.  The window keeps a years-old gap in
+    a source - a game that never got a score - from blocking a league for ever;
+    a result that old is a permanent hole in the data, not a refresh away.
+
+    The break is the median, over the complete calendar years on file, of each
+    year's longest gap between consecutive result days (``None`` with fewer
+    than three such years: the first and the last year of a history are partial
+    and would understate it).  It is what lets a source that has simply stopped
+    - with no unplayed fixtures listed - be told apart from an ordinary
+    off-season."""
     ev = store.events(league, with_results=True, include_synthetic=True)
-    past = ev[(ev["start_time_utc"] < now_ts) & ev["status"].isin(["scheduled", "live", "unknown"])]
+    decided = ev["winner_id"].notna() | (ev["is_draw"].fillna(0).astype(int) == 1)
+    open_status = ev["status"].isin(["scheduled", "live", "unknown"]) | ((ev["status"] == "final") & ~decided)
+    past = ev[(ev["start_time_utc"] < now_ts) & open_status
+              & (ev["start_time_utc"] >= now_ts - pd.Timedelta(days=window_days))]
     # A date-only event stored at 00:00Z of today may simply not have started yet.
     past = past[(past["time_precision"] == "datetime") | (past["start_time_utc"] < now_ts - pd.Timedelta(hours=36))]
     counts: Dict[str, int] = {}
     for col in ("home_id", "away_id"):
         for team, n in past[col].dropna().value_counts().items():
             counts[team] = counts.get(team, 0) + int(n)
-    done = ev[(ev["status"] == "final") & (ev["start_time_utc"] <= now_ts)]
+    done = ev[(ev["status"] == "final") & decided & (ev["start_time_utc"] <= now_ts)]
     if done.empty:
         return counts, "none", None, None
     latest = done["start_time_utc"].max()
     days = pd.Series(done["start_time_utc"].dt.normalize().unique()).sort_values().reset_index(drop=True)
     gaps = days.diff().dt.total_seconds().div(86400.0)
     yearly = gaps.groupby(days.dt.year).max().dropna()
+    yearly = yearly[(yearly.index > days.dt.year.min()) & (yearly.index < days.dt.year.max())]
     usual_break = float(yearly.median()) if len(yearly) >= 3 else None
     return counts, latest.strftime("%Y-%m-%d"), latest, usual_break
 
@@ -146,7 +157,8 @@ def _same_line(a: Any, b: Any) -> bool:
 def _last_source_check(checks: Sequence[Mapping[str, Any]]) -> Optional[str]:
     """Newest time a source behind any check was read (``None`` when no source
     has been read at all - the built-in checks carry no source)."""
-    times = [c["checked_at_utc"] for c in checks if c.get("source_id") and c.get("checked_at_utc")]
+    times = [c["checked_at_utc"] for c in checks
+             if isinstance(c.get("source_id"), str) and isinstance(c.get("checked_at_utc"), str)]
     return fmt_hst(max(times)) if times else None
 
 
@@ -206,8 +218,12 @@ def predict_league(
         return []
     # An event with only a date is stored at 00:00Z of that date, but the date began up
     # to 14 hours earlier somewhere east of Greenwich: it may already be under way.
-    precision = store.events(event_ids=rows["event_id"].tolist(), with_results=False,
-                             include_synthetic=True).set_index("event_id")["time_precision"]
+    current = store.events(event_ids=rows["event_id"].tolist(), with_results=False,
+                           include_synthetic=True).set_index("event_id")
+    rows = rows[rows["event_id"].map(current["status"]).eq("scheduled")]     # never a live or finished event
+    if rows.empty:
+        return []
+    precision = current["time_precision"]
     date_only = rows["event_id"].map(precision).ne("datetime").to_numpy()
     earliest = rows["start_time_utc"] - pd.to_timedelta(np.where(date_only, DATE_ONLY_LEAD_HOURS, 0.0), unit="h")
     rows = rows[earliest > now_ts]
@@ -225,7 +241,8 @@ def predict_league(
     min_prob = settings.min_prob(league, market, str(frame.outcome))
     check_log = store.checks_as_of(league, now_dt, include_synthetic=True)
     specs = plugin.required_checks(league, market)
-    unresolved, results_through, latest_result, usual_break = _unresolved_past_events(store, league, now_ts)
+    unresolved, results_through, latest_result, usual_break = _unresolved_past_events(
+        store, league, now_ts, settings.selection.unresolved_window_days)
     break_margin = settings.selection.results_break_margin
     events = store.events(event_ids=rows["event_id"].tolist(), with_results=False, include_synthetic=True)
     events = events.set_index("event_id")
@@ -359,7 +376,7 @@ def predict_league(
         if avail.empty:
             explanation.missing_data.append("no availability report on file for either side")
 
-        confidence = confidence_for(prob, report, settings.confidence)
+        confidence = confidence_for(prob, None if model_mismatch else report, settings.confidence)
         confidence["definitions"] = {
             "event_uncertainty": "chance the selection loses even if the probability is exactly right",
             "model_uncertainty": "how far the probability moves when the model is refitted on resampled history",

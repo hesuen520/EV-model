@@ -88,8 +88,10 @@ candidate.
    the block after that. Imputation and scaling live inside the fitted
    pipeline, so they are fitted per fold. A candidate may read only the
    columns the feature frame declares as inputs, and the rows it is scored on
-   are blinded - the outcome and every other undeclared numeric column are
-   blanked first - so a model that peeked could not score.
+   are blinded - the outcome and every other undeclared column, whatever its
+   type, are blanked first - so a model that peeked could not score. A
+   real-data test checks that every candidate predicts the same with and
+   without the blinding.
 4. **Selection** on pooled development-fold log loss with a one-standard-error
    preference for the simpler candidate.
 5. The selected candidate and the baselines are scored **once per run** on the
@@ -314,6 +316,10 @@ What this does **not** establish:
   pregame view: in-tournament form and fatigue are invisible. A two-week event
   counts as finished after its first week; that reaches other players'
   ratings only.
+- **Live use would lag the backtest slightly.** A match's features are
+  complete from the Monday of its week. A prediction made before that (on
+  the Sunday, say) does not yet know the week just ending, so it is built on
+  less than the backtest gave the same match.
 - **An ingestion bug was found by audit and fixed.** Until 2026-11-13 every
   main-draw quarter-final was dropped (the round code "QF" was read as a
   qualifying round): about one match in ten per league, missing from the

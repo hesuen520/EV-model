@@ -196,7 +196,20 @@ them, and fixed* (each with a regression test):
 - an event marked final without a score counted as a result; short histories
   gave a wrong "typical break".
 
-@@VERIFY_D@@
+The reviewer of the validation protocol and tennis confirmed, by experiment:
+randomising every final-test outcome changes neither the selected model nor
+any development metric; flipping every result of one tournament week changes
+that week's features by exactly zero; a candidate that names an undeclared
+column is refused, and one that peeks at a numeric outcome cannot score. It
+also caught a **regression introduced by one of the fixes**: blinding hid the
+home/neutral flag from the base-rate baseline, so the "better than naive"
+gate was briefly measured against a weaker baseline. That was fixed, a
+real-data test now checks every candidate predicts the same on blinded rows,
+and every league was validated again afterwards. Also fixed from that review:
+an outcome kept in a text or date column was not blinded; the price guard
+did not know this project's own price columns; the as-of check compared the
+wrong slate for tennis; Olympic singles and some WTA qualifying belonged to
+no league.
 
 *Found and not fixed:* an event imported without an ID and then moved across
 midnight UTC becomes a second event (give events an `event_id`); the
@@ -205,7 +218,12 @@ after its stored instant) does not know the league's time zone, so a game
 moved to the next local day can fall inside it; a source that stopped less
 than 1.5 typical off-seasons ago, with no unplayed fixtures listed, still
 counts as current; "latest prediction per event and market" would keep only
-one of two players' props for one event (props are not generated yet).
+one of two players' props for one event (props are not generated yet); two
+candidates written to share state with each other could distort selection
+on development folds (not the final test) - candidates come from plugin
+code, not from users; a tennis match's features are complete only from the
+Monday of its week, so a prediction made earlier uses less than the backtest
+did.
 
 **Not independently audited:** the results-only CSV model beyond its feature
 builder, the EV module's maths, the dashboard, and the adapters written for

@@ -284,8 +284,10 @@ current slates, and `sportspred ledger verify`.
    outcome-distribution models, validated against real lines once a line
    history exists.
 6. **Finish-distribution models** for golf and motorsport.
-7. **Independent review** of what has not had one: basketball, tennis, the
-   shared core, and the documentation's claims; fix the audit items listed as
-   known and not fixed; broader per-plugin test suites.
-8. Grade and review the first real slates; turn review patterns into lessons
-   and test them before promoting any change.
+7. **Close the items listed as found and not fixed**, and have the parts no
+   reviewer covered looked at: the EV module's arithmetic, the dashboard, and
+   the adapters for hosts that could not be reached here (ESPN, The Odds API)
+   against the live services.
+8. Keep grading and reviewing. One day of results is on file; calibration
+   monitoring and lessons need weeks of them before they mean anything. Turn
+   review patterns into lessons and test them before promoting any change.

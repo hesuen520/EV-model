@@ -42,7 +42,7 @@ OPPOSITION_KEYS = ("elo_diff", "net_slow_diff", "net_fast_diff", "form_diff", "r
 
 
 def graded_frame(store: Any, *, include_synthetic: bool = False) -> pd.DataFrame:
-    """Latest prediction per (event, market, line) joined with its latest
+    """The current prediction of each (event, market) joined with its latest
     grade.  Only ``correct`` / ``incorrect`` rows carry a ``hit`` value."""
     preds = store.predictions(latest_only=True, include_synthetic=include_synthetic)
     grades = store.grades(latest_only=True)
@@ -51,6 +51,16 @@ def graded_frame(store: Any, *, include_synthetic: bool = False) -> pd.DataFrame
     df = preds.merge(grades[["prediction_id", "outcome", "graded_at_utc", "result_json"]], on="prediction_id")
     df["hit"] = df["outcome"].map({"correct": 1.0, "incorrect": 0.0})
     return df
+
+
+def _latest_reviews(store: Any) -> pd.DataFrame:
+    """The newest review of each prediction, with the grade it was written for."""
+    reviews = store.reviews()
+    if reviews.empty:
+        return reviews.assign(reviewed_outcome=pd.Series(dtype=object))
+    latest = reviews.loc[~reviews["prediction_id"].duplicated(keep="last")].copy()
+    latest["reviewed_outcome"] = [json.loads(e).get("outcome") for e in latest["evidence_json"]]
+    return latest.reset_index(drop=True)
 
 
 def _band_shortfall(df: pd.DataFrame, row: pd.Series, *, width: float = 0.05, min_n: int = 100,
@@ -73,12 +83,16 @@ def _band_shortfall(df: pd.DataFrame, row: pd.Series, *, width: float = 0.05, mi
 
 
 def review_predictions(store: Any, *, now: Any = None, include_synthetic: bool = False) -> pd.DataFrame:
-    """Write one review per graded prediction that has none; returns them."""
+    """Write a review for every graded prediction that has none, and a new
+    one when a prediction's grade has changed since it was reviewed (a result
+    was corrected); returns the reviews written.  Earlier reviews are kept."""
     df = graded_frame(store, include_synthetic=include_synthetic)
     if df.empty:
         return pd.DataFrame()
-    done = set(store.reviews()["prediction_id"])
-    todo = df[~df["prediction_id"].isin(done) & df["outcome"].isin(["correct", "incorrect", "void", "push"])]
+    reviewed = _latest_reviews(store)
+    seen = dict(zip(reviewed["prediction_id"], reviewed["reviewed_outcome"]))
+    stale = df["prediction_id"].map(seen) != df["outcome"]          # never reviewed, or reviewed under another grade
+    todo = df[stale & df["outcome"].isin(["correct", "incorrect", "void", "push"])]
     out: List[Dict[str, Any]] = []
     issues = store.issues()
     for _, row in todo.iterrows():
@@ -140,7 +154,7 @@ def review_predictions(store: Any, *, now: Any = None, include_synthetic: bool =
 
 def review_summary(store: Any, *, include_synthetic: bool = False) -> Dict[str, Any]:
     df = graded_frame(store, include_synthetic=include_synthetic)
-    reviews = store.reviews()
+    reviews = _latest_reviews(store)          # one per prediction: the review of its current grade
     if df.empty:
         return {"n_graded": 0}
     scored = df[df["hit"].notna()]
@@ -218,7 +232,7 @@ def lessons(store: Any) -> pd.DataFrame:
 def propose_lessons(store: Any, *, min_reviews: int = 20) -> List[str]:
     """Draft lessons from patterns in the reviews.  Each is only a proposal
     with a test plan; nothing changes until it has been validated."""
-    reviews = store.reviews()
+    reviews = _latest_reviews(store)
     if reviews.empty:
         return []
     preds = store.predictions(include_synthetic=True)[["prediction_id", "league", "market"]]

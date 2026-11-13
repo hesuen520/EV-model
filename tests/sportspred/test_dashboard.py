@@ -47,7 +47,8 @@ def test_page_is_self_contained_and_shows_required_fields(store, two_teams, sche
     page = build_dashboard(store)
     for needle in ("Los Angeles Lakers at Boston Celtics", "Tue Jan 1, 2030 5:30 PM HST", "TD Garden", "70.0%",
                    "66.0% - 74.0%", "PROVISIONAL", "nothing on file", "opponent-adjusted results", "Lakers Elo 1480",
-                   "back-to-back", "recent rotation", "https://example.org/x", "Last check", "experimental"):
+                   "back-to-back", "recent rotation", "https://example.org/x", "Predicted Mon Dec 31, 2029 2:00 PM HST",
+                   "newest source check", "experimental"):
         assert needle in page, needle
     # No external assets: nothing is loaded from the network.
     assert not re.search(r'<(script|link|img)[^>]+(src|href)="https?:', page)

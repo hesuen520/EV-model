@@ -90,5 +90,7 @@ def render_prediction(p: Mapping[str, Any]) -> str:
         f"{s['provider']}: {s['url']} (collected {fmt_hst(s['collected_at_utc'])}"
         + (f", published {fmt_hst(s['published_at_utc'])}" if s.get("published_at_utc") else "") + ")"
         for s in p["sources"]])
-    lines.append(f"  Last check: {d.get('last_check_hst', 'n/a')} | prediction id {p.get('prediction_id', 'n/a')}")
+    lines.append(f"  Predicted: {d.get('predicted_at_hst') or d.get('last_check_hst', 'n/a')} | newest source check: "
+                 f"{d.get('last_source_check_hst') or 'no source read'} | prediction id "
+                 f"{p.get('prediction_id', 'n/a')}")
     return "\n".join(lines)

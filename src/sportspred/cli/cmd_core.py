@@ -214,9 +214,7 @@ def register(main: click.Group) -> None:
     def slate(ctx: Context, day: Optional[str], league, detail: bool, history: bool) -> None:
         """Show recorded predictions for one Pacific/Honolulu day."""
         d = date.fromisoformat(day) if day else hst_date(utcnow())
-        lo, hi = hst_day_bounds_utc(d)
-        df = ctx.store.predictions(league=list(league) or None, start_from=lo, start_before=hi,
-                                   latest_only=not history)
+        df = ctx.store.predictions(league=list(league) or None, slate=d, latest_only=not history)
         preds = [prediction_from_row(r) for r in df.to_dict("records")]
         preds.sort(key=lambda p: (p["event_start_utc"], p["league"]))
         click.echo(f"Slate for {d.isoformat()} (Pacific/Honolulu)\n")
@@ -239,7 +237,12 @@ def register(main: click.Group) -> None:
         ok, problems = ctx.store.verify_ledger()
         n = len(ctx.store.predictions(include_synthetic=True))
         if ok:
+            head = ctx.store.query("SELECT content_hash FROM predictions ORDER BY seq DESC LIMIT 1")
             click.echo(f"ledger intact: {n} predictions, hash chain verified")
+            if len(head):
+                click.echo(f"head hash: {head['content_hash'][0]}\n"
+                           "(Removing the newest rows of a database cannot be detected from inside it. To be able "
+                           "to prove later that nothing was removed, keep this hash and the count somewhere else.)")
         else:
             for p in problems:
                 click.echo(f"PROBLEM: {p}")

@@ -18,6 +18,8 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Tuple
 
+from ..core.results import flag, regulation_result
+
 __all__ = ["FeeSchedule", "FEES", "fee_for", "SettlementRules", "RULES", "comparable", "settle_outcome"]
 
 
@@ -164,23 +166,16 @@ def settle_outcome(rules: SettlementRules, market: str, selection: str, line: Op
             if int(sets) < 1:
                 return "void", "retirement before a set was completed"
     if family == "winner":
-        if int(event.get("is_draw") or 0):
+        if flag(event.get("is_draw")):
             return {"push": "push", "loss": "loss", "half": "half"}.get(rules.draw, "push"), "event was drawn"
         if not event.get("winner_id"):
             return "unsettled", "no winner on file"
         return ("win" if selection == event["winner_id"] else "loss"), ""
     if family == "winner_3way":
-        went_extra = bool(event.get("went_overtime") or event.get("went_shootout"))
-        rh, ra = event.get("reg_home_score"), event.get("reg_away_score")
-        if rh is not None and rh == rh and ra is not None and ra == ra:
-            actual = "draw" if rh == ra else (event["home_id"] if rh > ra else event["away_id"])
-        elif went_extra:
-            actual = "draw"
-        elif have_scores:
-            actual = "draw" if hs == as_ else (event["home_id"] if hs > as_ else event["away_id"])
-        else:
-            return "unsettled", "no score on file"
-        return ("win" if selection == actual else "loss"), f"regulation result: {actual}"
+        actual, basis = regulation_result(event)
+        if actual is None:
+            return "unsettled", basis
+        return ("win" if selection == actual else "loss"), f"regulation result: {actual} ({basis})"
     if family in ("spread", "total"):
         if not have_scores or line is None or line != line:
             return "unsettled", "score or line missing"

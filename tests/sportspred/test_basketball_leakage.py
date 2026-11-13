@@ -131,3 +131,62 @@ def test_side_a_is_home_and_target_matches_results(league):
     assert (done["side_a_id"] == ev.loc[done.index, "home_id"]).all()
     assert (done["y"] == (ev.loc[done.index, "home_score"] > ev.loc[done.index, "away_score"]).astype(float)).all()
     assert frame.upcoming["y"].isna().all() and len(frame.upcoming) > 0
+
+
+def test_a_candidate_cannot_read_a_column_the_frame_does_not_declare_as_an_input(league):
+    """Only retrospective columns used to be checked: a candidate built on an
+    undeclared column (a copy of the outcome, say) was selected with a
+    near-zero log loss."""
+    frame = _Builder().feature_frame(league, LEAGUE, "winner")
+    frame.df["y_copy"] = frame.df["y"]
+    plan = SplitPlan(n_final_blocks=1, min_train_blocks=2, n_calib_blocks=1, burn_in_blocks=2, min_block_events=20)
+    with pytest.raises(LeakageError, match="does not declare as model inputs"):
+        run_validation(frame, [PriorCandidate(), logit_candidate("cheat", ["elo_diff", "y_copy"])], plan,
+                       sport="basketball", config=ValidationConfig(n_boot=20), is_synthetic=True)
+
+
+def test_scored_rows_are_blinded_so_a_candidate_that_peeks_at_the_outcome_fails_loudly(league):
+    from sportspred.sports.base import Candidate
+
+    class Peeker(Candidate):
+        """Declares an honest input, then reads the outcome when it predicts."""
+        name, complexity = "peeker", 1
+
+        def feature_names(self):
+            return ["elo_diff"]
+
+        def clone(self):
+            return Peeker()
+
+        def fit(self, train, classes):
+            return self
+
+        def predict_proba(self, rows):
+            p_home = np.where(rows["y"].to_numpy() == 1, 0.99, 0.01)
+            return np.column_stack([1 - p_home, p_home])
+
+    frame = _Builder().feature_frame(league, LEAGUE, "winner")
+    plan = SplitPlan(n_final_blocks=1, min_train_blocks=2, n_calib_blocks=1, burn_in_blocks=2, min_block_events=20)
+    report, oos = run_validation(frame, [PriorCandidate(), Peeker()], plan, sport="basketball",
+                                 config=ValidationConfig(n_boot=20, calib_min_rows=30), is_synthetic=True)
+    scored = oos[oos["model"] == "peeker"]
+    # With the outcome blanked the peeker predicts the same thing for every game: no skill left to report.
+    assert scored["p_home"].nunique() <= 2 and report["selected_model"] != "peeker"
+
+
+def test_results_are_reported_per_segment_and_pass_thresholds_fit_the_market(league):
+    frame = _Builder().feature_frame(league, LEAGUE, "winner")
+    frame.df["segment"] = np.where(frame.df["elo_diff"].abs() > frame.df["elo_diff"].abs().median(),
+                                   "mismatch", "close game")
+    plan = SplitPlan(n_final_blocks=1, min_train_blocks=2, n_calib_blocks=1, burn_in_blocks=2, min_block_events=20)
+    cands = [PriorCandidate(), logit_candidate("elo_logit", ["home_edge", "elo_diff"], is_baseline=True)]
+    report, _ = run_validation(frame, cands, plan, sport="basketball",
+                               config=ValidationConfig(n_boot=30, calib_min_rows=30, one_se_rule=False),
+                               is_synthetic=True)
+    seg = {r["segment"]: r for r in report["final_test"]["by_segment"]}
+    assert set(seg) == {"mismatch", "close game"} and abs(sum(r["share"] for r in seg.values()) - 1) < 1e-9
+    # The model is far surer of itself in the mismatches; the pooled figure hides the difference.
+    assert seg["mismatch"]["mean_top_probability"] > seg["close game"]["mean_top_probability"]
+    assert seg["mismatch"]["n"] + seg["close game"]["n"] == report["final_test"]["selected"]["n"]
+    # A two-way market reports no threshold below 0.5 (every event clears it).
+    assert min(r["min_prob"] for r in report["final_test"]["pass_rule"]) == 0.5

@@ -152,6 +152,9 @@ class Store:
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys = ON")
         con.execute("PRAGMA busy_timeout = 60000")
+        # With this on, INSERT OR REPLACE fires the DELETE triggers, so it cannot
+        # be used to rewrite an append-only row behind the triggers' back.
+        con.execute("PRAGMA recursive_triggers = ON")
         try:
             yield con
             con.commit()
@@ -169,6 +172,11 @@ class Store:
             con.execute(
                 "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1')"
             )
+            # Stores created before the column existed: add it (earlier rows keep NULL
+            # and their hashes, which never covered it, still verify).
+            cols = {r["name"] for r in con.execute("PRAGMA table_info(predictions)")}
+            if "recorded_at_utc" not in cols:
+                con.execute("ALTER TABLE predictions ADD COLUMN recorded_at_utc TEXT")
 
     def query(self, sql: str, params: Sequence[Any] = ()) -> pd.DataFrame:
         with self.conn() as con:
@@ -261,6 +269,9 @@ class Store:
                     "SELECT alias_norm, participant_id FROM participant_alias WHERE scope=?", (scope,)
                 )
             }
+            ids_of: Dict[str, set] = {}
+            for known_id, participant in xref.items():
+                ids_of.setdefault(participant, set()).add(known_id)
             out: List[Optional[str]] = []
             for row in frame.itertuples(index=False):
                 rec = row._asdict()
@@ -299,11 +310,20 @@ class Store:
                     )
                     alias[key] = found
                 if provider is not None and pid_key is not None and pid_key not in xref:
+                    others = ids_of.get(found, set())
+                    if others:
+                        # One provider, two of its own IDs, one name: they are treated as one
+                        # participant (names are all there is to go on) - but that may be two
+                        # people or clubs with the same name, so it is put on record.
+                        self._issue(con, scope, None, "name_shared_by_provider_ids",
+                                    f"{provider} ids {sorted(others)} and {pid_key} share the name {name!r}; "
+                                    "treated as one participant - check that they are")
                     con.execute(
                         "INSERT OR IGNORE INTO participant_xref (provider, scope, provider_id, participant_id) VALUES (?,?,?,?)",
                         (provider, scope, pid_key, found),
                     )
                     xref[pid_key] = found
+                    ids_of.setdefault(found, set()).add(pid_key)
                 out.append(found)
         return pd.Series(out, index=frame.index, dtype="object")
 
@@ -391,6 +411,7 @@ class Store:
             xref: Dict[Tuple[str, str, str], str] = {}
             by_sides: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = {}
             existing: Dict[str, Dict[str, Any]] = {}
+            has_result: set = set()
             for league in leagues:
                 for r in con.execute(
                     "SELECT provider, provider_event_id, event_id FROM event_xref WHERE league=?", (league,)
@@ -401,6 +422,11 @@ class Store:
                     existing[rec["event_id"]] = rec
                     if rec["home_id"] and rec["away_id"]:
                         by_sides.setdefault((league, rec["home_id"], rec["away_id"]), []).append(rec)
+                for r in con.execute(
+                    "SELECT r.event_id FROM results r JOIN events e ON e.event_id = r.event_id WHERE e.league=?",
+                    (league,),
+                ):
+                    has_result.add(r["event_id"])
 
             for row in df.to_dict("records"):
                 league = str(row["league"])
@@ -462,7 +488,12 @@ class Store:
                         provider, match_tolerance_hours, duplicate_tolerance_hours,
                         has_native_id=prov_eid is not None,
                     )
-                    if len(cands) == 1:
+                    if len(cands) == 1 and cands[0]["provider"] == provider and (
+                            prov_eid is None or not cands[0].get("provider_event_id")):
+                        # The same provider's own record of this game, addressed without a native
+                        # ID (a CSV row with no event_id): this is an update of it, not a duplicate.
+                        eid = cands[0]["event_id"]
+                    elif len(cands) == 1:
                         eid = cands[0]["event_id"]
                         matched_other = True
                         if cands[0]["provider"] == provider:
@@ -503,6 +534,14 @@ class Store:
                     report.inserted += 1
                 else:
                     changes = self._event_changes(old, rec, primary=not matched_other)
+                    if (changes.get("status") in ("scheduled", "unknown", "live") and old.get("status") == "final"
+                            and eid in has_result):
+                        # A stale schedule row must not reopen a game whose result is on file.
+                        del changes["status"]
+                        msg = (f"{provider}:{prov_eid or start} lists a finished game as {rec['status']}; "
+                               "the result on file was kept")
+                        report.issues.append(msg)
+                        self._issue(con, league, eid, "stale_schedule_row", msg)
                     if changes:
                         sets = ", ".join(f"{k}=?" for k in changes)
                         con.execute(
@@ -955,10 +994,18 @@ class Store:
         event_id: Optional[str] = None,
         include_synthetic: bool = False,
     ) -> pd.DataFrame:
-        """Latest statement per (team, player, role) known at ``as_of``.
+        """Statements in force at ``as_of``: the latest per (team, player, role),
+        from each team's newest report of its kind.
 
         Only rows *collected* at or before ``as_of`` are visible, so a
         historical prediction can never see later news.
+
+        A report lists who is doubtful *now*; a player it no longer lists has
+        been cleared.  So when a newer report of the same kind has been
+        checked for a team (the check log records every report read, including
+        "nothing listed"), statements that team carried from an older report
+        are dropped.  Statements from a source with no logged check are kept
+        until a newer statement about the same player and role replaces them.
         """
         cutoff = iso_z(as_of)
         sql = "SELECT * FROM availability WHERE league=? AND collected_at_utc <= ?"
@@ -972,9 +1019,44 @@ class Store:
             df = df[df["event_id"].isna() | (df["event_id"] == event_id)]
         if df.empty:
             return df
+        df = self._drop_superseded_reports(df, league, cutoff, include_synthetic)
+        if df.empty:
+            return df
         df = df.sort_values(["collected_at_utc", "published_at_utc"], na_position="first")
         key = df["team_id"].fillna("") + "|" + df["player_name"].map(norm_text) + "|" + df["role"].fillna("")
         return df.loc[~key.duplicated(keep="last")].reset_index(drop=True)
+
+    def _drop_superseded_reports(self, statements: pd.DataFrame, league: str, cutoff: str,
+                                 include_synthetic: bool) -> pd.DataFrame:
+        """Remove statements whose team has since had a newer report of the same kind."""
+        checks = self.checks_as_of(league, cutoff, include_synthetic=include_synthetic)
+        checks = checks[checks["outcome"].isin(["reported", "nothing_listed"]) & checks["team_id"].notna()
+                        & checks["source_id"].notna()]
+        if checks.empty:
+            return statements
+        kinds: Dict[str, set] = {}
+        for src, key in zip(checks["source_id"], checks["check_key"]):
+            kinds.setdefault(src, set()).add(key)
+        newest = (checks.sort_values("checked_at_utc").drop_duplicates(["team_id", "check_key"], keep="last")
+                  .set_index(["team_id", "check_key"])[["source_id", "checked_at_utc"]])
+        keep = []
+        for src, team, collected in zip(statements["source_id"], statements["team_id"],
+                                        statements["collected_at_utc"]):
+            mine = kinds.get(src)
+            if not mine or team is None or team != team:
+                keep.append(True)                       # no report of a known kind behind this statement
+                continue
+            current = False
+            for kind in mine:
+                if (team, kind) not in newest.index:
+                    current = True
+                    break
+                latest = newest.loc[(team, kind)]
+                if latest["source_id"] == src or latest["checked_at_utc"] <= collected:
+                    current = True
+                    break
+            keep.append(current)
+        return statements.loc[keep]
 
     def log_check(
         self,
@@ -1001,6 +1083,9 @@ class Store:
             raise StoreError("a check must refer to an event or a team")
         checked = iso_z(checked_at)
         published = None if published_at is None else iso_z(published_at)
+        if published is not None and published > checked:
+            raise StoreError("a check's published_at is later than its checked_at: a report cannot be read before "
+                             "it is published")
         cid = stable_id("chk", league, check_key, event_id or "", team_id or "", outcome, checked, published or "")
         with self.conn() as con:
             con.execute(
@@ -1029,6 +1114,21 @@ class Store:
         "confidence_json", "factors_json", "features_json", "data_quality_json", "sources_json",
         "display_json", "supersedes_id", "is_synthetic",
     )
+
+    #: A real event's prediction must carry a creation time within this many
+    #: seconds of the machine's own clock, so a "pregame" record cannot be
+    #: written afterwards with an earlier time.  Synthetic demo leagues, which
+    #: replay invented dates, are exempt.  ``None`` switches the test off (the
+    #: test-suite does, because it replays fixed dates in temporary stores).
+    wall_clock_tolerance_seconds: Optional[float] = 300.0
+
+    @classmethod
+    def _hashed(cls, row: Mapping[str, Any]) -> Dict[str, Any]:
+        """The fields a prediction's hash covers."""
+        out = {k: row[k] for k in cls._PRED_HASHED}
+        if row.get("recorded_at_utc") is not None:
+            out["recorded_at_utc"] = row["recorded_at_utc"]
+        return out
 
     @staticmethod
     def _hash(payload: Mapping[str, Any], prev: Optional[str]) -> str:
@@ -1091,6 +1191,15 @@ class Store:
                     f"prediction time {created} is not before the event start {start}; "
                     "selections are only generated pregame"
                 )
+            recorded = iso_z(utcnow())
+            tolerance = self.wall_clock_tolerance_seconds
+            if not synthetic and tolerance is not None:
+                drift = abs((parse_ts(created) - parse_ts(recorded)).total_seconds())
+                if drift > tolerance or recorded >= start:
+                    raise LedgerError(
+                        f"prediction time {created} does not match this machine's clock ({recorded}); a record "
+                        "for a real event cannot be written with another time, before or after the fact"
+                    )
             sup = _opt(rec.get("supersedes_id"))
             if sup is not None:
                 prev_row = con.execute(
@@ -1105,7 +1214,7 @@ class Store:
             line = _opt(rec.get("line"))
             pid = _opt(rec.get("prediction_id")) or stable_id(
                 "prd", rec["event_id"], rec["market"], "" if line is None else repr(float(line)),
-                rec["selection"], rec["model_version"], created,
+                rec["selection"], rec["model_version"], created, status, start,
             )
             payload: Dict[str, Any] = {
                 "prediction_id": pid,
@@ -1135,8 +1244,9 @@ class Store:
                 payload[f"{key}_json"] = _json(rec.get(key) if rec.get(key) is not None else defaults[key])
             last = con.execute("SELECT content_hash FROM predictions ORDER BY seq DESC LIMIT 1").fetchone()
             prev_hash = None if last is None else last["content_hash"]
+            payload["recorded_at_utc"] = recorded
             payload["prev_hash"] = prev_hash
-            payload["content_hash"] = self._hash({k: payload[k] for k in self._PRED_HASHED}, prev_hash)
+            payload["content_hash"] = self._hash(self._hashed(payload), prev_hash)
             cols = list(payload)
             try:
                 con.execute(
@@ -1157,9 +1267,33 @@ class Store:
         start_before: Optional[Any] = None,
         latest_only: bool = False,
         include_synthetic: bool = False,
+        slate: Optional[Any] = None,
     ) -> pd.DataFrame:
-        """Ledger rows.  ``latest_only`` keeps the newest prediction per
-        (event, market, line) - earlier ones remain stored and retrievable."""
+        """Ledger rows.
+
+        ``latest_only`` keeps only the newest prediction of each (event,
+        market), judged over the *whole* ledger: a row is dropped as soon as a
+        later one exists for the same event and market, even when the later
+        one has another line, another status, or a start time outside the
+        requested window (the event moved).  Earlier rows stay stored.
+
+        ``slate`` (a ``date``) selects one Pacific/Honolulu slate, placing an
+        event whose start is only a date on its own calendar date.
+        """
+        if slate is not None:
+            from datetime import timedelta
+
+            from ..core.slates import slate_date_of
+            from ..core.timeutil import hst_day_bounds_utc
+
+            lo, hi = hst_day_bounds_utc(slate)
+            wide = self.predictions(league=league, market=market, event_ids=event_ids,
+                                    start_from=lo - timedelta(hours=24), start_before=hi + timedelta(hours=24),
+                                    latest_only=latest_only, include_synthetic=include_synthetic)
+            if wide.empty:
+                return wide
+            keep = [slate_date_of(row) == slate for row in wide.to_dict("records")]
+            return wide.loc[keep].reset_index(drop=True)
         sql, params = "SELECT * FROM predictions WHERE 1=1", []
         if league is not None:
             leagues = [league] if isinstance(league, str) else list(league)
@@ -1185,9 +1319,8 @@ class Store:
             sql += " AND is_synthetic = 0"
         df = self.query(sql + " ORDER BY seq", params)
         if latest_only and not df.empty:
-            line = df["line"].map(lambda v: "" if _is_missing(v) else repr(float(v)))
-            key = df["event_id"].astype(str) + "|" + df["market"].astype(str) + "|" + line.astype(str)
-            df = df.loc[~key.duplicated(keep="last")].reset_index(drop=True)
+            current = self.query("SELECT MAX(seq) AS seq FROM predictions GROUP BY event_id, market")["seq"]
+            df = df.loc[df["seq"].isin(set(current.tolist()))].reset_index(drop=True)
         return df
 
     def verify_ledger(self) -> Tuple[bool, List[str]]:
@@ -1205,7 +1338,7 @@ class Store:
         for row in rows:
             if row["prev_hash"] != prev:
                 problems.append(f"{row['prediction_id']}: chain broken (a row was removed or reordered)")
-            expect = self._hash({k: row[k] for k in self._PRED_HASHED}, row["prev_hash"])
+            expect = self._hash(self._hashed(row), row["prev_hash"])
             if expect != row["content_hash"]:
                 problems.append(f"{row['prediction_id']}: content does not match its hash (row was edited)")
             prev = row["content_hash"]

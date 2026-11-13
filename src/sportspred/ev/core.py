@@ -275,8 +275,7 @@ def evaluate(store: Any, *, settings: Optional[Settings] = None, day: Any = None
     settings = settings or Settings()
     now_dt = utcnow() if now is None else parse_ts(now)
     now_iso = iso_z(now_dt)
-    lo, hi = hst_day_bounds_utc(day or hst_date(now_dt))
-    preds = store.predictions(start_from=lo, start_before=hi, latest_only=True, include_synthetic=include_synthetic)
+    preds = store.predictions(slate=day or hst_date(now_dt), latest_only=True, include_synthetic=include_synthetic)
     preds = preds[preds["rec_status"] != "PASS"]
     quotes = _quotes(store, preds["event_id"].unique().tolist())
     quotes = quotes[quotes["quoted_at_utc"] <= now_iso]

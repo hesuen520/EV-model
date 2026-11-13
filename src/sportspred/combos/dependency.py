@@ -55,6 +55,9 @@ class Leg:
     participants: frozenset          # every team/competitor id in the event
     entities: frozenset              # ids this leg's outcome is about (team, player)
     event_label: str = ""
+    event_status: str = "scheduled"  # the event's status now, not when the prediction was made
+    current_start_utc: Optional[str] = None      # the event's start now
+    is_synthetic: bool = False
 
     @property
     def market_family(self) -> str:
@@ -92,15 +95,21 @@ def classify_pair(x: Leg, y: Leg, residual_corr: Mapping[Tuple[str, str], Mappin
             return PairDependency(x.prediction_id, y.prediction_id, "same_slate", "rejected",
                                   note=f"no validated same-slate dependence estimate for {x.league} {x.market_family}")
         rho, lo, hi = float(est["rho"]), float(est["low"]), float(est["high"])
-        if lo <= 0.0 <= hi and abs(rho) <= max_abs_rho:
+        # Independent only when the data rule dependence out: the whole interval,
+        # not just the point estimate, must lie inside the bound.  A wide interval
+        # that merely contains zero says the dependence is unknown, not absent.
+        if max(abs(lo), abs(hi)) <= max_abs_rho:
             return PairDependency(
                 x.prediction_id, y.prediction_id, "same_slate", "independent", 0.0,
                 note=(f"independence approximation: validated same-slate residual correlation {rho:+.4f} "
                       f"(95% interval {lo:+.4f} to {hi:+.4f}, {est.get('n_pairs', '?')} event pairs)"))
+        # Otherwise model it.  The central figure uses the point estimate; the
+        # conservative figure (see joint_probability) uses the lower end of the
+        # interval, where the chance that every leg wins is smallest.
         return PairDependency(
             x.prediction_id, y.prediction_id, "same_slate", "copula", rho,
-            note=(f"dependence modelled with a Gaussian copula at the validated residual correlation "
-                  f"{rho:+.4f} (95% interval {lo:+.4f} to {hi:+.4f})"))
+            note=(f"dependence modelled with a Gaussian copula at the validated same-slate residual correlation "
+                  f"{rho:+.4f} (95% interval {lo:+.4f} to {hi:+.4f}; the conservative figure uses {lo:+.4f})"))
     if x.league == y.league:
         return PairDependency(x.prediction_id, y.prediction_id, "same_slate", "rejected",
                               note="different markets of one league on one slate: cross-market dependence is not validated")

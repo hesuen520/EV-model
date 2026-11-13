@@ -9,6 +9,10 @@ or a drawn game in a market with no draw outcome), ``void`` (event postponed
 or cancelled, or rescheduled after the prediction was made) and ``no_result``
 (the market cannot be graded from the data on file).  When a result is
 corrected a new grade is appended and linked to the one it replaces.
+
+Rows are read through :mod:`sportspred.core.results`: a frame holding several
+leagues has ``NaN`` where a league has no value, and ``NaN`` must never be
+read as "true".  One prediction that cannot be graded never stops the others.
 """
 
 from __future__ import annotations
@@ -18,9 +22,18 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import pandas as pd
 
+from ..core.results import clean_row, flag, regulation_result
+from ..core.slates import predicted_date_only
 from ..core.timeutil import iso_z, utcnow
 
-__all__ = ["grade_predictions", "grade_one", "register_grader", "PROP_STATS"]
+__all__ = ["grade_predictions", "grade_one", "register_grader", "rescheduled", "PROP_STATS"]
+
+#: A timed event that starts within this many hours of the time the prediction
+#: recorded is the same game (a delay or a small schedule change).
+SAME_GAME_HOURS = 12.0
+#: A date-only event is stored at 00:00Z of its calendar date.  A start on
+#: that date, in any time zone on Earth, lies in this window around it.
+_DATE_WINDOW_HOURS = (-14.0, 36.0)
 
 Grader = Callable[[Any, Mapping[str, Any], Mapping[str, Any]], Tuple[str, Dict[str, Any]]]
 _GRADERS: Dict[str, Grader] = {}
@@ -40,34 +53,29 @@ def register_grader(market_family: str, grader: Grader) -> None:
     _GRADERS[market_family] = grader
 
 
-def _scores(ev: Mapping[str, Any], regulation: bool = False) -> Optional[Tuple[float, float]]:
-    if regulation and ev.get("reg_home_score") == ev.get("reg_home_score") and ev.get("reg_home_score") is not None:
-        return float(ev["reg_home_score"]), float(ev["reg_away_score"])
-    if ev.get("home_score") is None or ev["home_score"] != ev["home_score"]:
+def _scores(ev: Mapping[str, Any]) -> Optional[Tuple[float, float]]:
+    if ev.get("home_score") is None or ev.get("away_score") is None:
         return None
     return float(ev["home_score"]), float(ev["away_score"])
 
 
 def _winner(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> Tuple[str, Dict[str, Any]]:
     detail = {"winner_id": ev.get("winner_id"), "home_score": ev.get("home_score"), "away_score": ev.get("away_score")}
-    if int(ev.get("is_draw") or 0):
+    if flag(ev.get("is_draw")):
         return "push", {**detail, "note": "drawn game in a market without a draw outcome"}
     if not ev.get("winner_id"):
-        return "no_result", detail
+        return "no_result", {**detail, "note": "no winner on file"}
     return ("correct" if pred["selection"] == ev["winner_id"] else "incorrect"), detail
 
 
 def _winner_3way(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> Tuple[str, Dict[str, Any]]:
-    went_extra = bool(ev.get("went_overtime") or ev.get("went_shootout"))
-    scores = _scores(ev, regulation=True)
-    if scores is None:
-        return "no_result", {"note": "no score on file"}
-    has_reg = ev.get("reg_home_score") is not None and ev.get("reg_home_score") == ev.get("reg_home_score")
-    if went_extra and not has_reg:
-        actual = "draw"      # a game that needed overtime was level after regulation
-    else:
-        actual = "draw" if scores[0] == scores[1] else (ev["home_id"] if scores[0] > scores[1] else ev["away_id"])
-    detail = {"regulation_result": actual, "scores_used": list(scores), "went_overtime": went_extra}
+    actual, basis = regulation_result(ev)
+    if actual is None:
+        return "no_result", {"note": basis}
+    detail = {"regulation_result": actual, "basis": basis, "home_score": ev.get("home_score"),
+              "away_score": ev.get("away_score"), "reg_home_score": ev.get("reg_home_score"),
+              "reg_away_score": ev.get("reg_away_score"), "went_overtime": flag(ev.get("went_overtime")),
+              "went_shootout": flag(ev.get("went_shootout"))}
     return ("correct" if pred["selection"] == actual else "incorrect"), detail
 
 
@@ -105,7 +113,8 @@ def _player_prop(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> 
         return "no_result", {"note": f"cannot grade statistic {stat!r} from the data on file"}
     box = store.read_table(ev["league"], "player_box")
     row = box[(box["event_id"] == ev["event_id"]) & (box["player_id"].astype(str) == str(player_id))]
-    if row.empty or float(row.iloc[0]["minutes"] or 0) <= 0:
+    minutes = row.iloc[0]["minutes"] if len(row) else None
+    if row.empty or minutes is None or minutes != minutes or float(minutes) <= 0:
         return "void", {"note": "player did not play"}
     value = float(sum(float(row.iloc[0][c] or 0) for c in cols))
     line = float(pred["line"])
@@ -120,15 +129,44 @@ for _family, _grader in (("winner", _winner), ("winner_3way", _winner_3way), ("s
     register_grader(_family, _grader)
 
 
+def rescheduled(pred: Mapping[str, Any], ev: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """Details of a real reschedule since the prediction, or ``None``.
+
+    A prediction describes one game in its pregame context.  It still applies
+    when a date-only event gets its start time published, or when a timed
+    event moves by a few hours; it does not when the game moves to another day.
+    """
+    predicted, actual = pd.Timestamp(pred["event_start_utc"]), pd.Timestamp(ev["start_time_utc"])
+    if predicted.tzinfo is None:
+        predicted = predicted.tz_localize("UTC")
+    if actual.tzinfo is None:
+        actual = actual.tz_localize("UTC")
+    shift = (actual - predicted).total_seconds() / 3600.0
+    if shift == 0.0:
+        return None
+    if predicted_date_only(pred):
+        if ev.get("time_precision") == "datetime":
+            same = _DATE_WINDOW_HOURS[0] <= shift < _DATE_WINDOW_HOURS[1]
+        else:
+            same = False                  # still date-only, and the date itself changed
+    else:
+        same = abs(shift) < SAME_GAME_HOURS
+    if same:
+        return None
+    return {"note": "event was rescheduled after the prediction", "predicted_start": pred["event_start_utc"],
+            "actual_start": iso_z(actual), "moved_hours": round(shift, 2)}
+
+
 def grade_one(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> Tuple[str, Dict[str, Any]]:
     """Grade one ledger row against one event row (joined with its result)."""
+    ev = clean_row(ev)
     if ev["status"] in ("postponed", "canceled"):
         return "void", {"note": f"event {ev['status']}"}
-    if iso_z(ev["start_time_utc"]) != pred["event_start_utc"] and ev["time_precision"] == "datetime":
+    moved = rescheduled(pred, ev)
+    if moved is not None:
         # The event moved after the prediction was made: the pregame context
         # the prediction described no longer applies.
-        return "void", {"note": "event was rescheduled after the prediction",
-                        "predicted_start": pred["event_start_utc"], "actual_start": iso_z(ev["start_time_utc"])}
+        return "void", moved
     if ev["status"] != "final":
         return "no_result", {"note": f"event is {ev['status']}"}
     grader = _GRADERS.get(pred["market"].split(":", 1)[0])
@@ -154,9 +192,16 @@ def grade_predictions(store: Any, *, now: Any = None, include_synthetic: bool = 
     last = {r["prediction_id"]: r for _, r in existing.iterrows()}
     written: List[Dict[str, Any]] = []
     for _, pred in preds.iterrows():
+        if pred["event_id"] not in events.index:
+            continue
         ev = events.loc[pred["event_id"]].to_dict()
         ev["event_id"] = pred["event_id"]
-        outcome, detail = grade_one(store, pred, ev)
+        try:
+            outcome, detail = grade_one(store, pred, ev)
+        except Exception as exc:  # noqa: BLE001 - one bad row must not stop the run
+            store.log_issue("grading_failed", f"{pred['prediction_id']}: {type(exc).__name__}: {exc}",
+                            league=pred["league"], event_id=pred["event_id"])
+            continue
         if outcome == "no_result":
             continue
         prev = last.get(pred["prediction_id"])

@@ -51,7 +51,9 @@ class ValidationConfig:
     min_dev_folds: int = 3
     max_ece: float = 0.03
     #: Probability thresholds at which PASS-rule performance is reported.
-    pass_grid: Tuple[float, ...] = (0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80)
+    #: Thresholds below 1 / (number of outcomes) select every event and are left
+    #: out, so the two below 0.50 appear for three-way markets only.
+    pass_grid: Tuple[float, ...] = (0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80)
     confidence_bin_width: float = 0.05
 
 
@@ -84,6 +86,28 @@ def fit_with_calibration(
     return model, cal
 
 
+#: Columns a candidate may read when it predicts, besides its declared inputs.
+_PREDICT_CONTEXT = ("event_id", "start_time_utc", "side_a_id", "side_b_id", "line", "p_push", "info_cutoff_utc")
+
+
+def _blind(rows: pd.DataFrame, cand: Candidate, block_col: str) -> pd.DataFrame:
+    """The rows a candidate is scored on, with everything it has not declared
+    as an input blanked out.
+
+    A feature frame also carries the outcome (``y``, scores, margins) and
+    retrospective columns.  A candidate is handed the whole frame, so nothing
+    but this stops one from reading them when it predicts: any numeric column
+    that is not among its declared inputs is set to missing, and a prediction
+    built on one fails loudly instead of scoring perfectly.
+    """
+    keep = set(cand.feature_names()) | set(_PREDICT_CONTEXT) | {block_col}
+    out = rows.copy()
+    for col in out.columns:
+        if col not in keep and pd.api.types.is_numeric_dtype(out[col]):
+            out[col] = np.nan
+    return out
+
+
 def _run_fold(cand: Candidate, df: pd.DataFrame, fold: Fold, plan: SplitPlan, classes: Sequence[str],
               cfg: ValidationConfig) -> pd.DataFrame:
     assert_chronological(df, fold, plan.block_col)
@@ -91,8 +115,10 @@ def _run_fold(cand: Candidate, df: pd.DataFrame, fold: Fold, plan: SplitPlan, cl
     calib = df[df[plan.block_col].isin(fold.calib_blocks)]
     test = df[df[plan.block_col].isin(fold.test_blocks)]
     model, cal = fit_with_calibration(cand, train, calib, classes, calib_min_rows=cfg.calib_min_rows)
-    P = M.check_probabilities(cal.transform(M.check_probabilities(model.predict_proba(test))))
-    out = test[["event_id", "start_time_utc", plan.block_col, "y"]].copy()
+    P = M.check_probabilities(cal.transform(M.check_probabilities(
+        model.predict_proba(_blind(test, cand, plan.block_col)))))
+    out = test[["event_id", "start_time_utc", plan.block_col, "y"]
+               + (["segment"] if "segment" in test.columns else [])].copy()
     out = out.rename(columns={plan.block_col: "block"})
     out["fold"] = fold.name
     out["model"] = cand.name
@@ -145,6 +171,24 @@ def _stability(selected: pd.DataFrame, reference: pd.DataFrame, classes: Sequenc
     return {"blocks": len(rows), "blocks_improved": better, "by_block": rows}
 
 
+def _by_segment(frame: pd.DataFrame, classes: Sequence[str]) -> List[Dict[str, Any]]:
+    """Results by the plugin's ``segment`` label, when a frame has one.
+
+    A league can mix kinds of event that are very different to predict (a
+    Division I team hosting a lower-division one, say).  The headline pools
+    them; this shows each kind on its own.  A segment must be knowable
+    before the event - it is a label, never a model input.
+    """
+    if "segment" not in frame.columns:
+        return []
+    rows = []
+    for name, part in frame.groupby(frame["segment"].fillna("unlabelled"), sort=True):
+        P, y = _P(part, classes), _y(part)
+        rows.append({"segment": str(name), "share": float(len(part) / len(frame)),
+                     "mean_top_probability": float(P.max(axis=1).mean()), **M.summary(P, y)})
+    return rows
+
+
 def _pass_rule(frame: pd.DataFrame, classes: Sequence[str], grid: Sequence[float]) -> List[Dict[str, Any]]:
     """Performance and coverage when events whose top probability is below a
     threshold are passed.  Reported, never tuned on the final period."""
@@ -153,6 +197,8 @@ def _pass_rule(frame: pd.DataFrame, classes: Sequence[str], grid: Sequence[float
     hit = (P.argmax(axis=1) == y).astype(float)
     rows = []
     for thr in grid:
+        if thr < 1.0 / len(classes):
+            continue                      # below 1 / (number of outcomes) every event clears it: not a rule
         mask = top >= thr
         n = int(mask.sum())
         row: Dict[str, Any] = {"min_prob": float(thr), "n_selected": n,
@@ -288,6 +334,12 @@ def run_validation(
             raise LeakageError(
                 f"candidate {c.name!r} uses retrospective columns {sorted(bad)} but is not flagged as such"
             )
+        undeclared = set(c.feature_names()) - set(frame.feature_cols) - set(frame.retrospective_cols)
+        if undeclared:
+            raise LeakageError(
+                f"candidate {c.name!r} reads columns that the feature frame does not declare as model inputs: "
+                f"{sorted(undeclared)}"
+            )
     df = frame.completed.sort_values(["start_time_utc", "event_id"]).reset_index(drop=True)
     folds = make_folds(df, plan)
 
@@ -337,6 +389,7 @@ def run_validation(
             for n in experiments
         },
         "by_block": _by_block(sel_final, classes),
+        "by_segment": _by_segment(sel_final, classes),
         "reliability": M.reliability_table(_P(sel_final, classes), _y(sel_final)),
         "reliability_selected_outcome": M.reliability_table(_P(sel_final, classes), _y(sel_final), top_label=True),
         "pass_rule": _pass_rule(sel_final, classes, cfg.pass_grid),
@@ -355,6 +408,7 @@ def run_validation(
     dev_block = {
         "selected": _metrics_with_ci(sel_dev, classes, cfg),
         "by_block": _by_block(sel_dev, classes),
+        "by_segment": _by_segment(sel_dev, classes),
         "reliability": M.reliability_table(_P(sel_dev, classes), _y(sel_dev)),
         "reliability_selected_outcome": M.reliability_table(_P(sel_dev, classes), _y(sel_dev), top_label=True),
         "pass_rule": _pass_rule(sel_dev, classes, cfg.pass_grid),

@@ -28,7 +28,7 @@ import pandas as pd
 
 from ..config import ComboConfig, Settings
 from ..core.enums import RecStatus
-from ..core.timeutil import hst_date, hst_day_bounds_utc, iso_z, parse_ts, utcnow
+from ..core.timeutil import hst_date, iso_z, parse_ts, utcnow
 from .dependency import JointResult, Leg, joint_probability
 
 __all__ = ["PASS_MESSAGE", "MONOTONE_NOTE", "ComboCandidate", "SlateCombos", "candidate_status", "legs_from_ledger",
@@ -115,7 +115,8 @@ def legs_from_ledger(store: Any, predictions: pd.DataFrame) -> List[Leg]:
             prob_low=None if pd.isna(p["prob_low"]) else float(p["prob_low"]),
             rec_status=p["rec_status"], validation_status=p["validation_status"],
             start_utc=p["event_start_utc"], participants=frozenset(participants), entities=frozenset(entities),
-            event_label=label,
+            event_label=label, event_status=str(ev["status"]), current_start_utc=iso_z(ev["start_time_utc"]),
+            is_synthetic=bool(int(p["is_synthetic"])),
         ))
     return legs
 
@@ -133,8 +134,13 @@ def candidate_status(cand: ComboCandidate) -> RecStatus:
 def _eligibility(leg: Leg, cfg: ComboConfig, statuses: Sequence[str], now_iso: str) -> Optional[str]:
     """``None`` when the leg may be used, otherwise the reason it may not."""
     # First, because it is final: nothing is ever selected after the start.
-    if leg.start_utc <= now_iso:
+    if leg.start_utc <= now_iso or (leg.current_start_utc or "") and leg.current_start_utc <= now_iso:
         return "event has started"
+    # The prediction describes the event as it stood; what matters is the event as it stands now.
+    if leg.event_status != "scheduled":
+        return f"event is now {leg.event_status}"
+    if leg.current_start_utc and leg.current_start_utc != leg.start_utc:
+        return "the event's start has changed since this prediction; re-run predict"
     if leg.rec_status not in statuses:
         return f"status {leg.rec_status} (needs {' or '.join(statuses)})"
     if leg.validation_status not in cfg.allowed_coverage:
@@ -223,9 +229,10 @@ def build_slate_combos(store: Any, day: Optional[date] = None, *, settings: Opti
     cfg = settings.combos
     now_dt = utcnow() if now is None else parse_ts(now)
     day = day or hst_date(now_dt)
-    lo, hi = hst_day_bounds_utc(day)
-    preds = store.predictions(league=list(leagues) if leagues else None, start_from=lo, start_before=hi,
+    preds = store.predictions(league=list(leagues) if leagues else None, slate=day,
                               latest_only=True, include_synthetic=include_synthetic)
+    # Real and synthetic selections are never combined: a demo run uses demo legs only.
+    preds = preds[preds["is_synthetic"].astype(int) == int(bool(include_synthetic))]
     preds = preds[preds["rec_status"] != RecStatus.PASS.value]
     legs = legs_from_ledger(store, preds)
     corr = residual_correlations(store, sorted({l.league for l in legs}))

@@ -18,6 +18,14 @@ if _HERE not in sys.path:
 from sportspred.storage import Store  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _replayed_dates_allowed(monkeypatch):
+    """Tests replay fixed dates in temporary stores, so the ledger's check that
+    a real event's prediction time matches the machine clock is switched off
+    here.  ``test_core_audit`` switches it back on to test it."""
+    monkeypatch.setattr(Store, "wall_clock_tolerance_seconds", None)
+
+
 @pytest.fixture
 def store(tmp_path) -> Store:
     return Store(tmp_path / "store")

@@ -249,6 +249,7 @@ CREATE TABLE IF NOT EXISTS predictions (
   is_synthetic INTEGER NOT NULL DEFAULT 0,
   prev_hash TEXT,
   content_hash TEXT NOT NULL,
+  recorded_at_utc TEXT,                    -- this machine's clock when the row was written (hashed when present)
   CHECK (created_at_utc < event_start_utc),
   CHECK (prob IS NULL OR (prob >= 0.0 AND prob <= 1.0)),
   CHECK (prob_low IS NULL OR prob_high IS NULL OR prob_low <= prob_high)

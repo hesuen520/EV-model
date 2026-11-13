@@ -134,6 +134,20 @@ def results_current(behind: int, days_since: Optional[float], usual_break: Optio
     return True, "every earlier event of both sides has a result on file"
 
 
+def _same_line(a: Any, b: Any) -> bool:
+    missing_a, missing_b = a is None or a != a, b is None or b != b
+    if missing_a or missing_b:
+        return missing_a and missing_b
+    return float(a) == float(b)
+
+
+def _last_source_check(checks: Sequence[Mapping[str, Any]]) -> Optional[str]:
+    """Newest time a source behind any check was read (``None`` when no source
+    has been read at all - the built-in checks carry no source)."""
+    times = [c["checked_at_utc"] for c in checks if c.get("source_id") and c.get("checked_at_utc")]
+    return fmt_hst(max(times)) if times else None
+
+
 def _entropy(p: Sequence[float]) -> float:
     return float(-sum(x * math.log(x) for x in p if x > 0) / math.log(len(p)))
 
@@ -190,6 +204,13 @@ def predict_league(
         return []
     coverage = coverage_status(store, league, market)
     report = store.latest_validation(league, market)
+    # The coverage label and the confidence bands describe the candidate the newest
+    # validation run selected.  They may only be attached to that candidate.
+    model_mismatch: Optional[str] = None
+    if report is not None and report.get("selected_model") and report["selected_model"] != model.model_name:
+        model_mismatch = (
+            f"the trained model in use ({model.model_name}) is not the candidate the newest validation run "
+            f"selected ({report['selected_model']}); run `sportspred train --league {league} --market {market}`")
     min_prob = settings.min_prob(league, market, str(frame.outcome))
     check_log = store.checks_as_of(league, now_dt, include_synthetic=True)
     specs = plugin.required_checks(league, market)
@@ -264,10 +285,12 @@ def predict_league(
                                 f"{settings.selection.allowed_coverage}")
         if quality["grade"] == "poor":
             pass_reasons.append(f"too many model inputs are missing ({len(missing)} of {len(feature_names)})")
+        if model_mismatch:
+            pass_reasons.append(model_mismatch)
         if prob < min_prob:
             pass_reasons.append(f"model probability {prob:.3f} is below the selection minimum {min_prob:.2f}")
-        elif (settings.selection.require_interval_above_even and frame.outcome == OutcomeType.BINARY
-              and prob_low <= 0.5):
+        elif (settings.selection.require_interval_above_even
+              and frame.outcome in (OutcomeType.BINARY, OutcomeType.OVER_UNDER) and prob_low <= 0.5):
             pass_reasons.append(f"model-uncertainty interval {prob_low:.3f}-{prob_high:.3f} reaches a coin flip")
         if pass_reasons:
             status, reasons = RecStatus.PASS, pass_reasons
@@ -279,28 +302,32 @@ def predict_league(
                     reasons.append(f"{c['label']}: {c['detail']}")
             reasons.append("Re-run the prediction once these checks are on file; no confirmation time is assumed.")
         else:
-            # ---- 3. CONDITIONAL: does the selection survive its own side's doubts sitting out?
+            # ---- 3. CONDITIONAL: does the selection survive the doubtful players sitting out?
+            # A side's own doubts threaten a pick on that side.  A pick with no side
+            # (over, under, draw) can be moved by either side's, so both are tested.
             pick_side = ("a" if cls in ("home", "a", "home_cover", "a_cover") else
                          "b" if cls in ("away", "b", "away_cover", "b_cover") else None)
-            doubts = effect.uncertain_a if pick_side == "a" else effect.uncertain_b if pick_side == "b" else []
-            if doubts:
-                worst = effect.worst_case_rows.get(pick_side) if pick_side else None
+            sides = [pick_side] if pick_side else ["a", "b"]
+            for side in sides:
+                doubts = effect.uncertain_a if side == "a" else effect.uncertain_b
+                if not doubts:
+                    continue
+                whose = names.get(row[f"side_{side}_id"], f"side {side.upper()}")
+                worst = effect.worst_case_rows.get(side)
                 if worst is None:
                     status = RecStatus.CONDITIONAL
+                    reasons.append(f"holds only if these {whose} players play (effect not quantified): "
+                                   + "; ".join(doubts))
+                    continue
+                Pw = model.predict(pd.DataFrame([worst]))["P"][0]
+                if int(np.argmax(Pw)) != k or float(Pw[k]) * scale < min_prob:
+                    status = RecStatus.CONDITIONAL
                     reasons.append(
-                        f"holds only if these {selection_label} players play (effect not quantified): "
-                        + "; ".join(doubts))
+                        f"condition: {'; '.join(doubts)} ({whose}) must play. If they sit, the model probability of "
+                        f"{selection_label} becomes {float(Pw[k]) * scale:.3f}, which fails the selection rules.")
                 else:
-                    Pw = model.predict(pd.DataFrame([worst]))["P"][0]
-                    if int(np.argmax(Pw)) != k or float(Pw[k]) < min_prob:
-                        status = RecStatus.CONDITIONAL
-                        reasons.append(
-                            f"condition: {'; '.join(doubts)} must play. If they sit, the model probability of "
-                            f"{selection_label} becomes {float(Pw[k]):.3f}, which fails the selection rules.")
-                    else:
-                        reasons.append(
-                            f"selection holds even if {'; '.join(doubts)} sit "
-                            f"(probability would be {float(Pw[k]):.3f}).")
+                    reasons.append(f"selection holds even if {'; '.join(doubts)} ({whose}) sit "
+                                   f"(probability would be {float(Pw[k]) * scale:.3f}).")
             if status == RecStatus.FINAL:
                 reasons.insert(0, "all configured pregame checks are complete and fresh")
 
@@ -345,7 +372,11 @@ def predict_league(
             "neutral_site": None if ev["neutral_site"] != ev["neutral_site"] else bool(ev["neutral_site"]),
             "market": market, "market_note": decl.note, "line": line,
             "status_definition": REC_STATUS_DEFINITIONS[status],
-            "last_check_hst": fmt_hst(now_dt),
+            # When this prediction was made - not when any source was last read; each
+            # check carries its own time.
+            "predicted_at_hst": fmt_hst(now_dt),
+            "last_source_check_hst": _last_source_check(checks),
+            "date_only": bool(precision_date),
         }
         source_ids = [s for s in {ev["source_id"], *[c.get("source_id") for c in checks],
                                   *avail.get("source_id", pd.Series(dtype=object)).tolist()} if s]
@@ -369,6 +400,9 @@ def predict_league(
                 previous["model_version"] == record["model_version"]
                 and previous["rec_status"] == record["rec_status"]
                 and previous["selection"] == record["selection"]
+                and previous["validation_status"] == record["validation_status"]
+                and previous["event_start_utc"] == iso_z(ev["start_time_utc"])
+                and _same_line(previous["line"], line)
                 and previous["prob"] is not None and abs(float(previous["prob"]) - prob) < 5e-4
                 and [c["state"] for c in json.loads(previous["checks_json"])] == [c["state"] for c in checks]
                 and json.loads(previous["reasons_json"]) == reasons

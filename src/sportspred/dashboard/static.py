@@ -17,6 +17,7 @@ import pandas as pd
 
 from ..config import Settings
 from ..core.enums import COVERAGE_DEFINITIONS, REC_STATUS_DEFINITIONS
+from ..core.slates import slate_date_of
 from ..core.timeutil import fmt_hst, hst_date, iso_z, parse_ts, utcnow
 from ..coverage import coverage_table
 from ..validation.plots import CHART_CSS, improvement_svg, reliability_svg
@@ -76,7 +77,7 @@ def slate_views(store: Any, *, include_synthetic: bool = False) -> Dict[str, Lis
     for rec in df.to_dict("records"):
         for key in _JSON:
             rec[key] = json.loads(rec.pop(f"{key}_json"))
-        out.setdefault(hst_date(rec["event_start_utc"]).isoformat(), []).append(rec)
+        out.setdefault(slate_date_of(rec).isoformat(), []).append(rec)
     for day in out:
         out[day].sort(key=lambda p: (p["event_start_utc"], p["league"], p["market"]))
     return dict(sorted(out.items()))
@@ -127,7 +128,8 @@ def _prediction_card(p: Mapping[str, Any], now_iso: Optional[str] = None) -> str
     {_bullets('Missing data', list(f.get('missing_data', [])) + list(q.get('missing_features', [])))}
     <h4>Pregame checks</h4>{checks}
     <h4>Sources</h4><ul>{sources or '<li>none recorded</li>'}</ul>
-    <p class="muted">Last check {_e(d.get('last_check_hst'))} · model {_e(p['model_version'])} · prediction {_e(p['prediction_id'])}</p>
+    <p class="muted">Predicted {_e(d.get('predicted_at_hst') or d.get('last_check_hst'))} · newest source check
+    {_e(d.get('last_source_check_hst') or 'no source read')} · model {_e(p['model_version'])} · prediction {_e(p['prediction_id'])}</p>
   </details>
 </article>"""
 

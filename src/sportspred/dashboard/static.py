@@ -171,6 +171,16 @@ def _slate_section(slates: Mapping[str, List[Dict[str, Any]]], combos: pd.DataFr
 
 
 # --------------------------------------------------------------- validation
+def _segment_table(rows: Sequence[Mapping[str, Any]]) -> str:
+    if not rows:
+        return ""
+    body = [{"kind_of_game": g["segment"], "share": _pct(g["share"]), "n": g["n"], "accuracy": _pct(g["accuracy"]),
+             "log_loss": _num(g["log_loss"]), "mean_probability_of_the_pick": _pct(g["mean_top_probability"])}
+            for g in rows]
+    return ("<h4>By kind of game (final test) - the headline pools these</h4>"
+            + _table(body, ["kind_of_game", "share", "n", "accuracy", "log_loss", "mean_probability_of_the_pick"]))
+
+
 def _history_note(runs: Sequence[Mapping[str, Any]]) -> str:
     if len(runs) < 2:
         return ""
@@ -264,6 +274,7 @@ def _validation_section(reports: Sequence[Mapping[str, Any]],
   <div class="charts">{charts}</div>
   <h4>Final test (not used for selection)</h4>{_table(finals, ['model', 'n', 'accuracy', 'log_loss', 'brier'])}
   <h4>Development folds (pooled out-of-sample)</h4>{_table(cands, ['model', 'n', 'accuracy', 'log_loss', 'brier', 'calibration_error'])}
+  {_segment_table(f.get('by_segment') or [])}
   <h4>Performance and coverage after the PASS rule (final test)</h4>{_table(passes, ['min_probability', 'selections', 'coverage', 'accuracy', 'interval', 'mean_predicted'])}
   <h4>Gates</h4><ul class="gates">{gates}</ul>
   {_bullets('Limitations', r.get('limitations', []))}

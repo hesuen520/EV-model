@@ -40,7 +40,7 @@ validation run on imported real data is on file.
 | `start_time` | yes | start instant; with `time_precision=date` a calendar date is enough |
 | `status` | yes | `scheduled`, `live`, `final`, `postponed`, `canceled`, `unknown` |
 | `home`, `away` | yes | the two sides. No home side (tennis, combat, esports)? put them in any order and set `neutral_site=1`; the model orders sides by a rule that ignores the result |
-| `event_id` | no | your stable ID; keeps the event's identity through a reschedule and lets `results` refer to it |
+| `event_id` | no, but give one | your stable ID; keeps the event's identity through a reschedule and lets `results` refer to it. Without it a row is matched by league, sides and date: importing it again updates it (new status, a start time moved within the day), but a game moved to another date becomes a second event |
 | `time_precision` | no | `datetime` (default), `date` (start time unknown), `period` (only a tournament window known) |
 | `neutral_site` | no | `1` neutral, `0` true home game, blank unknown |
 | `venue`, `venue_city`, `stage`, `discipline` | no | stored as given; `stage` values `preseason`, `exhibition`, `allstar` are excluded from modelling |
@@ -52,6 +52,22 @@ validation run on imported real data is on file.
 
 A `final` row must carry a score, a winner or a draw. A row with a result must
 be `final`.
+
+**Checked before anything is written.** The whole file is validated first -
+unknown names, a winner who is neither side, a winner that contradicts the
+scores, a winner together with a draw, a result on an event that is not
+`final` - and one error stops the import with nothing stored. A blank
+`winner` stays blank: the result then comes from the scores, or is a draw.
+
+**Start times: all or none on a day.** If one competitor has two events on
+the same date, give both a start time or neither. With one timed and one
+untimed the order cannot be known, and the import refuses the file rather
+than risk rating the earlier event with the later one's result.
+
+**Tennis.** Names are matched against the players of the whole tour (all
+levels of the men's or the women's archive), so a fixture between two known
+players is rated with their full history and needs no `--create-participants`.
+Give `surface` and `best_of`; the model uses both.
 
 ## results
 

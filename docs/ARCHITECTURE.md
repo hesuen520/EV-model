@@ -43,8 +43,11 @@ src/evmodel/   pre-existing price/EV toolkit (odds conversion, de-vig, EV, Kelly
 4. **Side A cannot depend on the result.** Home side where one exists;
    otherwise a deterministic rule on IDs (never "winner listed first").
 5. **Selection on development folds only.** `run_validation` reads the final
-   test period once, after selection. Update rates and other hyper-parameters
-   are tuned on burn-in blocks only.
+   test period once per run, after selection. Update rates and other
+   hyper-parameters are tuned on burn-in blocks only. A candidate may read
+   only columns the frame declares as inputs, and the rows it is scored on
+   are blinded: every other numeric column (the outcome included) is blanked
+   before `predict_proba` is called.
 6. **Odds never enter the sports model.** No price is ever a feature, and
    validation refuses a feature frame that lists one. Prices are read in
    three places only: `sportspred.ev` (comparison with recorded
@@ -54,7 +57,26 @@ src/evmodel/   pre-existing price/EV toolkit (odds conversion, de-vig, EV, Kelly
 7. **UTC in storage** (`YYYY-MM-DDTHH:MM:SSZ`), **HST in display**
    (`core.timeutil.fmt_hst`). Naive datetimes are rejected.
 8. **Coverage is earned.** `coverage.py` derives every status from ingested
-   data and recorded validation runs. Do not hard-code a status.
+   data and recorded validation runs. Do not hard-code a status. The label
+   and the confidence bands belong to the candidate the newest run selected;
+   the engine passes on every event while a different model is in use.
+9. **Missing is not true.** A frame that holds several leagues has `NaN`
+   where a league has no value. Result rows are read through
+   `core.results` (`clean_row`, `flag`, `regulation_result`); never write
+   `bool(x)` or `x or y` on a value that may be missing.
+10. **The event as it stands now.** A recorded prediction is a snapshot.
+    Anything that acts on it later (combos, slate views, grading) looks up
+    the event's current status and start, and uses only the newest
+    prediction of each event and market (`Store.predictions(latest_only=True)`).
+11. **The ledger keeps its own time.** For a real event `insert_prediction`
+    refuses a creation time that differs from the machine clock, stores the
+    clock time and hashes it with the row. Synthetic leagues replay invented
+    dates and are exempt; the test-suite switches the check off for its
+    temporary stores (`tests/sportspred/conftest.py`).
+12. **One pool of competitors can serve several leagues.** A plugin whose
+    leagues share participants (the levels of one tennis tour) returns the
+    common pool from `participant_scope(league)`, so imports for any of its
+    leagues find the same people.
 
 ## Writing a sport plugin
 

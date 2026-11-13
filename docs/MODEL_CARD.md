@@ -86,7 +86,10 @@ candidate.
 3. **Walk-forward development folds**: fit on earlier blocks, fit the
    calibrator (Platt scaling on log-probabilities) on the next block, score on
    the block after that. Imputation and scaling live inside the fitted
-   pipeline, so they are fitted per fold.
+   pipeline, so they are fitted per fold. A candidate may read only the
+   columns the feature frame declares as inputs, and the rows it is scored on
+   are blinded - the outcome and every other undeclared numeric column are
+   blanked first - so a model that peeked could not score.
 4. **Selection** on pooled development-fold log loss with a one-standard-error
    preference for the simpler candidate.
 5. The selected candidate and the baselines are scored **once per run** on the
@@ -103,8 +106,10 @@ candidate.
    expected calibration error; reliability tables and charts; intervals from a
    bootstrap that resamples whole slates; season-by-season stability against
    each baseline; performance and coverage after the PASS rule at several
-   probability thresholds; a market benchmark where one exists; the
-   same-slate residual correlation used by the combo builder.
+   probability thresholds; results per segment where a league mixes kinds of
+   game (college basketball: games against opponents with almost no history);
+   a market benchmark where one exists; the same-slate residual correlation
+   used by the combo builder.
 7. **Gates for "validated"**: real data; point-in-time features; at least 300
    final-test events; at least 3 development folds; final-test log-loss
    improvement over the base rate with a 95% interval above zero; expected
@@ -125,19 +130,29 @@ offensive rebounding, free-throw rate, each offence against the opposing
 defence), expected-rotation quality and recently missing quality from player
 box scores, rest, back-to-backs, congestion, travel, time zones, playoffs.
 
-| League | Selected | Final test | Accuracy | Log loss | Elo baseline | Status |
-|---|---|---|---|---|---|---|
-| NBA | full logistic | 2,813 games, Oct 2024 - Nov 2026 | 67.7% (65.7-69.5) | 0.600 | 0.604 | validated |
-| WNBA | full logistic | 664 games, 2025-2026 | 65.4% | 0.626 | 0.644 | experimental (calibration error 0.031) |
-| NCAA men | boosted trees | 13,251 games | 75.0% | 0.487 | 0.511 | validated |
-| NCAA women | boosted trees | 12,313 games | 78.3% | 0.439 | 0.473 | validated |
+<!-- results:start sport=basketball -->
+| League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | Market benchmark |
+|---|---|---|---|---|---|---|---|---|
+| NBA | winner | validated | 2,813 | 67.7% | 0.600 | 0.692 | 0.604 |  |
+| NCAA Division I men | winner | validated | 13,251 | 75.0% | 0.487 | 0.627 | 0.511 |  |
+| NCAA Division I women | winner | validated | 12,313 | 78.3% | 0.439 | 0.656 | 0.473 |  |
+| WNBA | winner | experimental | 664 | 65.4% | 0.626 | 0.688 | 0.644 |  |
+<!-- results:end -->
 
 On development folds the NBA model beat the Elo baseline in 15 of 15 seasons.
 Knowing who actually played (retrospective) would be worth about 0.007 log loss
 in the NBA.
 
-*Availability.* The roster feature assumes each team's rotation matches who
-has played in its recent games. When an availability report is on file, players
+*College headline numbers need the segment split.* College schedules include
+games against lower-division opponents, which are close to certain.
+@@NCAA_SEGMENTS@@ Travel inputs are not used for the college leagues: the
+built-in venue table locates under a tenth of their games.
+
+*Availability.* A report says who is doubtful now: once a newer report of the
+same kind has been read for a team, statements it carried from an older
+report no longer apply, and an "out" statement older than the player's last
+game is ignored (and listed as out of date). The roster feature assumes each
+team's rotation matches who has played in its recent games. When an availability report is on file, players
 listed out or doubtful are removed and their minutes go to the rest of the
 rotation in proportion; questionable players make a selection CONDITIONAL if
 their absence would break it. That redistribution rule was checked against
@@ -276,27 +291,40 @@ best-of-five interaction. Rankings, seedings and head-to-head records are
 deliberately not inputs. Side A is assigned by player ID, never by strength,
 so the base rate is a coin flip by construction.
 
-| League | Selected | Final test | Accuracy | Log loss | Elo baseline | Status |
-|---|---|---|---|---|---|---|
-| ATP main draw | full logistic | 3,558 matches, Jan 2025 - May 2026 | 65.9% (64.0-67.9) | 0.614 | 0.624 | validated |
-| ATP qualifying | boosted trees | 1,799 | 64.0% | 0.621 | 0.640 | validated |
-| ATP Challenger | boosted trees | 8,661 | 63.3% | 0.639 | 0.641 | validated |
-| ITF men | boosted trees | 37,568 (2024 - mid-2026) | 71.5% | 0.557 | 0.583 | experimental (2 folds; 3 required) |
-| WTA main draw | full logistic | 3,380 | 66.9% (65.2-68.3) | 0.600 | 0.608 | validated |
-| WTA qualifying | full logistic | 3,278 | 67.5% | 0.590 | 0.599 | validated |
-| WTA 125 | full logistic | 2,044 | 66.8% | 0.611 | 0.621 | validated |
-| ITF women | boosted trees | 21,908 | 70.6% | 0.565 | 0.581 | validated |
+<!-- results:start sport=tennis -->
+| League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | Market benchmark |
+|---|---|---|---|---|---|---|---|---|
+| ATP Tour main draw singles | winner | validated | 3,558 | 65.9% | 0.614 | 0.694 | 0.624 |  |
+| ATP Challenger main draw singles | winner | validated | 8,661 | 63.3% | 0.639 | 0.693 | 0.641 |  |
+| ATP Tour qualifying singles | winner | validated | 1,799 | 64.0% | 0.621 | 0.693 | 0.640 |  |
+| ITF men's singles | winner | experimental | 37,568 | 71.5% | 0.557 | 0.693 | 0.583 |  |
+| ITF women's singles | winner | validated | 21,908 | 70.6% | 0.565 | 0.693 | 0.581 |  |
+| WTA Tour main draw singles | winner | validated | 3,380 | 66.9% | 0.600 | 0.693 | 0.608 |  |
+| WTA 125 main draw singles | winner | validated | 2,044 | 66.8% | 0.611 | 0.694 | 0.621 |  |
+| WTA Tour qualifying singles | winner | validated | 3,278 | 67.5% | 0.590 | 0.693 | 0.599 |  |
+<!-- results:end -->
+
+@@TENNIS_NOTE@@
 
 What this does **not** establish:
 
 - **Dates are tournament weeks, not match days.** A match uses nothing from
-  its own tournament, including earlier rounds, so the features are
-  point-in-time but coarser than a real pregame view: in-tournament form and
-  fatigue are invisible.
+  its own tournament or from any tournament starting the same week, including
+  earlier rounds, so the features are point-in-time but coarser than a real
+  pregame view: in-tournament form and fatigue are invisible. A two-week event
+  counts as finished after its first week; that reaches other players'
+  ratings only.
+- **An ingestion bug was found by audit and fixed.** Until 2026-11-13 every
+  main-draw quarter-final was dropped (the round code "QF" was read as a
+  qualifying round): about one match in ten per league, missing from the
+  pooled ratings too. The numbers here are from runs made after the fix; the
+  earlier runs remain in the run history and were slightly optimistic,
+  because quarter-finals are harder to call than earlier rounds.
 - **No live use yet.** The archive is a snapshot with no upcoming matches, no
   order of play and no withdrawals. Tennis produces no predictions until a
-  schedule is imported by CSV, and its "results current" check will hold
-  those PROVISIONAL because the newest result on file is from mid-2026.
+  schedule is imported by CSV (names are matched to the archive's players;
+  give the surface and best-of). The "results current" check will hold those
+  PROVISIONAL, because the newest result on file is from mid-2026.
 - No injury, fitness or withdrawal information; no court speed, altitude,
   indoor/outdoor or weather. Retirements count as wins for the player who
   advanced; walkovers are excluded.
@@ -376,6 +404,16 @@ FINAL-status filter, combos across leagues, or the dependency handling.
   time-zone feature does not handle a date-line crossing; tied MLB games are
   dropped; NFL international games use ordinary road-game travel; the NHL
   adapter re-downloads only the current season unless told otherwise.
+- Mixed precision: where a league has both timed and date-only events, a
+  timed game can see the same-date result of a date-only game between other
+  teams. A team's own ratings cannot be affected (it plays once a day), and
+  the CSV import refuses one competitor having both kinds on one date.
+- The rating code seeds its league mean from the first 200 values of a
+  history. This reaches only the earliest events, inside every league's
+  burn-in, and cancels in every feature.
+- Availability statements with no report behind them, and statements for a
+  team that has had no newer report, stay in force until replaced; only an
+  "out" older than the player's last game is discarded automatically.
 - Selection thresholds are rules chosen for readability, not optimised. Their
   measured effect is in the validation report.
 - Each model was validated on one cut of history, and most final-test

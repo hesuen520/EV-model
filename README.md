@@ -88,10 +88,17 @@ How to read this honestly:
   close to coin flips for most games, and the PASS rule passes on most of them.
 - **Tennis** is validated on a snapshot archive that ends in mid-2026 and
   lists no upcoming matches, so it produces no live predictions until a
-  schedule is imported by CSV. Matches are dated by tournament week, so a
-  match never sees results from its own tournament. The archive's licence is
+  schedule is imported by CSV (fixtures are matched to the archive's
+  players). Matches are dated by tournament week, so a match never sees
+  results from its own tournament or week. The archive's licence is
   **non-commercial** (CC BY-NC-SA 4.0). ITF men is experimental only because
   its history allows two walk-forward folds where the gate asks for three.
+  An audit found that quarter-finals had been dropped at ingestion; the
+  numbers shown are from runs after that was fixed.
+- **College basketball** headline figures pool two kinds of game: about one
+  in fifteen is against an opponent with almost no history (mostly
+  lower-division teams) and is close to certain. The validation report shows
+  each kind separately; see the model card.
 - None of the backtests include **late availability news** (injury reports,
   confirmed line-ups, starting goalies or pitchers as announced): no
   as-published history of those was used. Features that need the actual
@@ -182,6 +189,22 @@ Tonight's real NBA slate, for example, is PROVISIONAL: the newest official
 injury report in the public archive was published the previous evening, and
 the rule needs one from within three hours of tip-off.
 
+## The ledger
+
+Every prediction is appended to a ledger that cannot be edited: updates and
+deletes are refused by the database, a later prediction for the same event
+and market is a new row linked to the one it replaces, and each row carries a
+hash of its content and of the row before it (`sportspred ledger verify`).
+Three things make "pregame" mean something. The event must be scheduled and
+not yet started. For a real event the stated creation time must match the
+machine's clock, which is stored and hashed with the row, so a prediction
+cannot be written afterwards with an earlier time. And an event that has only
+a date is closed once that date has begun anywhere in the world.
+
+What it cannot prove: that the machine's clock was right, or that the newest
+rows were never removed - `ledger verify` prints the head hash and the count
+so you can keep them somewhere else.
+
 ## Combos
 
 `sportspred combos` prioritises the strongest supported **three-leg** combo by
@@ -194,7 +217,10 @@ residual correlation (independence when it is indistinguishable from zero, a
 Gaussian copula otherwise). With fewer than three qualifying legs the output is
 fewer picks and `PASS — insufficient support for a three-leg combo.`
 Only FINAL legs can form a recommendation; PROVISIONAL legs appear, if at all,
-in a preview labelled as not a recommendation.
+in a preview labelled as not a recommendation. A leg is judged against its
+event as it stands now: it is dropped if the event has started, been
+cancelled or postponed, or moved since the prediction, and only the newest
+prediction of each event and market counts.
 
 The core of the rule - take the most probable qualifying legs of one league's
 slate and multiply - is back-tested over historical slates

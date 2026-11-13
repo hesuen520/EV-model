@@ -142,7 +142,33 @@ inputs, the missing regression tests) and in the text otherwise (freshness,
 "untouched" final tests, what the combo backtest covers, the NFL live
 quarterback input, packages that did not exist).
 
-@@LEAK_AUDIT@@
+**4. Tennis, basketball, the results-only builder and the shared rating
+code,** for point-in-time leakage. *No leakage found:* flipping every result
+of one slate (or tournament week) changes none of that slate's features;
+features rebuilt as of past instants equal the full-history values on real
+data; update rates are tuned on burn-in seasons only; side A does not depend
+on the result; no price is read anywhere. *Found and fixed* (each with a
+regression test):
+
+- every tennis main-draw quarter-final was dropped at ingestion - about one
+  match in ten per league. Tennis was re-ingested and re-validated;
+- a tournament in progress was treated as finished (its rows carry the start
+  date), and a CSV fixture could not be linked to the archive's players;
+- a blank winner in a CSV file could be stored as an away win, and a bad file
+  could leave events behind with no results;
+- an out-of-date "out" statement was applied to a player who had played
+  since; the rotation snapshot belonged to the wrong game when two seasons'
+  schedules were on file; college travel inputs were mostly missing and
+  mislocated (removed).
+
+*Found and not fixed:* in a league that mixes timed and date-only events, a
+timed game can see the same-date result of a date-only game between *other*
+teams (a team's own ratings are unaffected; the CSV import refuses the case
+that would matter, one competitor with both kinds on one date); the rating
+code seeds its league mean from the first 200 values (burn-in only, and it
+cancels in every feature); a two-week tennis event counts as finished after
+its first week; eight pairs of college games that may be duplicates were not
+investigated.
 
 **Not independently audited:** the results-only CSV model beyond its feature
 builder, the EV module's maths, the dashboard, and the adapters written for

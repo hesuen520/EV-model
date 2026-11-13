@@ -388,7 +388,12 @@ A probability becomes a selection only if the league-market's coverage status
 is allowed, enough inputs are present, the probability clears the configured
 minimum (0.60 two-way, 0.45 three-way, 0.55 over/under by default) and, for
 two-way and over/under markets, its model-uncertainty interval stays above a
-coin flip (a three-way selection has no such test). By default both
+coin flip (a three-way selection has no such test). Where a market can end
+in a push (a whole-number threshold or line), the recorded probability is the
+chance of winning and the push is recorded as an outcome of its own; the
+minimum, the coin-flip test and the confidence band are applied to the
+probability given a decision, because a push is graded as neither hit nor
+miss. By default both
 "validated" and "experimental" league-markets may produce selections; the
 status is shown on every prediction. These are explicit,
 editable rules; the validation report shows accuracy and coverage at each

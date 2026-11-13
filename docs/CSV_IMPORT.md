@@ -135,23 +135,34 @@ input: it only decides where the model's distribution is read. Without an
 imported threshold there is no selection for that player.
 
 - The whole file is checked first. An unknown team, a player who has not
-  appeared for that team in its recent games, a player outside the modelled
-  rotation (fewer than 8 earlier appearances or under 15 recent minutes), a
-  statistic the league does not model, or a threshold that is not a whole or
-  half number is an error with its line number, and nothing is stored.
+  appeared for that team in its recent games, a name that fits two team-mates,
+  a player outside the modelled rotation (fewer than 8 earlier appearances or
+  under 15 recent minutes), a statistic the league does not model, a
+  threshold that is not a whole or half number of at least one half, or two
+  different thresholds for one player and statistic at one collection time is
+  an error with its line number, and nothing is stored.
+- A threshold read after the team has tipped off (within six hours) is not
+  moved to the team's next game: it is refused unless `event_id` names the
+  later game it is for.
 - A later reading of the same market is a new row; the threshold in force for
   a prediction is the newest one collected by the prediction time, whichever
   `book` it came from - one threshold per player and statistic at a time.
   Importing the same reading twice stores it once. A collection time in the
   future is refused.
 - A whole-number threshold can be tied. The prediction then records three
-  probabilities - over, under and push - that sum to one.
+  probabilities - over, under and push - that sum to one. Over and under are
+  read from the calibrated model at the half points either side, so "over 23"
+  and "over 23.5" are the same number, and the push is what remains.
 - A prediction is recorded under the key `player_prop:<stat>:<player id>`, so
   one game can hold one selection per player and statistic. When the threshold
   changes, the next prediction supersedes the earlier one in the ledger; the
   earlier one stays stored.
 - Grading reads the player's line in the box score: correct, incorrect, push
   (landed exactly on a whole-number threshold) or void (he did not play).
+  Nothing is graded until both teams' box scores for the game are on file - a
+  result can arrive before its box score.
+- A prediction also waits (PROVISIONAL) while the box score of either team's
+  last two finished games is missing: the player inputs would be a game behind.
 
 ## Prices
 

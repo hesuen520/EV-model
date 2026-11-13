@@ -132,6 +132,12 @@ completed rows, the imported one on upcoming rows). With
 `extra["gates"]` adds gates that the protocol cannot see from the numbers.
 `stat_value` and `minutes_played` are outcome columns candidates learn from;
 they are not declared inputs, so validation blanks them on scored rows.
+Before it asks the plugin to fold availability in, the engine puts two facts
+into `frame.extra`: `model_features` (what the trained model reads) and
+`report_checked_teams` (teams whose team-level report has been read), so a
+plugin can tell "applied" from "listed but not usable by this model". A
+selection about a subject whose row has left the frame is withdrawn by a
+superseding PASS record.
 
 ### Shared primitives
 

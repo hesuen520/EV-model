@@ -37,6 +37,12 @@ class TennisPlugin(ResultsOnlyPlugin):
         for key, (name, gender, level) in _NAMES.items())
     _CONFIG = TennisConfig()
 
+    def participant_scope(self, league: str) -> str:
+        return f"tennis_{TENNIS_LEAGUES[league].tour}"      # one pool of players per tour, as in the adapter
+
+    def participant_kind(self, league: str) -> str:
+        return "player"
+
     def options(self, league: str) -> GenericOptions:
         return GenericOptions(home_adv=False, burn_in_blocks=self._CONFIG.burn_in_years)
 

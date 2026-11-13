@@ -40,6 +40,11 @@ __all__ = ["Store", "StoreError", "SyntheticIsolationError", "LedgerError", "Ups
 
 log = logging.getLogger(__name__)
 
+#: A date-only event is stored at 00:00Z of its calendar date.  That date begins
+#: up to this many hours earlier (UTC+14), so nothing is recorded for the event
+#: later than this long before the stored instant.
+DATE_ONLY_LEAD_HOURS = 14.0
+
 DEMO_PREFIX = "demo_"
 
 PathLike = Union[str, Path]
@@ -1191,6 +1196,13 @@ class Store:
                     f"prediction time {created} is not before the event start {start}; "
                     "selections are only generated pregame"
                 )
+            if ev["time_precision"] != TimePrecision.DATETIME.value:
+                earliest = iso_z(parse_ts(start) - timedelta(hours=DATE_ONLY_LEAD_HOURS))
+                if created >= earliest:
+                    raise LedgerError(
+                        f"event {ev['event_id']} has only a date ({start[:10]}); that date begins at {earliest} in "
+                        "the easternmost time zone, so the event may already have started"
+                    )
             recorded = iso_z(utcnow())
             tolerance = self.wall_clock_tolerance_seconds
             if not synthetic and tolerance is not None:

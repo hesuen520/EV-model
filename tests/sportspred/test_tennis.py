@@ -99,3 +99,93 @@ def test_a_match_never_uses_its_own_tournament_week(store, demo_tour):
     cut = [pd.Timestamp("2016-03-06T23:59:59Z"), pd.Timestamp("2017-02-05T23:59:59Z")]
     result = asof_invariance(Builder(), store, LEAGUE, "winner", cutoffs=cut)
     assert len(result) and result["ok"].all() and result["n_events"].min() >= 10
+
+
+def test_quarter_finals_are_main_draw_matches_not_qualifying():
+    """'QF' starts with a Q.  Every quarter-final was dropped from the main-draw
+    leagues (and never reached the qualifying ones), about one match in ten."""
+    raw = pd.DataFrame({"round": ["Q1", "Q2", "Q3", "QF", "SF", "F", "R32", "RR", "qf"]})
+    is_q = adapter._is_q(raw)
+    assert list(is_q) == [True, True, True, False, False, False, False, False, False]
+
+    rows = pd.DataFrame([{
+        "tourney_id": "2019-580", "tourney_name": "Demo Slam", "surface": "Hard", "tourney_level": "G",
+        "tourney_date": 20190114, "match_num": 100 + i, "winner_id": 1 + i, "winner_name": f"W {i}",
+        "loser_id": 50 + i, "loser_name": f"L {i}", "score": "6-4 6-4 6-4", "best_of": 5, "round": rnd,
+    } for i, rnd in enumerate(["R16", "QF", "QF", "SF", "F", "Q1"])])
+    main = normalize_matches(rows, "atp", 2019)
+    assert sorted(main["round"]) == ["F", "QF", "QF", "R16", "SF"]            # the qualifying match is excluded
+    qual = normalize_matches(rows, "atp_qual", 2019)
+    assert list(qual["round"]) == ["Q1"]
+
+
+def test_a_tournament_in_progress_is_not_known_until_its_week_is_over(store, demo_tour):
+    """Archive rows carry the tournament's start date, whatever day the match
+    was played.  Asked on the Wednesday, the builder used to know the final."""
+    raw, _ = _raw()
+    _load(store, raw)
+    cfg = TennisConfig(burn_in_years=1)
+    monday = pd.Timestamp("2016-03-07T00:00:00Z")                               # a tournament date in the demo tour
+    midweek = build_tennis_frame(store, LEAGUE, now=monday + pd.Timedelta(days=2, hours=12), cfg=cfg)
+    this_week = midweek.df[midweek.df["start_time_utc"] == monday]
+    assert len(this_week) >= 10 and this_week["y"].isna().all()                 # results not known yet
+    earlier = midweek.df[midweek.df["start_time_utc"] == monday - pd.Timedelta(days=7)]
+    assert earlier["y"].notna().all()                                           # last week's are
+    after = build_tennis_frame(store, LEAGUE, now=monday + pd.Timedelta(days=7), cfg=cfg)
+    assert after.df[after.df["start_time_utc"] == monday]["y"].notna().all()
+    # The week's own rows have the same features whether or not its results are on file.
+    cols = ["event_id"] + list(midweek.feature_cols)
+    a = this_week[cols].set_index("event_id").sort_index()
+    b = after.df[after.df["start_time_utc"] == monday][cols].set_index("event_id").sort_index()
+    assert np.allclose(a.to_numpy(dtype=float), b.to_numpy(dtype=float), equal_nan=True)
+
+
+def test_tournaments_starting_in_the_same_week_do_not_see_each_other(store, demo_tour):
+    from sportspred.sports.tennis.features import week_start
+
+    raw, _ = _raw(n_weeks=60)
+    # A second tournament three days after each Monday one, with the same players.
+    late = raw.copy()
+    late["tourney_id"] = late["tourney_id"] + "-B"
+    late["tourney_date"] = (pd.to_datetime(late["tourney_date"].astype(str)) + pd.Timedelta(days=3)).dt.strftime("%Y%m%d").astype(int)
+    both = pd.concat([raw, late], ignore_index=True)
+    _load(store, both)
+    frame = build_tennis_frame(store, LEAGUE, now="2030-01-01T00:00:00Z", cfg=TennisConfig(burn_in_years=1))
+    df = frame.df
+    weeks = week_start(df["start_time_utc"])
+    # One information cut-off per week, and it lies before the week's first tournament.
+    assert df.groupby(weeks)["info_cutoff_utc"].nunique(dropna=False).max() == 1
+    known = df["info_cutoff_utc"].notna()
+    assert (df.loc[known, "info_cutoff_utc"] < weeks[known]).all()
+
+
+def test_a_fixture_imported_by_csv_is_rated_with_the_archive_players_history(store, demo_tour, tmp_path, monkeypatch):
+    """The CSV import used to look names up under the league, the archive
+    stores players under the tour: a fixture between two known players got two
+    brand-new entries and a 50/50 rating.  Its surface and best-of were ignored."""
+    from sportspred.adapters.csv_import import CsvImportError, import_events
+    from sportspred.sports import get_league as real_get_league
+    from sportspred.sports.tennis import PLUGIN as TENNIS
+
+    raw, strength = _raw()
+    _load(store, raw)
+    monkeypatch.setattr(type(TENNIS), "leagues", TENNIS.leagues + (
+        type(TENNIS.leagues[0])(LEAGUE, "tennis", "Demo tour", gender="men", level="tour", discipline="singles",
+                                markets=TENNIS.leagues[0].markets),))
+    best, worst = int(np.argmax(strength)), int(np.argmin(strength))
+    csv = tmp_path / "fixtures.csv"
+    csv.write_text("event_id,season,start_time,status,home,away,neutral_site,surface,best_of\n"
+                   f"fx1,2018,2018-01-10T15:00:00Z,scheduled,Demo Player {best:02d},Demo Player {worst:02d},1,clay,5\n")
+    with pytest.raises(CsvImportError, match="unknown participant"):
+        bad = tmp_path / "bad.csv"
+        bad.write_text(csv.read_text().replace(f"Demo Player {best:02d}", "Nobody Known"))
+        import_events(store, LEAGUE, bad)
+    out = import_events(store, LEAGUE, csv)                        # no --create-participants needed
+    assert out["events_new"] == 1
+    frame = build_tennis_frame(store, LEAGUE, now="2018-01-09T00:00:00Z", cfg=TennisConfig(burn_in_years=1))
+    row = frame.upcoming.iloc[0]
+    favourite_is_a = row["side_a_id"] == store.resolve_participant("tennis", "tennis_demo", f"Demo Player {best:02d}",
+                                                                  create=False)
+    gap = row["elo_diff"] if favourite_is_a else -row["elo_diff"]
+    assert gap > 150                                               # the archive ratings are behind the fixture
+    assert row["bo5"] == 1.0 and row["surface"] == "clay" and not np.isnan(row["surf_elo_diff"])

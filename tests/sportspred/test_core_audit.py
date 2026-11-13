@@ -499,3 +499,20 @@ def test_two_provider_ids_sharing_a_name_are_merged_on_the_record_not_silently(s
     store.resolve_participants(pd.DataFrame({"name": ["Julian Alonso"], "pid": [211655]}), sport="tennis",
                                scope="tennis_men", kind="player", provider="archive", provider_id_col="pid")
     assert len(store.issues("tennis_men")) == 1
+
+
+def test_a_date_only_event_cannot_be_predicted_once_its_date_has_begun_anywhere(store, two_teams):
+    """Stored at 00:00Z, but a morning game east of Greenwich on that date starts earlier."""
+    from sportspred.storage.store import LedgerError
+
+    eid = _event(store, "nba", "basketball", two_teams, "d5", start="2030-03-09T00:00:00Z", time_precision="date")
+    with pytest.raises(LedgerError, match="may already have started"):
+        store.insert_prediction(prediction(eid, two_teams, created_at_utc="2030-03-08T14:00:00Z"))
+    store.insert_prediction(prediction(eid, two_teams, created_at_utc="2030-03-08T09:00:00Z"))
+    assert len(store.predictions()) == 1
+
+
+def test_slate_table_shows_no_line_for_markets_without_one():
+    from sportspred.cli.render import _line
+
+    assert _line(None) == "" and _line(float("nan")) == "" and _line(-3.5) == " -3.5" and _line(44.5) == " +44.5"

@@ -43,6 +43,8 @@ from .confidence import confidence_for
 
 __all__ = ["predict_league", "load_promoted", "PredictionError", "results_current"]
 
+from ..storage.store import DATE_ONLY_LEAD_HOURS  # noqa: E402  (the ledger applies the same rule)
+
 log = logging.getLogger(__name__)
 
 
@@ -200,6 +202,15 @@ def predict_league(
     rows = frame.upcoming
     rows = rows[(rows["start_time_utc"] > now_ts)
                 & (rows["start_time_utc"] <= now_ts + pd.Timedelta(hours=horizon))]
+    if rows.empty:
+        return []
+    # An event with only a date is stored at 00:00Z of that date, but the date began up
+    # to 14 hours earlier somewhere east of Greenwich: it may already be under way.
+    precision = store.events(event_ids=rows["event_id"].tolist(), with_results=False,
+                             include_synthetic=True).set_index("event_id")["time_precision"]
+    date_only = rows["event_id"].map(precision).ne("datetime").to_numpy()
+    earliest = rows["start_time_utc"] - pd.to_timedelta(np.where(date_only, DATE_ONLY_LEAD_HOURS, 0.0), unit="h")
+    rows = rows[earliest > now_ts]
     if rows.empty:
         return []
     coverage = coverage_status(store, league, market)

@@ -65,6 +65,16 @@ WINNER_FEATURES: List[str] = [
     "is_playoff",
 ]
 
+#: Travel inputs need a venue location.  The built-in city table covers the NBA and
+#: most of the WNBA; for the college leagues it locates under a tenth of games and
+#: cannot tell same-named cities apart, so there these inputs are not offered at all.
+TRAVEL_FEATURES = ("travel_km_a", "travel_km_b", "tz_shift_b")
+
+
+def winner_features(league: str) -> List[str]:
+    return [c for c in WINNER_FEATURES if not (league in THIN_HISTORY_LEAGUES and c in TRAVEL_FEATURES)]
+
+
 FEATURE_LABELS: Dict[str, str] = {
     "home_edge": "home court",
     "elo_diff": "opponent-adjusted results (Elo)",
@@ -171,12 +181,21 @@ def _roster_features(ev: pd.DataFrame, player_box: Optional[pd.DataFrame], batch
     # rating is shared by every team that still carries him in its rotation
     # state (after a trade, say), so applying a game's box score at once would
     # let it reach other games of the same slate - including its own opponent.
-    pending: List[Tuple[str, np.ndarray, np.ndarray, np.ndarray]] = []
+    pending: List[Tuple[str, np.ndarray, np.ndarray, np.ndarray, Any]] = []
+    last_played: Dict[int, Any] = {}        # player -> start of the last game he appeared in
+    starts = ev["start_time_utc"].to_numpy()
+    # The rotation behind each team's NEXT game: taken at its first row without a result.
+    # (The loop goes on through the rest of the schedule, where a new season empties the
+    # state; the state after the last row is therefore not the one a prediction needs.)
+    snapshot: Dict[str, Tuple[int, Dict[int, List[float]]]] = {}
 
     def flush() -> None:
         nonlocal league_rate, rate_num, rate_den
-        for team, players, mins, scores in pending:
+        for team, players, mins, scores, when in pending:
             st = state[team]
+            for p, m in zip(players.tolist(), mins.tolist()):
+                if m > 0:
+                    last_played[p] = when
             played = dict(zip(players.tolist(), mins.tolist()))
             for p in list(st):
                 m = played.pop(p, 0.0)
@@ -207,6 +226,8 @@ def _roster_features(ev: pd.DataFrame, player_box: Optional[pd.DataFrame], batch
                 state[team] = {}            # rosters change between seasons: start again
                 team_season[team] = season_idx[i]
             st = state[team]
+            if not completed[i] and team not in snapshot:
+                snapshot[team] = (int(season_idx[i]), {p: list(v) for p, v in st.items()})
             weight = sum(v[0] for v in st.values())
             if weight >= 40.0:
                 out[f"roster_q_{side}"][i] = sum(v[0] * rating(p) for p, v in st.items()) / weight
@@ -222,17 +243,29 @@ def _roster_features(ev: pd.DataFrame, player_box: Optional[pd.DataFrame], batch
                 continue
             players = pidx[rows]
             out[f"roster_q_actual_{side}"][i] = float(sum(m * rating(p) for p, m in zip(players, mins)) / total)
-            pending.append((team, players, mins, gs[rows]))
+            pending.append((team, players, mins, gs[rows], starts[i]))
     flush()
     names = dict(zip(pidx.tolist(), pb["player_name"].tolist()))
     ids = dict(zip(pidx.tolist(), pb["player_id"].tolist()))
-    rosters = {
-        team: [{"player_id": ids[p], "name": names[p], "exp_min": round(v[0], 2), "role_min": round(v[1], 2),
-                "rating": round(float(rating(p)), 4)} for p, v in st.items()]
-        for team, st in state.items()
-    }
+
+    def seen(p: int) -> Optional[str]:
+        when = last_played.get(p)
+        if when is None:
+            return None
+        ts = pd.Timestamp(when)
+        ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+        return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    rosters, roster_season = {}, {}
+    for team, st in state.items():
+        season, players = snapshot.get(team, (team_season.get(team, -1), st))
+        roster_season[team] = int(season)
+        rosters[team] = [{"player_id": ids[p], "name": names[p], "exp_min": round(v[0], 2),
+                          "role_min": round(v[1], 2), "rating": round(float(rating(p)), 4),
+                          "last_played_utc": seen(p)} for p, v in players.items()]
     frame = pd.DataFrame(out)
     frame.attrs["rosters"] = rosters
+    frame.attrs["roster_season_idx"] = roster_season
     frame.attrs["league_rate"] = float(league_rate)
     return frame
 
@@ -253,6 +286,35 @@ def roster_quality(players: List[Dict[str, Any]], league_rate: float, regulation
     if weight < 40.0:
         return float("nan"), float("nan")
     return quality / weight, absence / regulation_minutes
+
+
+#: Leagues whose schedules mix in opponents from outside the league proper.
+THIN_HISTORY_LEAGUES = frozenset({"ncaam", "ncaaw"})
+THIN_HISTORY_GAMES = 10
+SEGMENT_THIN = "a side with fewer than 10 games on file in the previous year (mostly non-Division-I opponents)"
+SEGMENT_ESTABLISHED = "both sides established"
+
+
+def _games_in_prior_year(ev: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+    """How many games each side of each event had on the schedule in the 365
+    days before it (earlier days only), from the list of events alone."""
+    day = (ev["start_time_utc"].dt.tz_convert(DISPLAY_TZ_NAME).dt.tz_localize(None).dt.normalize()
+           - pd.Timestamp("1970-01-01")).dt.days.to_numpy()
+    home, away = ev["home_id"].to_numpy(), ev["away_id"].to_numpy()
+    days_of: Dict[str, List[int]] = {}
+    for h, a, d in zip(home, away, day):
+        days_of.setdefault(h, []).append(int(d))
+        days_of.setdefault(a, []).append(int(d))
+    sorted_days = {team: np.sort(np.asarray(v)) for team, v in days_of.items()}
+
+    def count(teams: np.ndarray) -> np.ndarray:
+        out = np.zeros(len(teams), dtype=int)
+        for i, team in enumerate(teams):
+            ds = sorted_days[team]
+            out[i] = int(np.searchsorted(ds, day[i], side="left") - np.searchsorted(ds, day[i] - 365, side="left"))
+        return out
+
+    return count(home), count(away)
 
 
 def build_winner_frame(store: Any, league: str, *, now: Any = None,
@@ -399,6 +461,12 @@ def build_winner_frame(store: Any, league: str, *, now: Any = None,
     df["tz_shift_b"] = sched["tz_shift_b"]
     df["rest_days_a"], df["rest_days_b"] = sched["rest_days_a"], sched["rest_days_b"]
     df["dq_no_roster"] = df["roster_q_diff"].isna().astype(float)
+    if league in THIN_HISTORY_LEAGUES:
+        # College schedules include games against lower-division opponents, which are close
+        # to certain and flatter a pooled accuracy figure.  This label - knowable before the
+        # game, never a model input - lets validation report the two kinds separately.
+        fewest = np.minimum(*_games_in_prior_year(ev))
+        df["segment"] = np.where(fewest < THIN_HISTORY_GAMES, SEGMENT_THIN, SEGMENT_ESTABLISHED)
 
     limitations = [
         "No pregame injury reports or confirmed lineups exist in the historical data, so the backtest "
@@ -411,13 +479,17 @@ def build_winner_frame(store: Any, league: str, *, now: Any = None,
         limitations.append("No player box scores on file: roster features are missing.")
     return FeatureFrame(
         league=league, market="winner", outcome=OutcomeType.BINARY, classes=("away", "home"), df=df,
-        feature_cols=list(WINNER_FEATURES), retrospective_cols=["roster_q_actual_diff"],
+        feature_cols=winner_features(league), retrospective_cols=["roster_q_actual_diff"],
         feature_notes=dict(FEATURE_LABELS), limitations=limitations, point_in_time=True,
         extra={
             "elo_params": elo_params.__dict__, "elo_tuning_grid_size": len(elo_grid), "slow_lr": slow_lr,
             "fast_lr": cfg.fast_lr, "burn_in_seasons": [int(s) for s in burn],
             "tuning_note": "Elo and efficiency update rates were tuned on the burn-in seasons only.",
             "rosters": roster.attrs.get("rosters", {}), "league_rate": roster.attrs.get("league_rate"),
+            # Season (block) of the game each team's rotation snapshot was taken for.
+            "roster_block": {team: int(seasons_sorted[idx]) for team, idx in
+                             (roster.attrs.get("roster_season_idx") or {}).items()
+                             if 0 <= idx < len(seasons_sorted)},
             "regulation_minutes": cfg.regulation_minutes,
         },
     )

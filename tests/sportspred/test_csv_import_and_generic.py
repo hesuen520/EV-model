@@ -181,3 +181,42 @@ def test_synthetic_generator_refuses_real_league_keys(store):
     generate_demo_league(store, "demo_duel", now="2026-11-12T12:00:00Z", home_adv=False, n_teams=6, n_seasons=3)
     assert store.events("demo_duel").empty and len(store.events("demo_duel", include_synthetic=True)) > 0
     assert int(store.query("SELECT COUNT(*) AS n FROM events WHERE is_synthetic=0")["n"][0]) == 0
+
+
+def test_a_blank_winner_is_never_turned_into_a_win_for_the_away_side(store, tmp_path):
+    """With one named winner in the file the winner column is a string column,
+    and a blank in it used to be read back as NaN - 'not None' - and so as the
+    away side."""
+    events = _csv(tmp_path, HEADER
+                  + "r1,2030,2030-04-02T14:00:00Z,final,Alpha,Beta,0,,,Alpha,\n"       # a named winner
+                  + "r2,2030,2030-04-03T14:00:00Z,final,Gamma,Delta,0,20,20,,\n"       # a 20-20 tie, winner blank
+                  + "r3,2030,2030-04-04T14:00:00Z,final,Alpha,Gamma,0,30,27,,\n")      # home win by the scores
+    import_events(store, LEAGUE, events, create_participants=True)
+    got = store.events(LEAGUE).set_index("provider_event_id")
+    assert got.loc["r1", "winner_id"] == got.loc["r1", "home_id"]
+    assert int(got.loc["r2", "is_draw"]) == 1 and pd.isna(got.loc["r2", "winner_id"])
+    assert got.loc["r3", "winner_id"] == got.loc["r3", "home_id"]
+
+
+def test_a_file_with_an_inconsistent_result_writes_nothing_at_all(store, tmp_path):
+    bad = _csv(tmp_path, HEADER
+               + "b1,2030,2030-04-02T14:00:00Z,final,Alpha,Beta,0,,,Alpha,\n"
+               + "b2,2030,2030-04-03T14:00:00Z,final,Gamma,Delta,0,,,Gamma,1\n"       # a winner and a draw
+               + "b3,2030,2030-04-04T14:00:00Z,final,Alpha,Gamma,0,30,27,Gamma,\n")   # winner contradicts the scores
+    with pytest.raises(CsvImportError) as err:
+        import_events(store, LEAGUE, bad, create_participants=True)
+    text = str(err.value)
+    assert "line 3: both a winner and a draw" in text and "line 4: winner 'Gamma' contradicts the scores" in text
+    assert store.events(LEAGUE).empty                          # nothing was written, events included
+
+
+def test_same_day_events_of_one_competitor_must_all_have_start_times_or_none(store, tmp_path):
+    mixed = _csv(tmp_path, HEADER.replace("status,", "status,time_precision,")
+                 + "m1,2030,2030-04-02T13:00:00Z,scheduled,datetime,Alpha,Beta,1,,,,\n"
+                 + "m2,2030,2030-04-02,scheduled,date,Alpha,Gamma,1,,,,\n")
+    with pytest.raises(CsvImportError, match="some with a start time and some without"):
+        import_events(store, LEAGUE, mixed, create_participants=True)
+    both_dated = _csv(tmp_path, HEADER.replace("status,", "status,time_precision,")
+                      + "m1,2030,2030-04-02,scheduled,date,Alpha,Beta,1,,,,\n"
+                      + "m2,2030,2030-04-02,scheduled,date,Alpha,Gamma,1,,,,\n", "ok.csv")
+    assert import_events(store, LEAGUE, both_dated, create_participants=True)["events_new"] == 2

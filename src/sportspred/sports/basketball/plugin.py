@@ -136,12 +136,27 @@ class BasketballPlugin(SportPlugin):
         if availability is None or availability.empty:
             return effect
         quality: Dict[str, Dict[str, float]] = {}
+        roster_block = frame.extra.get("roster_block") or {}
+        block = row.get("block")
         for side, team in (("a", row["side_a_id"]), ("b", row["side_b_id"])):
             players = rosters.get(team, [])
+            reports = availability[availability["team_id"] == team]
+            # The rotation snapshot belongs to the team's next game.  For a game of another
+            # season, or with no rotation on file, nothing can be applied: the model inputs
+            # stay as they are rather than being replaced by values from the wrong roster.
+            wrong_game = team in roster_block and block is not None and block == block \
+                and int(block) != int(roster_block[team])
+            if wrong_game or sum(p["exp_min"] for p in players) < 40.0:
+                same = {"q": row.get(f"roster_q_{side}"), "ab": row.get(f"absence_{side}")}
+                quality[side] = {**same, "wq": same["q"], "wab": same["ab"]}
+                for _, rep in reports.iterrows():
+                    effect.unmatched.append(f"{rep['player_name']} ({rep['status']}): no rotation on file for this "
+                                            "game, not applied to the model")
+                continue
             by_id = {str(p["player_id"]): p for p in players}
             by_name = {norm_text(p["name"]): p for p in players}
             out, back, doubt = [], [], []
-            for _, rep in availability[availability["team_id"] == team].iterrows():
+            for _, rep in reports.iterrows():
                 p = by_id.get(str(rep.get("player_id"))) or by_name.get(norm_text(rep["player_name"]))
                 status = str(rep["status"])
                 if p is None:
@@ -149,6 +164,15 @@ class BasketballPlugin(SportPlugin):
                         f"{rep['player_name']} ({status}): not in the recent rotation, no effect on the model")
                     continue
                 mins = p["exp_min"]
+                stated = rep.get("published_at_utc")
+                stated = stated if isinstance(stated, str) and stated else rep.get("collected_at_utc")
+                played = p.get("last_played_utc")
+                if status in ("out", "doubtful") and isinstance(stated, str) and played and stated < played:
+                    # He has played since he was listed: the statement is out of date.
+                    effect.unmatched.append(
+                        f"{p['name']} ({status}, stated {stated[:10]}): has played since (last on {played[:10]}); "
+                        "the statement is out of date and was not applied")
+                    continue
                 if status in ("out", "doubtful"):
                     out.append(p["player_id"])
                     effect.applied.append(

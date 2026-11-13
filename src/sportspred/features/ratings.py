@@ -222,6 +222,11 @@ def offdef_pregame(
     dfn = np.zeros(n_entities)
     seen = np.zeros(n_entities, dtype=int)
     last_season = np.full(n_entities, -1)
+    # Starting level of the league mean: the average of the first 200 values.  This is the
+    # one place that looks at results before they are "known", and it is harmless by
+    # construction: it only sets where the running mean starts, it reaches the first events
+    # of a history only (always inside a league's burn-in, which is never scored), and every
+    # feature built from these ratings is a difference in which the mean cancels.
     finite = np.concatenate([val_a[np.isfinite(val_a)][:200], val_b[np.isfinite(val_b)][:200]])
     mean = float(finite.mean()) if len(finite) else 0.0
     home = 0.0

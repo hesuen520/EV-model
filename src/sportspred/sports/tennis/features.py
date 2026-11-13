@@ -6,12 +6,15 @@ strength does not reset when he or she changes level; the model for one
 league is then fitted and validated on that league's matches only.
 
 **Time ordering.**  The source dates a match by its tournament's start date.
-All matches of one tournament week therefore form one batch: a match never
-uses another match of its own tournament, not even an earlier round.  That
-costs some information and removes any chance of using a later round to
-"predict" an earlier one.  Two-week events overlap the following week's
-tournaments; ratings are pairwise, so a player's rating still only contains
-his or her own earlier matches.
+All matches whose tournaments start in the same Monday-to-Sunday week form
+one batch: a match never uses another match of its own tournament, not even
+an earlier round, nor of any tournament starting that week.  That costs some
+information and removes any chance of using a later round to "predict" an
+earlier one.  For the same reason a tournament's rows count as results only
+once its week is over: asked for features as of a Wednesday, the builder
+does not know how that week's tournaments ended.  What remains: a two-week
+event is treated as known after its first week, and a tournament dated on a
+Sunday as known the next day; both reach other players' ratings only.
 
 Side A is the player whose ID sorts first - never the winner.
 
@@ -23,7 +26,7 @@ Features (weights learned in validation):
   points won, A's serve against B's return minus the reverse, with a slow and
   a fast memory;
 * ``rest_diff``, ``load_14d_diff`` - days since the previous tournament and
-  matches played in the previous 14 days (fatigue, or a lay-off);
+  matches played in the two previous tournament weeks (fatigue, or a lay-off);
 * ``exp_diff`` - rated matches behind each player;
 * ``bo5``, ``elo_diff_bo5`` - best-of-five matches favour the stronger player.
 
@@ -33,6 +36,7 @@ head-to-head records (tiny samples).
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -56,7 +60,7 @@ FEATURE_LABELS: Dict[str, str] = {
     "serve_edge": "serve against return, long-term (service points won, opponent-adjusted)",
     "serve_edge_fast": "serve against return, recent matches",
     "rest_diff": "days since the previous tournament",
-    "load_14d_diff": "matches played in the previous 14 days",
+    "load_14d_diff": "matches played in the two previous tournament weeks",
     "exp_diff": "rated matches behind each player",
     "bo5": "best-of-five match",
     "elo_diff_bo5": "rating gap in a best-of-five match",
@@ -90,42 +94,46 @@ def _pooled(store: Any, tour: str, now_ts: pd.Timestamp) -> pd.DataFrame:
     df = pd.concat(parts, ignore_index=True)
     if "round_order" not in df:
         df["round_order"] = 5
-    return df.sort_values(["start_time_utc", "round_order", "event_id"]).reset_index(drop=True)
+    df["round_order"] = df["round_order"].fillna(5)
+    # A fixture imported by CSV has no archive statistics row: take what the event itself says.
+    fmt = df["format_json"].map(lambda v: json.loads(v) if isinstance(v, str) and v else {})
+    for key in ("surface", "best_of"):
+        from_event = fmt.map(lambda d: d.get(key))
+        df[key] = df[key].where(df[key].notna(), from_event) if key in df else from_event
+    df = df.sort_values(["start_time_utc", "round_order", "event_id"]).reset_index(drop=True)
+    df["week_start"] = week_start(df["start_time_utc"])
+    # Archive rows carry the tournament's start date, whatever day the match was played.
+    # They are results only once that week is over; until then the builder must not know them.
+    dated_by_tournament = df["time_precision"].ne("datetime")
+    known = ~dated_by_tournament | (df["week_start"] + pd.Timedelta(days=7) <= now_ts)
+    too_early = df["completed"] & ~known
+    df.loc[too_early, ["score_a", "val_a", "val_b"]] = np.nan
+    df["completed"] = df["completed"] & known
+    return df
 
 
-def _load_14d(df: pd.DataFrame, completed: np.ndarray) -> np.ndarray:
-    """Completed matches of each side dated in the 14 days before this
-    tournament's start (same-date matches excluded)."""
-    n = len(df)
-    long = pd.concat([
-        pd.DataFrame({"row": np.arange(n), "who": df["a_id"].to_numpy(), "side": 0}),
-        pd.DataFrame({"row": np.arange(n), "who": df["b_id"].to_numpy(), "side": 1}),
-    ], ignore_index=True)
-    long["t"] = df["start_time_utc"].to_numpy()[long["row"]]
-    long["done"] = completed[long["row"]]
-    long = long.sort_values(["who", "t", "row"]).reset_index(drop=True)
-    days = (long["t"].astype("int64") // (86400 * 10 ** (9 if str(long["t"].dtype).endswith("ns, UTC]") else 6))).to_numpy()
-    who, done = long["who"].to_numpy(), long["done"].to_numpy()
-    out = np.zeros(len(long))
-    start = same = 0
-    for i in range(len(long)):
-        if i and who[i] != who[i - 1]:
-            start = same = i
-        while days[i] - days[start] > 14:
-            start += 1
-        if days[same] != days[i]:
-            same = i
-            while same > start and days[same - 1] == days[i]:
-                same -= 1
-        # rows start..same-1 are earlier dates within 14 days
-        lo = start
-        hi = i
-        while hi > lo and days[hi - 1] == days[i]:
-            hi -= 1
-        out[i] = done[lo:hi].sum()
-    load = np.zeros((n, 2))
-    load[long["row"].to_numpy(), long["side"].to_numpy()] = out
-    return load[:, 0] - load[:, 1]
+def week_start(start_time_utc: pd.Series) -> pd.Series:
+    """Monday 00:00 UTC of the week an event's date falls in."""
+    day = start_time_utc.dt.tz_convert("UTC").dt.tz_localize(None).dt.normalize()
+    return (day - pd.to_timedelta(day.dt.dayofweek, unit="D")).dt.tz_localize("UTC")
+
+
+def _load_prev_weeks(df: pd.DataFrame, completed: np.ndarray, weeks: int = 2) -> np.ndarray:
+    """Completed matches of each side in the ``weeks`` tournament weeks before
+    this one (side A minus side B).  Matches of this week are never counted."""
+    week = ((df["week_start"] - pd.Timestamp("1970-01-05", tz="UTC")).dt.days // 7).to_numpy()
+    counts: Dict[Tuple[str, int], int] = {}
+    for col in ("a_id", "b_id"):
+        who = df[col].to_numpy()
+        for i in np.flatnonzero(completed):
+            key = (who[i], int(week[i]))
+            counts[key] = counts.get(key, 0) + 1
+    out = np.zeros((len(df), 2))
+    for side, col in enumerate(("a_id", "b_id")):
+        who = df[col].to_numpy()
+        for i in range(len(df)):
+            out[i, side] = sum(counts.get((who[i], int(week[i]) - k), 0) for k in range(1, weeks + 1))
+    return out[:, 0] - out[:, 1]
 
 
 def build_tennis_frame(store: Any, league: str, market: str = "winner", *, now: Any = None,
@@ -140,7 +148,7 @@ def build_tennis_frame(store: Any, league: str, market: str = "winner", *, now: 
     year = df["start_time_utc"].dt.year.to_numpy()
     years = np.sort(np.unique(year))
     season_idx = np.searchsorted(years, year)
-    batch = pd.factorize(df["start_time_utc"].dt.strftime("%Y-%m-%d"))[0]
+    batch = pd.factorize(df["week_start"])[0]             # one batch per tournament week
     zeros = np.zeros(len(df))
     score = df["score_a"].to_numpy(dtype=float)
 
@@ -201,7 +209,7 @@ def build_tennis_frame(store: Any, league: str, market: str = "winner", *, now: 
         "info_cutoff_utc": pd.to_datetime(pd.Series(prev[batch], index=df.index), utc=True),
         "elo_a": elo_a, "elo_b": elo_b, "elo_diff": elo_a - elo_b, "surf_elo_diff": surf_diff,
         "serve_edge": edges["serve_edge"], "serve_edge_fast": edges["serve_edge_fast"],
-        "rest_diff": rest_diff, "load_14d_diff": _load_14d(df, completed),
+        "rest_diff": rest_diff, "load_14d_diff": _load_prev_weeks(df, completed),
         "exp_diff": np.log1p(played_a) - np.log1p(played_b), "games_played_a": played_a,
         "bo5": bo5, "elo_diff_bo5": (elo_a - elo_b) * bo5,
         "surface": surface.replace("", pd.NA),
@@ -214,7 +222,10 @@ def build_tennis_frame(store: Any, league: str, market: str = "winner", *, now: 
         feature_cols=list(TENNIS_FEATURES), feature_notes=dict(FEATURE_LABELS), point_in_time=True,
         limitations=[
             "Matches are dated by tournament week, not by day: a match never uses results from its own "
-            "tournament, including earlier rounds, so in-tournament form and fatigue are invisible.",
+            "tournament or from any tournament starting the same week, including earlier rounds, so "
+            "in-tournament form and fatigue are invisible.",
+            "A two-week event counts as finished after its first week, and a tournament dated on a Sunday "
+            "after one day; this reaches other players' ratings only.",
             "No withdrawal, injury or fitness information; no court speed, altitude, indoor/outdoor or weather.",
             "Rankings, seedings and head-to-head records are deliberately not inputs.",
             "The source is a snapshot mirror ending in mid-2026 with no upcoming matches.",

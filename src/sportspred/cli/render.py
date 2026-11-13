@@ -28,6 +28,11 @@ def _pct(x: Any) -> str:
     return "n/a" if x is None or x != x else f"{100 * float(x):.1f}%"
 
 
+def _line(value: Any) -> str:
+    """' +3.5' for a market with a line; nothing when there is none (stored as NULL, read back as NaN)."""
+    return "" if value is None or value != value else f" {value:+g}"
+
+
 def render_slate_table(preds: Iterable[Mapping[str, Any]]) -> str:
     rows = []
     for p in preds:
@@ -36,7 +41,7 @@ def render_slate_table(preds: Iterable[Mapping[str, Any]]) -> str:
             "start (HST)": d["start_hst"], "league": d["league"],
             "event": f"{d['side_b']} at {d['side_a']}" if d.get("side_a_role") == "home"
             else f"{d['side_a']} v {d['side_b']}",
-            "market": p["market"] + ("" if p.get("line") is None else f" {p['line']:+g}"),
+            "market": p["market"] + _line(p.get("line")),
             "selection": p["selection_label"], "prob": _pct(p.get("prob")),
             "model range": f"{_pct(p.get('prob_low'))}-{_pct(p.get('prob_high'))}",
             "status": p["rec_status"], "confidence": p["confidence"].get("label", ""),
@@ -58,7 +63,7 @@ def render_prediction(p: Mapping[str, Any]) -> str:
     head = f"{d['side_b']} at {d['side_a']}" if d.get("side_a_role") == "home" else f"{d['side_a']} v {d['side_b']}"
     venue = ", ".join(x for x in (d.get("venue"), d.get("venue_city")) if x) or "venue not published"
     site = "" if d.get("neutral_site") is None else (" (neutral site)" if d["neutral_site"] else "")
-    line = "" if p.get("line") is None else f" {p['line']:+g}"
+    line = _line(p.get("line"))
     lines = [
         f"{d['competition']} | {head}",
         f"  Start: {d['start_hst']} | Venue: {venue}{site}",

@@ -101,7 +101,8 @@ def _participants(store: Any, league: str, names: Sequence[str], *, create: bool
     plugin, spec = get_league(league)
     unique = [n for n in dict.fromkeys(names) if n]
     frame = pd.DataFrame({"name": unique})
-    found = store.resolve_participants(frame, sport=spec.sport, scope=league, kind=kind, create=False,
+    found = store.resolve_participants(frame, sport=spec.sport, scope=plugin.participant_scope(league),
+                                       kind=plugin.participant_kind(league), create=False,
                                        is_synthetic=league.startswith("demo_"))
     unknown = [n for n, pid in zip(unique, found) if pid is None]
     if unknown and not create:
@@ -131,6 +132,8 @@ def import_events(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
     valid = {s.value for s in EventStatus}
     names = list(df["home"]) + list(df["away"])
     rows, results, seen = [], [], set()
+    day_keys: List[str] = []
+    precisions: List[str] = []
     for i, row in df.iterrows():
         line = i + 2
         status = (_cell(row, "status") or "").lower()
@@ -169,6 +172,14 @@ def import_events(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
             errors.append(f"line {line}: give both scores or neither")
         if winner is not None and norm_text(winner) not in (norm_text(home), norm_text(away)):
             errors.append(f"line {line}: winner {winner!r} is neither home nor away")
+        # Everything the store would refuse is refused here, before anything is written.
+        if winner is not None and draw:
+            errors.append(f"line {line}: both a winner and a draw are given")
+        if winner is not None and hs is not None and aw is not None and hs != aw \
+                and (norm_text(winner) == norm_text(home)) != (hs > aw):
+            errors.append(f"line {line}: winner {winner!r} contradicts the scores {hs:g}-{aw:g}")
+        if (hs is not None and hs < 0) or (aw is not None and aw < 0):
+            errors.append(f"line {line}: a score is negative")
         if status == "final" and not has_result:
             errors.append(f"line {line}: status is 'final' but no score, winner or draw is given")
         rows.append({
@@ -181,6 +192,20 @@ def import_events(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
         })
         results.append({"home_score": hs, "away_score": aw, "winner_name": winner, "is_draw": int(draw),
                         "method": _cell(row, "method"), "has": has_result})
+        day_keys.append((start or "")[:10])
+        precisions.append(precision)
+    # One competitor, one date, one event with a start time and another without: which came
+    # first cannot be known, so the earlier-looking one could be rated with the other's result.
+    by_day: Dict[tuple, List[int]] = {}
+    for idx, r in enumerate(rows):
+        for who in (r["home_name"], r["away_name"]):
+            by_day.setdefault((norm_text(who or ""), day_keys[idx], who), []).append(idx)
+    for (key, day, who), idxs in by_day.items():
+        kinds = {precisions[j] == "datetime" for j in idxs}
+        if key and day and len(kinds) > 1:
+            errors.append(
+                f"lines {', '.join(str(j + 2) for j in idxs)}: {who} has {len(idxs)} events on {day}, some with a "
+                "start time and some without; give all of them a start time, or none, so their order is not guessed")
     ids: Dict[str, str] = {}
     if not create_participants:
         ids = _participants(store, league, names, create=False, kind="team", errors=errors)
@@ -189,19 +214,23 @@ def import_events(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
     source = _source(store, path, "events", league)
     if create_participants:
         frame = pd.DataFrame({"name": [n for n in dict.fromkeys(names) if n]})
-        made = store.resolve_participants(frame, sport=spec.sport, scope=league, kind="team",
+        made = store.resolve_participants(frame, sport=spec.sport, scope=plugin.participant_scope(league),
+                                          kind=plugin.participant_kind(league),
                                           is_synthetic=league.startswith("demo_"))
         ids = dict(zip(frame["name"], made))
     events = pd.DataFrame(rows)
     events["home_id"] = events["home_name"].map(ids)
     events["away_id"] = events["away_name"].map(ids)
     stored, report = store.upsert_events(events, sport=spec.sport, source_id=source)
+    # Winners are taken from the parsed rows, not from a DataFrame column: a blank read
+    # back from a string column is NaN, which is not None and must never become a winner.
+    winner_ids = [
+        None if r["winner_name"] is None else (h if norm_text(r["winner_name"]) == norm_text(hn) else a)
+        for r, hn, h, a in zip(results, events["home_name"], events["home_id"], events["away_id"])
+    ]
     res = pd.DataFrame(results)
     res["event_id"] = stored["event_id"].to_numpy()
-    res["winner_id"] = [
-        None if w is None else (h if norm_text(w) == norm_text(hn) else a)
-        for w, hn, h, a in zip(res["winner_name"], events["home_name"], events["home_id"], events["away_id"])
-    ]
+    res["winner_id"] = pd.Series(winner_ids, index=res.index, dtype="object")
     res = res[res["has"]]
     n_results = 0
     if len(res):

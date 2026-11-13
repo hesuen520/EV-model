@@ -89,3 +89,39 @@ def test_doubtful_is_treated_as_out_probable_as_playing_and_returns_are_restored
     back = PLUGIN.apply_availability("nba", "winner", _row(), _frame(), _report((HOME, "Returning Big", "available")))
     assert back.row["roster_q_a"] > _row()["roster_q_a"]
     assert any("restored to a 30-minute role" in text for text in back.applied)
+
+
+def test_an_out_statement_older_than_the_players_last_game_is_not_applied():
+    """Listed out three weeks ago, has played nine games since: the statement
+    is out of date and must not remove him from the rotation."""
+    roster = [dict(p, last_played_utc="2030-01-10T03:00:00Z") for p in ROSTER]
+    frame = FeatureFrame("nba", "winner", OutcomeType.BINARY, ("away", "home"), pd.DataFrame(), [],
+                         extra={"rosters": {HOME: roster, AWAY: roster}, "league_rate": RATE,
+                                "regulation_minutes": 240.0})
+    stale = pd.DataFrame([{"team_id": HOME, "player_name": "Star Guard", "status": "out", "player_id": None,
+                           "published_at_utc": None, "collected_at_utc": "2029-12-20T18:00:00Z"}])
+    effect = PLUGIN.apply_availability("nba", "winner", _row(), frame, stale)
+    assert effect.row["roster_q_a"] == pytest.approx(_row()["roster_q_a"]) and not effect.applied
+    assert any("has played since" in text and "not applied" in text for text in effect.unmatched)
+    # The same statement made after his last game is applied.
+    fresh = stale.assign(collected_at_utc="2030-01-11T18:00:00Z")
+    assert PLUGIN.apply_availability("nba", "winner", _row(), frame, fresh).row["roster_q_a"] < _row()["roster_q_a"]
+
+
+def test_no_rotation_for_this_game_leaves_the_inputs_alone_instead_of_blanking_them():
+    row = _row()
+    row["block"] = 2030.0
+    # The only snapshot on file belongs to another season's game.
+    frame = FeatureFrame("nba", "winner", OutcomeType.BINARY, ("away", "home"), pd.DataFrame(), [],
+                         extra={"rosters": {HOME: ROSTER, AWAY: ROSTER}, "roster_block": {HOME: 2031, AWAY: 2030},
+                                "league_rate": RATE, "regulation_minutes": 240.0})
+    effect = PLUGIN.apply_availability("nba", "winner", row, frame,
+                                       _report((HOME, "Star Guard", "out"), (AWAY, "Star Guard", "out")))
+    assert effect.row["roster_q_a"] == pytest.approx(row["roster_q_a"])          # home: wrong game, untouched
+    assert effect.row["roster_q_b"] < row["roster_q_b"]                          # away: applied as usual
+    assert any("no rotation on file for this game" in text for text in effect.unmatched)
+    # An empty rotation does not turn the input into a missing value either.
+    empty = FeatureFrame("nba", "winner", OutcomeType.BINARY, ("away", "home"), pd.DataFrame(), [],
+                         extra={"rosters": {HOME: [], AWAY: ROSTER}, "league_rate": RATE, "regulation_minutes": 240.0})
+    effect = PLUGIN.apply_availability("nba", "winner", row, empty, _report((HOME, "Anybody", "questionable")))
+    assert effect.row["roster_q_a"] == pytest.approx(row["roster_q_a"]) and not effect.uncertain_a

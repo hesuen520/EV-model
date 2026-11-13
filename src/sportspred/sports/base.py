@@ -270,6 +270,16 @@ class SportPlugin(ABC):
         raise KeyError(f"{self.sport} plugin has no league {key!r}")
 
     # -- data -----------------------------------------------------------------
+    def participant_scope(self, league: str) -> str:
+        """The pool in which this league's participant names are matched.  The
+        league itself by default; leagues that share competitors (the levels of
+        one tennis tour) return a common scope so that a fixture imported for
+        one of them finds the players and ratings built from all of them."""
+        return league
+
+    def participant_kind(self, league: str) -> str:
+        return "team"
+
     @abstractmethod
     def ingest(self, store: Any, league: str, *, seasons: Optional[Sequence[int]] = None,
                refresh: Optional[bool] = None, fetcher: Any = None) -> IngestReport:

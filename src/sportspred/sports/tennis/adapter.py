@@ -48,7 +48,8 @@ _ITF_W = {"10", "15", "25", "35", "40", "50", "60", "75", "80", "100", "50+H", "
 
 
 def _is_q(df: pd.DataFrame) -> pd.Series:
-    return df["round"].astype(str).str.upper().str.startswith("Q")
+    """Qualifying rounds are Q1, Q2, Q3 ...  "QF" is the main-draw quarter-final."""
+    return df["round"].astype(str).str.upper().str.match(r"^Q\d")
 
 
 @dataclass(frozen=True)

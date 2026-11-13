@@ -290,6 +290,26 @@ def _qb_features(ev: pd.DataFrame, extra: pd.DataFrame, qb_stats: pd.DataFrame, 
     starters = {"a": extra["home_qb_id"].to_numpy(dtype=object), "b": extra["away_qb_id"].to_numpy(dtype=object)}
     for side, col in (("a", "home_qb_name"), ("b", "away_qb_name")):
         names.update({q: nm for q, nm in zip(starters[side], extra[col]) if isinstance(q, str)})
+    # The schedule file's quarterback is not always the one who played.  For a
+    # played game the starter is the listed quarterback if he has a stat line
+    # for his team in that game, otherwise the team's quarterback with the
+    # most plays.  (Used after the slate for the next game's incumbent, and
+    # for the retrospective actual-starter columns.)
+    corrected = 0
+    if "team_id" in qb_stats.columns:
+        qb_team = qb_stats["team_id"].to_numpy()
+        for i in np.flatnonzero(played):
+            rows = rows_of.get(eids[i])
+            if rows is None:
+                continue
+            for side, team in (("a", homes[i]), ("b", aways[i])):
+                mine = [r for r in rows if qb_team[r] == team]
+                if not mine:
+                    continue
+                listed = starters[side][i]
+                if not isinstance(listed, str) or listed not in {qb_id[r] for r in mine}:
+                    starters[side][i] = qb_id[max(mine, key=lambda r: qb_plays[r])]
+                    corrected += 1
     epa_sum: Dict[str, float] = {}
     play_sum: Dict[str, float] = {}
     career: Dict[str, float] = {}
@@ -341,6 +361,7 @@ def _qb_features(ev: pd.DataFrame, extra: pd.DataFrame, qb_stats: pd.DataFrame, 
             pending.append(i)
     flush()
     table = {
+        "starters_corrected_from_box_score": int(corrected),
         "prior": float(prior),
         "qbs": {q: {"name": names.get(q, q), "rating": round(rating(q), 5), "plays": round(career[q], 1)}
                 for q in career},
@@ -551,8 +572,10 @@ def build_frame(store: Any, league: str, market: str = "winner", *, now: Any = N
         f"{counts['n_level']} {level_word} out of {counts['n_played']} played games have no binary outcome and "
         "are excluded from fitting and scoring (they still feed the ratings).",
         "No pregame injury reports, announced starters or depth charts exist in the historical data, so the "
-        "backtest cannot include late availability news. The selectable models assume each team starts the "
-        "quarterback who started its previous game.",
+        "backtest cannot include late availability news."
+        + (" The selectable models assume each team starts the quarterback who started its previous game "
+           "(the listed starter, corrected from the box score when he did not play)."
+           if "qb" in families else " No quarterback or player information is modelled for this league."),
     ]
     if market != "winner":
         limitations.append(

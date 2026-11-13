@@ -107,4 +107,5 @@ def register(main: click.Group) -> None:
         click.echo("\nNote: historical pregame check states do not exist, so this covers the probability and "
                    "selection logic, not the FINAL-status filter applied live.")
         ctx.store.write_table(league, f"combo_backtest_{market}",
-                              pd.concat([pd.DataFrame(v).assign(period=k) for k, v in result.items()]))
+                              pd.concat([pd.DataFrame(v).assign(period=k) for k, v in result.items()]),
+                              mode="replace")

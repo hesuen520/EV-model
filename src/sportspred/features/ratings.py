@@ -207,7 +207,9 @@ def offdef_pregame(
     where ``def`` is what a side concedes above the league mean.  After each
     event the surprise (actual minus expected) moves A's offence and B's
     defence by ``lr`` times the surprise - so a big night against a strong
-    defence counts for more than the same night against a weak one.  ``lr``
+    defence counts for more than the same night against a weak one.  When a
+    side has several events in one batch the updates are damped so the batch
+    as a whole can never overshoot.  ``lr``
     sets the memory: roughly the last ``2/lr - 1`` events dominate, e.g.
     ``lr=0.25`` ~ the last 7 and ``lr=0.05`` ~ the last 39.
 
@@ -263,9 +265,21 @@ def offdef_pregame(
                 ) - home_new)
             seen[a_idx[t]] += 1
             seen[b_idx[t]] += 1
+        # An entity with several events in one batch (a pooled opponent, a
+        # player through a tournament week) must not take the plain sum of the
+        # updates: n updates at rate lr would have gain n * lr, which
+        # overshoots and can diverge.  Each update is weighted so that the
+        # batch has the gain of n successive updates, 1 - (1 - lr)^n <= 1.
+        # With one event per batch this is exactly lr.
+        n_off: Dict[int, int] = {}
+        n_def: Dict[int, int] = {}
+        for attacker, defender, _ in updates:
+            n_off[attacker] = n_off.get(attacker, 0) + 1
+            n_def[defender] = n_def.get(defender, 0) + 1
         for attacker, defender, err in updates:
-            off[attacker] += lr * err
-            dfn[defender] += lr * err
+            ka, kd = n_off[attacker], n_def[defender]
+            off[attacker] += (lr if ka == 1 else (1.0 - (1.0 - lr) ** ka) / ka) * err
+            dfn[defender] += (lr if kd == 1 else (1.0 - (1.0 - lr) ** kd) / kd) * err
         mean, home = mean_new, home_new
         i = j
     return out

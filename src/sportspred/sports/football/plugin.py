@@ -191,13 +191,15 @@ class FootballPlugin(SportPlugin):
                          burn_in_blocks=cfg.burn_in_seasons, min_block_events=max(50, int(0.9 * typical)))
 
     def required_checks(self, league: str, market: str) -> List[CheckSpec]:
+        qb_why = ("the quarterback is the largest single-player effect; the model assumes the incumbent starts "
+                  "unless told otherwise" if league == "nfl" else
+                  "the quarterback is the largest single-player effect and this league's model has no "
+                  "quarterback information at all")
         checks = [
             CheckSpec("injury_report", "injury / availability report", scope="team", max_age_hours=24.0,
                       why="the final game-status report and the inactive list change who plays"),
             CheckSpec("starting_qb", "starting quarterback confirmed", scope="team", max_age_hours=24.0,
-                      recheck_within_hours=2.0,
-                      why="the quarterback is the largest single-player effect; the model assumes the "
-                          "incumbent starts unless told otherwise"),
+                      recheck_within_hours=2.0, why=qb_why),
         ]
         if league == "nfl":
             checks.append(CheckSpec(
@@ -271,16 +273,27 @@ class FootballPlugin(SportPlugin):
                 value[side] = qbs[starter]["rating"] if starter in qbs else prior
                 note = "" if starter in qbs else " (no earlier games on file: rated as an inexperienced quarterback)"
                 effect.applied.append(f"{starter_name} named as the starting quarterback ({rep['status']}){note}")
+            # Statements are read in time order and the newest one about the
+            # starter decides: a later confirmation clears an earlier "doubtful",
+            # and a later "out" overrides an earlier confirmation.
+            healthy = value[side]
+            state, note = "plays", None
             for _, rep in reps.iterrows():
                 text = f"{rep['player_name']} ({rep['status']})"
                 if norm_text(rep["player_name"]) != norm_text(starter_name):
                     effect.unmatched.append(text + " - reported but not used by this model")
                 elif rep["status"] in ("out", "doubtful"):
-                    value[side] = prior
-                    effect.applied.append(f"{text}: an inexperienced replacement quarterback is assumed")
+                    state, note = "out", f"{text}: an inexperienced replacement quarterback is assumed"
                 elif rep["status"] in ("questionable", "uncertain"):
-                    worst[side] = prior
-                    (effect.uncertain_a if side == "a" else effect.uncertain_b).append(f"{text}, quarterback")
+                    state, note = "doubt", f"{text}, quarterback"
+                else:
+                    state, note = "plays", None
+            if state == "out":
+                value[side] = prior
+                effect.applied.append(note)
+            elif state == "doubt":
+                value[side], worst[side] = healthy, prior
+                (effect.uncertain_a if side == "a" else effect.uncertain_b).append(note)
         effect.row = expected_qb_values(row, value["a"], value["b"])
         effect.worst_case_rows = {
             side: expected_qb_values(row, worst.get("a", value["a"]) if side == "a" else value["a"],
@@ -308,7 +321,9 @@ class FootballPlugin(SportPlugin):
                     f"{side}: assumes {table['qbs'].get(inc, {}).get('name', inc)} (started the previous game) "
                     "starts at quarterback unless a statement below says otherwise")
         exp.availability_assumptions.append(
-            "No injury report was used for any other position; the ratings reflect who has been playing.")
+            "No injury report was used for any other position; the ratings reflect who has been playing."
+            if table.get("teams") else
+            "No player, quarterback or injury information is modelled; the ratings reflect results only.")
         if row.get("dq_no_qb_history") == 1.0:
             exp.missing_data.append("no earlier start on file for one side: quarterback features are missing")
         if row.get("dq_no_team_stats") == 1.0:

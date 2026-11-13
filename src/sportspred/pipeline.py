@@ -54,7 +54,7 @@ def validate_league(store: Store, league: str, market: str = "winner", *,
     )
     report["feature_frame"] = {k: v for k, v in frame.extra.items() if k not in ("rosters", "names")}
     report["run_id"] = store.save_validation_run(report)
-    store.write_table(league, f"oos_{market}", oos, is_synthetic=is_demo_league(league))
+    store.write_table(league, f"oos_{market}", oos, is_synthetic=is_demo_league(league), mode="replace")
     return report, oos
 
 

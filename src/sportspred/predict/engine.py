@@ -211,6 +211,16 @@ def predict_league(
                        f"store: {results_through}); ratings are out of date until results are refreshed"),
             "checked_at_utc": iso_z(now_dt), "published_at_utc": None, "source_id": None,
         })
+        if ev["time_precision"] != "datetime":
+            # The stored instant of a date-only event is a placeholder, so no
+            # freshness window can honestly be judged against it.
+            checks.append({
+                "key": "start_time_published", "label": "start time published", "subject": "event",
+                "state": CheckState.MISSING.value,
+                "detail": "the source gives only a date for this event; a published start time is needed before "
+                          "pregame checks can be judged against it",
+                "checked_at_utc": iso_z(now_dt), "published_at_utc": None, "source_id": None,
+            })
         missing = [c for c in feature_names if c in row.index and row[c] != row[c]]
         quality = _data_quality(row, frame, checks, missing)
 

@@ -59,7 +59,12 @@ def normalize_cfb(raw: pd.DataFrame, league: str, season: int) -> pd.DataFrame:
     raw = raw[keep]
     start = pd.to_datetime(raw["start_date"], utc=True, format="ISO8601", errors="coerce")
     local = start.dt.tz_convert(_LOCAL_TZ)
-    tbd = raw["start_time_tbd"].fillna(False).astype(bool) | ((local.dt.hour == 0) & (local.dt.minute == 0))
+    # Older files have no flag: there, local midnight is the placeholder for
+    # an unannounced kickoff.  Where the flag exists it alone decides, so a
+    # genuine late kickoff (Hawaii) is not mistaken for a placeholder.
+    flag = raw["start_time_tbd"]
+    midnight = (local.dt.hour == 0) & (local.dt.minute == 0)
+    tbd = flag.fillna(False).astype(bool) | (flag.isna() & midnight)
     # A kickoff that is still "to be announced" is a placeholder at local
     # midnight: keep the calendar date and say that the time is not known.
     date_only = pd.to_datetime(local.dt.strftime("%Y-%m-%d"), format="%Y-%m-%d").dt.tz_localize("UTC")
@@ -95,7 +100,13 @@ def normalize_cfb(raw: pd.DataFrame, league: str, season: int) -> pd.DataFrame:
         "conference_game": raw["conference_game"].fillna(False).astype(bool).astype(int),
     })
     df = df[df["start_time_utc"].notna() & (df["home_espn"] != df["away_espn"])]
-    return df.drop_duplicates("provider_event_id", keep="last").reset_index(drop=True)
+    df = df.drop_duplicates("provider_event_id", keep="last")
+    # The source occasionally carries one game twice under two IDs (a
+    # date-only copy and a timed copy).  Keep one record per pairing and local
+    # date, preferring the timed one, so a result is never applied twice.
+    df = df.sort_values("time_precision")          # "date" < "datetime": the timed copy sorts last
+    df = df.drop_duplicates(["home_espn", "away_espn", "local_date"], keep="last")
+    return df.sort_values(["start_time_utc", "provider_event_id"]).reset_index(drop=True)
 
 
 def ingest_cfb(store, league: str, *, seasons: Optional[Sequence[int]] = None,
@@ -145,6 +156,17 @@ def ingest_cfb(store, league: str, *, seasons: Optional[Sequence[int]] = None,
 
     events, up = store.upsert_events(sched, sport="football")
     report.warnings += up.issues
+    # Records of the ingested seasons that the source no longer carries, or
+    # that were duplicates of a game kept above, are retired (logged, never
+    # deleted) so their results cannot be applied a second time.
+    on_file = store.query(
+        "SELECT event_id, season FROM events WHERE league=? AND provider=? AND status != 'canceled'",
+        [league, PROVIDER])
+    gone = on_file[on_file["season"].isin(set(sched["season"])) & ~on_file["event_id"].isin(set(events["event_id"]))]
+    if len(gone):
+        n = store.cancel_events(gone["event_id"].tolist(),
+                                "record withdrawn by the source or a duplicate of another record of the same game")
+        report.warnings.append(f"{n} duplicate or withdrawn game records were retired")
     final = events[events["status"] == "final"]
     store.upsert_results(final[["event_id", "home_score", "away_score", "source_id"]])
     unscored = int((events["status"] == "unknown").sum())

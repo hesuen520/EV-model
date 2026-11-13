@@ -99,51 +99,102 @@ class HockeyPlugin(SportPlugin):
         return [
             CheckSpec("starting_goalie", "confirmed starting goalie", scope="team", max_age_hours=6.0,
                       recheck_within_hours=2.0,
-                      why="the starter is the largest single pregame swing and is confirmed only on game day"),
+                      why="the starter is confirmed only on game day; an unconfirmed starter is an unverified "
+                          "assumption, even though the fitted model gives the goalie little weight"),
             CheckSpec("injury_report", "injuries and scratches", scope="team", max_age_hours=24.0,
                       why="skater absences are not in the model and must be checked by hand"),
             CheckSpec("prior_games_complete", "both teams' earlier games are final", scope="event",
                       max_age_hours=1e9, why="ratings and rest are only current once earlier games are played"),
         ]
 
+    #: A starting-goalie confirmation counts for the game it names, or for a
+    #: game starting within this many hours of when it was collected.
+    CONFIRMATION_HOURS = 24.0
+
+    @staticmethod
+    def _goalie_key(name: Any) -> str:
+        """``"Connor Hellebuyck"`` and ``"C. Hellebuyck"`` -> ``"c hellebuyck"``
+        (the box scores abbreviate first names; published reports do not)."""
+        parts = norm_text(name).split()
+        return "" if not parts else (parts[0][0] + " " + " ".join(parts[1:]) if len(parts) > 1 else parts[0])
+
     def apply_availability(self, league: str, market: str, row: pd.Series, frame: FeatureFrame,
                            availability: pd.DataFrame) -> AvailabilityEffect:
-        """Use a confirmed starting goalie (role ``starting_goalie``, status
-        ``available``) or a ruled-out goalie to replace the assumed starter.
-        Skater news is listed but not quantified by this model."""
+        """Use published goalie news in place of the assumed starter.
+
+        * a confirmed starter (role ``starting_goalie``, status ``available``)
+          for this game replaces the assumed one; a confirmed starter the
+          model has no record of leaves the goalie input missing, never the
+          wrong goalie;
+        * a goalie listed out or doubtful is not expected to start;
+        * a questionable / uncertain / probable starter stays in, and the
+          worst case (the next goalie starts) is built so the engine can make
+          the selection CONDITIONAL;
+        * skater news is listed but not quantified by this model.
+        """
         effect = AvailabilityEffect(row=row.copy())
         goalies: Dict[str, List[Dict[str, Any]]] = frame.extra.get("goalies") or {}
         if availability is None or availability.empty:
             return effect
         effect.quantified = bool(goalies)
         new = row.copy()
+        worst: Dict[str, float] = {}
+        start = pd.Timestamp(row["start_time_utc"])
         for side, team in (("a", row["side_a_id"]), ("b", row["side_b_id"])):
             roster = goalies.get(team, [])
-            by_name = {norm_text(g["name"]): g for g in roster}
-            confirmed, ruled_out = None, []
-            for _, rep in availability[availability["team_id"] == team].iterrows():
-                goalie = by_name.get(norm_text(rep["player_name"]))
-                status = str(rep["status"])
-                if goalie is None:
-                    text = f"{rep['player_name']} ({status})"
+            by_key = {self._goalie_key(g["name"]): g for g in roster}
+            by_id = {str(g["player_id"]): g for g in roster}
+            confirmed, ruled_out, doubt = None, [], []
+            unknown_starter = False
+            reps = availability[availability["team_id"] == team].sort_values("collected_at_utc")
+            for _, rep in reps.iterrows():
+                status, role = str(rep["status"]), str(rep.get("role") or "")
+                is_goalie_role = role == "starting_goalie"
+                goalie = by_id.get(str(rep.get("player_id"))) or by_key.get(self._goalie_key(rep["player_name"]))
+                text = f"{rep['player_name']} ({status})"
+                if goalie is None and not is_goalie_role:
                     if status in ("questionable", "uncertain", "doubtful", "probable"):
                         (effect.uncertain_a if side == "a" else effect.uncertain_b).append(
                             text + " - skater, effect not quantified")
                     else:
                         effect.unmatched.append(text + ": skater availability is not an input of this model")
                     continue
-                if status == "available" and str(rep.get("role") or "") == "starting_goalie":
-                    confirmed = goalie["player_id"]
-                    effect.applied.append(f"{goalie['name']} confirmed as starting goalie")
-                elif status in ("out", "doubtful"):
+                if is_goalie_role:
+                    same_event = isinstance(rep.get("event_id"), str) and rep["event_id"] == row["event_id"]
+                    age_h = (start - pd.Timestamp(rep["collected_at_utc"])).total_seconds() / 3600.0
+                    if not same_event and not (0.0 <= age_h <= self.CONFIRMATION_HOURS):
+                        effect.unmatched.append(text + ": starting-goalie statement is not for this game; ignored")
+                        continue
+                name = goalie["name"] if goalie else str(rep["player_name"])
+                if status == "available" and is_goalie_role:
+                    confirmed, unknown_starter, doubt = (goalie["player_id"] if goalie else None), goalie is None, []
+                    effect.applied.append(
+                        f"{name} confirmed as starting goalie" if goalie else
+                        f"{name} confirmed as starting goalie, but the model has no record of him: "
+                        "the goalie input is left missing")
+                elif status in ("out", "doubtful") and goalie is not None:
                     ruled_out.append(goalie["player_id"])
-                    effect.applied.append(f"{goalie['name']} {status}: not expected to start")
-            if confirmed is None and not ruled_out:
-                continue
-            rating, _ = starter_rating(roster, confirmed=confirmed, ruled_out=ruled_out)
-            new[f"goalie_sv_{side}"] = float("nan") if rating is None else rating
+                    if confirmed == goalie["player_id"]:
+                        confirmed = None
+                    effect.applied.append(f"{name} {status}: not expected to start")
+                elif status in ("questionable", "uncertain", "probable") and goalie is not None:
+                    doubt.append(goalie["player_id"])
+                    (effect.uncertain_a if side == "a" else effect.uncertain_b).append(f"{name} ({status}), goalie")
+            if unknown_starter:
+                new[f"goalie_sv_{side}"] = float("nan")
+            elif confirmed is not None or ruled_out:
+                rating, _ = starter_rating(roster, confirmed=confirmed, ruled_out=ruled_out)
+                new[f"goalie_sv_{side}"] = float("nan") if rating is None else rating
+            if doubt:
+                rating, _ = starter_rating(roster, ruled_out=ruled_out + doubt)
+                worst[side] = float("nan") if rating is None else rating
         new["goalie_diff"] = new["goalie_sv_a"] - new["goalie_sv_b"]
         effect.row = new
+        for side, value in worst.items():
+            alt = new.copy()
+            alt[f"goalie_sv_{side}"] = value
+            alt["goalie_diff"] = alt["goalie_sv_a"] - alt["goalie_sv_b"]
+            effect.worst_case_rows[side] = alt
         return effect
 
     def explain(self, league: str, market: str, row: pd.Series, frame: FeatureFrame,
@@ -179,7 +230,9 @@ class HockeyPlugin(SportPlugin):
                 f"{pick if sign * row['xg5_diff'] > 0 else other}")
         if (row.get("b2b_a") if pick_home else row.get("b2b_b")) == 1.0:
             exp.upset_risks.append(f"{pick} are on the second night of a back-to-back")
-        exp.upset_risks.append("a different starting goalie than assumed can move this probability materially")
+        exp.upset_risks.append(
+            "the starting goalie is assumed, not confirmed; the fitted model gives the goalie little weight, so a "
+            "change of starter moves this number only slightly even though it can matter more on the ice")
         exp.availability_assumptions.append(
             "Assumes each team starts the goalie who has started most of its recent games, and that skater "
             "line-ups match recent games; neither is confirmed unless a check below says so.")

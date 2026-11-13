@@ -815,6 +815,25 @@ class Store:
                          with_results=False, include_synthetic=include_synthetic)
         return df[df["start_time_utc"] > pd.Timestamp(t0)].reset_index(drop=True)
 
+    def cancel_events(self, event_ids: Sequence[str], reason: str, *, source_id: Optional[str] = None) -> int:
+        """Mark events as cancelled (for example records the source has
+        withdrawn or duplicated).  Nothing is deleted: the change is logged
+        and the reason recorded as a data issue."""
+        now = iso_z(utcnow())
+        n = 0
+        with self.conn() as con:
+            for eid in event_ids:
+                row = con.execute("SELECT league, status FROM events WHERE event_id=?", (eid,)).fetchone()
+                if row is None or row["status"] == "canceled":
+                    continue
+                con.execute("UPDATE events SET status='canceled', updated_at_utc=? WHERE event_id=?", (now, eid))
+                con.execute(
+                    "INSERT INTO event_changes (event_id, changed_at_utc, field, old_value, new_value, source_id) "
+                    "VALUES (?,?,?,?,?,?)", (eid, now, "status", row["status"], "canceled", source_id))
+                self._issue(con, row["league"], eid, "event_withdrawn", reason)
+                n += 1
+        return n
+
     def event_changes(self, event_id: str) -> pd.DataFrame:
         return self.query("SELECT * FROM event_changes WHERE event_id=? ORDER BY change_id", [event_id])
 
@@ -831,11 +850,28 @@ class Store:
         *,
         source_ids: Optional[Sequence[str]] = None,
         is_synthetic: bool = False,
+        mode: str = "merge",
     ) -> Path:
-        """Replace the bulk statistics table ``name`` of ``league``."""
+        """Write the bulk table ``name`` of ``league``.
+
+        ``mode="merge"`` (default): when the table already exists and both it
+        and ``frame`` carry an ``event_id`` column, rows of events that are
+        **not** in ``frame`` are kept, so ingesting a subset of seasons can
+        never silently discard the history of the others.  Rows of events
+        that are in ``frame`` are replaced.  ``mode="replace"`` writes
+        ``frame`` as the whole table.
+        """
+        if mode not in ("merge", "replace"):
+            raise StoreError(f"unknown table write mode {mode!r}")
         _check_synthetic(league, is_synthetic, f"table {name!r}")
         path = self._table_path(league, name)
         path.parent.mkdir(parents=True, exist_ok=True)
+        if mode == "merge" and path.exists() and "event_id" in frame.columns:
+            old = pd.read_parquet(path)
+            if "event_id" in old.columns:
+                kept = old[~old["event_id"].isin(set(frame["event_id"]))]
+                if len(kept):
+                    frame = pd.concat([kept, frame], ignore_index=True)
         tmp = path.with_suffix(".parquet.part")
         frame.to_parquet(tmp, index=False)
         tmp.replace(path)

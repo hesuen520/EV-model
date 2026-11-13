@@ -103,8 +103,8 @@ reviews in progress. What actually happened:
 
 ## Tests run
 
-`pytest` on 2026-11-13: **4,361 passed, 13 expected failures** (the expected
-failures are in the earlier `evmodel` suite), of which 122 are the
+`pytest` on 2026-11-13: **4,362 passed, 13 expected failures** (the expected
+failures are in the earlier `evmodel` suite), of which 123 are the
 `tests/sportspred` suite: time zones and HST display, stable IDs and
 de-duplication, ledger immutability and tamper detection, synthetic isolation,
 point-in-time availability, as-of leakage, chronological folds, retrospective

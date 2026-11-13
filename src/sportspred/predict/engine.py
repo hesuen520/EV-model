@@ -41,7 +41,7 @@ from ..storage.store import LedgerError
 from .checks import checks_complete, evaluate_checks
 from .confidence import confidence_for
 
-__all__ = ["predict_league", "load_promoted", "PredictionError"]
+__all__ = ["predict_league", "load_promoted", "PredictionError", "results_current"]
 
 log = logging.getLogger(__name__)
 
@@ -86,10 +86,17 @@ def _class_labels(frame: FeatureFrame, row: Mapping[str, Any], names: Mapping[st
     return out
 
 
-def _unresolved_past_events(store: Any, league: str, now_ts: pd.Timestamp) -> Tuple[Dict[str, int], str]:
+def _unresolved_past_events(store: Any, league: str, now_ts: pd.Timestamp
+                            ) -> Tuple[Dict[str, int], str, Optional[pd.Timestamp], Optional[float]]:
     """Per participant: events that should have been played by ``now`` but
-    have no result on file (postponed and cancelled events excluded), and the
-    date of the latest result in the store."""
+    have no result on file (postponed and cancelled events excluded); the date
+    of the latest result in the store; that latest result's instant; and the
+    league's typical longest yearly break between results, in days.
+
+    The break is the median, over the calendar years on file, of each year's
+    longest gap between consecutive result days (``None`` with fewer than
+    three years).  It is what lets a source that has simply stopped - with no
+    unplayed fixtures listed - be told apart from an ordinary off-season."""
     ev = store.events(league, with_results=True, include_synthetic=True)
     past = ev[(ev["start_time_utc"] < now_ts) & ev["status"].isin(["scheduled", "live", "unknown"])]
     # A date-only event stored at 00:00Z of today may simply not have started yet.
@@ -98,9 +105,33 @@ def _unresolved_past_events(store: Any, league: str, now_ts: pd.Timestamp) -> Tu
     for col in ("home_id", "away_id"):
         for team, n in past[col].dropna().value_counts().items():
             counts[team] = counts.get(team, 0) + int(n)
-    done = ev[ev["status"] == "final"]
-    through = "none" if done.empty else done["start_time_utc"].max().strftime("%Y-%m-%d")
-    return counts, through
+    done = ev[(ev["status"] == "final") & (ev["start_time_utc"] <= now_ts)]
+    if done.empty:
+        return counts, "none", None, None
+    latest = done["start_time_utc"].max()
+    days = pd.Series(done["start_time_utc"].dt.normalize().unique()).sort_values().reset_index(drop=True)
+    gaps = days.diff().dt.total_seconds().div(86400.0)
+    yearly = gaps.groupby(days.dt.year).max().dropna()
+    usual_break = float(yearly.median()) if len(yearly) >= 3 else None
+    return counts, latest.strftime("%Y-%m-%d"), latest, usual_break
+
+
+def results_current(behind: int, days_since: Optional[float], usual_break: Optional[float], margin: float,
+                    results_through: str) -> Tuple[bool, str]:
+    """Whether the results behind a prediction are up to date, and why.
+
+    ``behind`` counts earlier events of the two sides with no result on file.
+    With none listed, the results still count as out of date when the newest
+    one is more than ``margin`` typical off-seasons before the event: the
+    source has stopped, not the league."""
+    if behind:
+        return False, (f"{behind} earlier event(s) of these sides have no result on file (latest result in the store: "
+                       f"{results_through}); ratings are out of date until results are refreshed")
+    if days_since is not None and usual_break is not None and days_since > margin * usual_break:
+        return False, (f"the newest result on file ({results_through}) is {days_since:.0f} days before this event, "
+                       f"more than {margin:g} times this league's typical longest yearly break ({usual_break:.0f} "
+                       "days); results are very likely missing and ratings out of date")
+    return True, "every earlier event of both sides has a result on file"
 
 
 def _entropy(p: Sequence[float]) -> float:
@@ -162,7 +193,8 @@ def predict_league(
     min_prob = settings.min_prob(league, market, str(frame.outcome))
     check_log = store.checks_as_of(league, now_dt, include_synthetic=True)
     specs = plugin.required_checks(league, market)
-    unresolved, results_through = _unresolved_past_events(store, league, now_ts)
+    unresolved, results_through, latest_result, usual_break = _unresolved_past_events(store, league, now_ts)
+    break_margin = settings.selection.results_break_margin
     events = store.events(event_ids=rows["event_id"].tolist(), with_results=False, include_synthetic=True)
     events = events.set_index("event_id")
     feature_names = model.candidate.feature_names() or frame.feature_cols
@@ -203,12 +235,11 @@ def predict_league(
         # Built in for every league: ratings are only current if every earlier
         # event of both sides has a result on file.
         behind = unresolved.get(row["side_a_id"], 0) + unresolved.get(row["side_b_id"], 0)
+        days_since = None if latest_result is None else (row["start_time_utc"] - latest_result).total_seconds() / 86400.0
+        current, detail = results_current(behind, days_since, usual_break, break_margin, results_through)
         checks.append({
             "key": "results_current", "label": "results on file are up to date", "subject": "event",
-            "state": (CheckState.COMPLETE if behind == 0 else CheckState.MISSING).value,
-            "detail": ("every earlier event of both sides has a result on file" if behind == 0 else
-                       f"{behind} earlier event(s) of these sides have no result on file (latest result in the "
-                       f"store: {results_through}); ratings are out of date until results are refreshed"),
+            "state": (CheckState.COMPLETE if current else CheckState.MISSING).value, "detail": detail,
             "checked_at_utc": iso_z(now_dt), "published_at_utc": None, "source_id": None,
         })
         if ev["time_precision"] != "datetime":

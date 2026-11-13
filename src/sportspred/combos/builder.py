@@ -132,14 +132,15 @@ def candidate_status(cand: ComboCandidate) -> RecStatus:
 
 def _eligibility(leg: Leg, cfg: ComboConfig, statuses: Sequence[str], now_iso: str) -> Optional[str]:
     """``None`` when the leg may be used, otherwise the reason it may not."""
+    # First, because it is final: nothing is ever selected after the start.
+    if leg.start_utc <= now_iso:
+        return "event has started"
     if leg.rec_status not in statuses:
         return f"status {leg.rec_status} (needs {' or '.join(statuses)})"
     if leg.validation_status not in cfg.allowed_coverage:
         return f"coverage {leg.validation_status} (needs {' or '.join(cfg.allowed_coverage)})"
     if leg.prob != leg.prob or leg.prob < cfg.min_leg_prob:
         return f"probability {leg.prob:.3f} below the leg minimum {cfg.min_leg_prob:.2f}"
-    if leg.start_utc <= now_iso:
-        return "event has started"
     return None
 
 

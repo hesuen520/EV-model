@@ -88,8 +88,8 @@ class CoverageStatus(_Str):
 
 COVERAGE_DEFINITIONS = {
     CoverageStatus.VALIDATED: (
-        "Real data ingested; chronological walk-forward validation and an untouched "
-        "final test period were run; the selected model passed every configured gate "
+        "Real data ingested; chronological walk-forward validation was run with a final "
+        "test period that played no part in model selection; the selected model passed every configured gate "
         "(sample size, skill over the naive baseline with its uncertainty interval, "
         "calibration, point-in-time features)."
     ),

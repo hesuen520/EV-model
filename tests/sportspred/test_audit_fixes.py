@@ -119,3 +119,28 @@ def test_newest_quarterback_statement_decides():
     questionable = _nfl([("questionable", "", "2030-01-03T18:00:00Z")])
     assert questionable.uncertain_a and questionable.row["qb_inc_a"] == pytest.approx(0.12)
     assert questionable.worst_case_rows["a"]["qb_inc_a"] == pytest.approx(-0.05)
+
+
+# ------------------------------------------------- results that have stopped
+def test_results_are_not_current_when_the_source_has_simply_stopped(store):
+    """A source with no schedule lists no unplayed fixtures, so a stale store
+    must be recognised from the age of its newest result."""
+    from sp_helpers import synthetic_two_sided
+    from sportspred.predict.engine import _unresolved_past_events, results_current
+
+    synthetic_two_sided(store, "demo_league", n_teams=4, n_seasons=5, rounds_per_season=2, upcoming_rounds=0)
+    now = pd.Timestamp("2021-06-01T00:00:00Z")
+    behind, through, latest, usual = _unresolved_past_events(store, "demo_league", now)
+    assert behind == {} and latest is not None
+    assert 300 < usual < 366                      # one season a year: the yearly break is the off-season
+
+    days_to_next_opener = usual                   # an ordinary off-season
+    ok, _ = results_current(0, days_to_next_opener, usual, 1.5, through)
+    assert ok
+    stale, why = results_current(0, 2 * usual, usual, 1.5, through)
+    assert not stale and "very likely missing" in why and through in why
+    # Unplayed fixtures on file are reported as such, whatever the age.
+    behind_flag, why = results_current(2, 1.0, usual, 1.5, through)
+    assert not behind_flag and "2 earlier event(s)" in why
+    # Too little history to know what a normal break is: no claim either way.
+    assert results_current(0, 5000.0, None, 1.5, through)[0]

@@ -1,6 +1,6 @@
 # Data sources: access, cost, licence, coverage
 
-Researched on 2026-11-12. Facts marked *(verified)* were read that day from
+Researched on 2026-11-12; tennis added to the sources in use on 2026-11-13. Facts marked *(verified)* were read that day from
 the source's own repository, documentation or pricing page; facts marked
 *(unverified)* come from secondary sources or memory and must be checked before
 you rely on them. Prices and terms change - re-check before any commercial use.
@@ -30,14 +30,14 @@ StatsAPI, The Odds API, football-data.co.uk, TheSportsDB. Consequently:
 | [nflverse-data](https://github.com/nflverse/nflverse-data) | NFL schedules and results incl. rest, roof, surface, quarterbacks, one spread / total / moneyline per game; team and quarterback statistics | 1999 to this week; future 2026 games included | free, no key | **CC BY 4.0** *(verified)*: commercial use allowed with attribution. The betting numbers are described by nflfastR as the *closing* line sourced from Pro-Football-Reference *(verified wording)*; the schedules dictionary itself names neither provider nor timing, and the moneylines are undocumented - so they are used only as an undated benchmark. |
 | [Retrosheet](https://www.retrosheet.org) game logs via the [Chadwick Bureau mirror](https://github.com/chadwickbureau/retrosheet), and `retrosplits` day-by-day files | MLB results, parks, actual starting pitchers | 2000-2025; no 2026 file or future schedule yet | free, no key | Required notice: *"The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at www.retrosheet.org."* retrosplits: ODbL 1.0 *(verified)*. |
 | [martj42/international_results](https://github.com/martj42/international_results) and the women's equivalent | men's and women's international soccer results (date-only) | 1872 to October 2026; no future fixtures | free, no key | **CC0** *(verified for the men's repository)* |
-| [xgabora/Club-Football-Match-Data-2000-2025](https://github.com/xgabora/Club-Football-Match-Data-2000-2025) | results, shots and a Bet365 1X2 price for five club leagues | 2000 to 2026-09-20 | free, no key | repository MIT; the underlying data comes from Football-Data.co.uk, whose own terms apply *(unverified)*. The price's quote time is not recorded. |
+| [xgabora/Club-Football-Match-Data-2000-2025](https://github.com/xgabora/Club-Football-Match-Data-2000-2025) | results, shots and one bookmaker 1X2 price per match (Bet365 in most seasons; apparently a multi-bookmaker average in 2019/20-2024/25) for five club leagues | 2000 to 2026-09-20 | free, no key | repository MIT; the underlying data comes from Football-Data.co.uk, whose own terms apply *(unverified)*. The price's quote time is not recorded. |
 | [openfootball/football.json](https://github.com/openfootball/football.json) | 2026-27 club fixtures | current season | free, no key | CC0 public domain |
+| A mirror of Jeff Sackmann's tennis archive ([Aneeshers/tennis-sackmann-archive](https://github.com/Aneeshers/tennis-sackmann-archive)) | ATP and WTA main draw and qualifying, Challenger, WTA 125 and ITF singles: results, surface, round, serve and return counts | 2000 to about June 2026. A snapshot: no upcoming matches, order of play or withdrawals. Dates are tournament-week starts, not match days | free, no key. The original `tennis_atp` and `tennis_wta` repositories returned 404 from 2026-09-20 *(verified)* | **CC BY-NC-SA 4.0**: attribution, share-alike, **non-commercial only**, which the author enforces *(verified)* |
 
 ## Reachable but not yet used
 
 | Source | What it offers | Why it matters |
 |---|---|---|
-| A mirror of Jeff Sackmann's tennis archive (`Aneeshers/tennis-sackmann-archive`) | ATP / WTA tour, qualifying, Challenger and ITF match files with serve and return statistics, to about June 2026 | The original `tennis_atp` and `tennis_wta` repositories returned 404 from 2026-09-20 *(verified)*. Licence **CC BY-NC-SA 4.0**: attribution, share-alike and **non-commercial only**, which the author enforces. Tennis is therefore CSV-only here for now. Tournament dates are week starts, not match dates. |
 | sportsdataverse NBA injury-report archive (history) | as-published injury reports since 2018 | allows an honest point-in-time backtest of availability features - the most valuable next step for the NBA model |
 | nflverse `injuries` | weekly NFL injury reports since 2009 | only a last-modified date, not each day's report as published *(verified)* |
 

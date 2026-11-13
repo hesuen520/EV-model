@@ -13,7 +13,7 @@ from . import Context, pass_ctx
 
 def write_validation_docs(store, out_dir: Path) -> Path:
     """Markdown summary of every recorded real validation run, with charts."""
-    from ..dashboard import validation_views
+    from ..dashboard import validation_history, validation_views
     from ..validation.plots import improvement_svg, reliability_svg, standalone
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -25,9 +25,12 @@ def write_validation_docs(store, out_dir: Path) -> Path:
         "comes from a run that was actually executed; nothing is typed in by hand.", "",
         "Protocol for every league and market: chronological walk-forward folds; calibration fitted on a block "
         "between training and test; model selection on pooled development-fold log loss with a one-standard-error "
-        "preference for the simpler candidate; the final test period read once, after selection; intervals from a "
-        "bootstrap that resamples whole slates. Accuracy, calibration and price-dependent value are separate "
+        "preference for the simpler candidate; the final test period read once per run, after selection; intervals "
+        "from a bootstrap that resamples whole slates. Accuracy, calibration and price-dependent value are separate "
         "questions - nothing here says a model beats a market.", "",
+        "A league that was validated again (after a data or defect fix) has had its final test period read once per "
+        "run, so more than once in total. The table shows the newest run; every earlier run is listed under "
+        "[Run history](#run-history) at the end, so the effect of each re-run can be seen.", "",
         "## Summary", "",
         "| Sport | League | Market | Status | Selected model | Final-test period | n | Accuracy (95% interval) | "
         "Log loss (95% interval) | Base-rate log loss | Calibration error | Market benchmark log loss |",
@@ -97,9 +100,65 @@ def write_validation_docs(store, out_dir: Path) -> Path:
                                        for g in r["gates"]]
         if r.get("limitations"):
             lines += ["", "Limitations:", ""] + [f"- {x}" for x in r["limitations"]]
+    history = validation_history(store)
+    lines += ["", "## Run history", "",
+              "Every validation run recorded in the store, oldest first. A re-run replaces the reported numbers but "
+              "not the record. No candidate list, selection rule or gate was changed between runs in response to "
+              "final-test numbers; re-runs followed fixes to data handling or to defects found in review.", "",
+              "| League | Market | Run (UTC) | Selected model | Final-test n | Accuracy | Log loss | All gates passed |",
+              "|---|---|---|---|---|---|---|---|"]
+    for (league, market), runs in sorted(history.items()):
+        for i, x in enumerate(runs):
+            newest = " (reported above)" if i == len(runs) - 1 else ""
+            lines.append(
+                f"| `{league}` | {market} | {str(x['created_at_utc'])[:16].replace('T', ' ')}{newest} | "
+                f"{x['selected_model']} | {x['n']} | "
+                f"{'' if x['accuracy'] is None else format(100 * x['accuracy'], '.1f') + '%'} | "
+                f"{'' if x['log_loss'] is None else format(x['log_loss'], '.4f')} | "
+                f"{'yes' if x['gates_passed'] else 'no'} |")
     path = out_dir / "VALIDATION.md"
     path.write_text("\n".join(lines) + "\n")
     return path
+
+
+_MARKET_LABELS = {"winner": "winner", "winner_3way": "three-way (home / draw / away)",
+                  "spread": "spread (at the historical line)", "total": "total (at the historical line)"}
+_SPORT_MARKET_LABELS = {("hockey", "winner"): "winner (incl. overtime and shootout)",
+                        ("hockey", "winner_3way"): "three-way after regulation"}
+SUMMARY_START, SUMMARY_END = "<!-- results:start -->", "<!-- results:end -->"
+
+
+def summary_table(store) -> str:
+    """Compact results table (one row per validated league and market), built
+    from the newest recorded run of each."""
+    from ..dashboard import validation_views
+    from ..sports import get_league
+
+    def num(v) -> str:
+        return "" if v is None or v != v else f"{v:.3f}"
+
+    lines = ["| League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | "
+             "Market benchmark |", "|---|---|---|---|---|---|---|---|---|"]
+    for r in sorted(validation_views(store), key=lambda r: (r["sport"], r["league"], r["market"])):
+        f = r["final_test"]
+        s, baselines = f["selected"], f.get("baselines") or {}
+        rating = next((k for k in baselines if k != "base_rate"), None)
+        bench = r.get("market_benchmark")
+        try:
+            name = get_league(r["league"])[1].name
+        except Exception:  # noqa: BLE001 - a league removed since the run keeps its key
+            name = r["league"]
+        if rating is None or rating == r["selected_model"]:
+            rating_cell = "(selected)" if "elo" in r["selected_model"] else ""
+        else:
+            rating_cell = num(baselines[rating].get("log_loss"))
+        base_cell = "(selected)" if r["selected_model"] == "base_rate" else num((baselines.get("base_rate") or {}).get("log_loss"))
+        lines.append(
+            f"| {name} | {_SPORT_MARKET_LABELS.get((r['sport'], r['market'])) or _MARKET_LABELS.get(r['market'], r['market'])} | "
+            f"{'validated' if r.get('gates_passed') else 'experimental'} | {s['n']:,} | {100 * s['accuracy']:.1f}% | "
+            f"{s['log_loss']:.3f} | {base_cell} | {rating_cell} | "
+            f"{'**' + num(bench['market']['log_loss']) + '**' if bench else ''} |")
+    return "\n".join(lines)
 
 
 def register(main: click.Group) -> None:
@@ -127,3 +186,20 @@ def register(main: click.Group) -> None:
     def report_validation(ctx: Context, out: str) -> None:
         """Markdown validation results with calibration and season charts."""
         click.echo(f"wrote {write_validation_docs(ctx.store, Path(out))}")
+
+    @report.command("summary")
+    @click.option("--into", "into", default=None, type=click.Path(dir_okay=False, exists=True),
+                  help=f"Replace the block between {SUMMARY_START} and {SUMMARY_END} in this file.")
+    @pass_ctx
+    def report_summary(ctx: Context, into: Optional[str]) -> None:
+        """Compact results table from the newest recorded run of each league and market."""
+        table = summary_table(ctx.store)
+        if not into:
+            click.echo(table)
+            return
+        text = Path(into).read_text()
+        if SUMMARY_START not in text or SUMMARY_END not in text:
+            raise click.ClickException(f"{into} has no {SUMMARY_START} ... {SUMMARY_END} block")
+        head, rest = text.split(SUMMARY_START, 1)
+        Path(into).write_text(head + SUMMARY_START + "\n" + table + "\n" + SUMMARY_END + rest.split(SUMMARY_END, 1)[1])
+        click.echo(f"updated the results table in {into}")

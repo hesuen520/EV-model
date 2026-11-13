@@ -69,6 +69,12 @@ class SelectionConfig:
     require_interval_above_even: bool = True
     #: Only events starting within this many hours get predictions.
     horizon_hours: float = 36.0
+    #: Results on file count as out of date when the newest one is further
+    #: before the event than this multiple of the league's typical longest
+    #: yearly break (the median, over the years on file, of each year's longest
+    #: gap between result days).  Ordinary off-seasons pass; a source that has
+    #: simply stopped does not.
+    results_break_margin: float = 1.5
     #: Freshness overrides per check key (hours), e.g. {"injury_report": 12}.
     max_age_hours: Dict[str, float] = field(default_factory=dict)
     recheck_within_hours: Dict[str, float] = field(default_factory=dict)

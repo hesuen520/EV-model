@@ -26,31 +26,45 @@ Statuses are **earned**, not typed in: the coverage table is computed from
 ingested data and recorded validation runs
 ([docs/COVERAGE.md](docs/COVERAGE.md), `sportspred coverage`).
 
-Results below are from walk-forward validation on real data; the final test
-period was read once, after the model had been selected on earlier seasons.
-Lower log loss is better. Full detail, intervals, calibration charts and
-limitations: [docs/validation/VALIDATION.md](docs/validation/VALIDATION.md).
+Results below are from walk-forward validation on real data. In each run the
+final test period is read once, after the model has been selected on earlier
+seasons; leagues that were re-run after a data or defect fix are listed with
+every earlier run in the report's run history. Lower log loss is better. Full
+detail, intervals, calibration charts and limitations:
+[docs/validation/VALIDATION.md](docs/validation/VALIDATION.md).
 
-| League | Market | Status | Final-test games | Accuracy | Log loss | Base rate | Rating baseline | Market benchmark |
+<!-- results:start -->
+| League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | Market benchmark |
 |---|---|---|---|---|---|---|---|---|
-| NBA | winner | validated | 2,813 | 67.7% | 0.600 | 0.692 | 0.604 | none available |
-| WNBA | winner | experimental | 664 | 65.4% | 0.626 | 0.688 | 0.644 | |
-| NCAA Division I men | winner | validated | 13,251 | 74.9% | 0.488 | 0.627 | 0.511 | |
-| NCAA Division I women | winner | validated | 12,313 | 78.3% | 0.439 | 0.656 | 0.473 | |
-| NFL | winner | validated | 704 | 65.2% | 0.627 | 0.693 | 0.630 | **0.603** |
-| NFL | spread (at the historical line) | experimental | 695 | 50.2% | 0.694 | | 0.695 | 0.694 |
-| NFL | total (at the historical line) | experimental | 703 | 47.4% | 0.694 | | 0.704 | 0.693 |
-| College football (FBS) | winner | validated | 2,168 | 71.2% | 0.552 | 0.675 | 0.578 | |
-| NHL | winner (incl. overtime) | validated | 3,090 | 57.0% | 0.672 | 0.689 | 0.679 | |
-| NHL | regulation three-way | validated | 3,090 | 45.0% | 1.050 | 1.069 | 1.057 | |
-| MLB | winner | validated | 4,949 | 56.5% | 0.680 | 0.691 | 0.680 | |
-| Men's international soccer | three-way | experimental | 1,803 | 61.5% | 0.843 | 1.044 | 0.854 | |
-| Women's international soccer | three-way | validated | 1,350 | 67.3% | 0.772 | 1.006 | 0.797 | |
-| Premier League | three-way | experimental | 810 | 49.6% | 1.015 | 1.086 | 1.020 | **0.994** |
-| La Liga | three-way | experimental | 829 | 52.6% | 0.979 | 1.060 | (selected) | **0.956** |
-| Bundesliga | three-way | experimental | 648 | 51.7% | 1.000 | 1.080 | 0.994 | **0.969** |
-| Serie A | three-way | validated | 810 | 53.0% | 0.980 | 1.093 | 0.991 | **0.962** |
-| Ligue 1 | three-way | validated | 656 | 52.4% | 0.992 | 1.065 | 0.997 | **0.969** |
+| Major League Baseball | winner | validated | 4,949 | 56.5% | 0.680 | 0.691 | 0.680 |  |
+| NBA | winner | validated | 2,813 | 67.7% | 0.600 | 0.692 | 0.604 |  |
+| NCAA Division I men | winner | validated | 13,251 | 75.0% | 0.487 | 0.627 | 0.511 |  |
+| NCAA Division I women | winner | validated | 12,313 | 78.3% | 0.439 | 0.656 | 0.473 |  |
+| WNBA | winner | experimental | 664 | 65.4% | 0.626 | 0.688 | 0.644 |  |
+| NCAA Division I FBS | winner | validated | 2,168 | 70.8% | 0.546 | 0.675 | 0.578 |  |
+| NFL | spread (at the historical line) | experimental | 695 | 50.2% | 0.694 | (selected) | 0.695 | **0.694** |
+| NFL | total (at the historical line) | experimental | 703 | 47.4% | 0.694 | (selected) | 0.704 | **0.693** |
+| NFL | winner | validated | 704 | 65.5% | 0.626 | 0.693 | 0.630 | **0.603** |
+| NHL | winner (incl. overtime and shootout) | validated | 3,090 | 57.0% | 0.672 | 0.689 | 0.679 |  |
+| NHL | three-way after regulation | validated | 3,090 | 45.0% | 1.050 | 1.069 | 1.057 |  |
+| German Bundesliga | three-way (home / draw / away) | experimental | 648 | 51.7% | 1.000 | 1.080 | 0.994 | **0.969** |
+| English Premier League | three-way (home / draw / away) | experimental | 810 | 49.6% | 1.015 | 1.086 | 1.020 | **0.994** |
+| Spanish La Liga | three-way (home / draw / away) | experimental | 829 | 52.6% | 0.979 | 1.060 | (selected) | **0.956** |
+| French Ligue 1 | three-way (home / draw / away) | validated | 656 | 52.4% | 0.992 | 1.065 | 0.997 | **0.969** |
+| Italian Serie A | three-way (home / draw / away) | experimental | 810 | 52.6% | 0.980 | 1.093 | 0.991 | **0.962** |
+| Men's international football | three-way (home / draw / away) | experimental | 1,803 | 61.6% | 0.843 | 1.044 | 0.854 |  |
+| Women's international football | three-way (home / draw / away) | validated | 1,350 | 67.3% | 0.772 | 1.006 | 0.797 |  |
+| ATP Tour main draw singles | winner | validated | 3,558 | 65.9% | 0.614 | 0.694 | 0.624 |  |
+| ATP Challenger main draw singles | winner | validated | 8,661 | 63.3% | 0.639 | 0.693 | 0.641 |  |
+| ATP Tour qualifying singles | winner | validated | 1,799 | 64.0% | 0.621 | 0.693 | 0.640 |  |
+| ITF men's singles | winner | experimental | 37,568 | 71.5% | 0.557 | 0.693 | 0.583 |  |
+| ITF women's singles | winner | validated | 21,908 | 70.6% | 0.565 | 0.693 | 0.581 |  |
+| WTA Tour main draw singles | winner | validated | 3,380 | 66.9% | 0.600 | 0.693 | 0.608 |  |
+| WTA 125 main draw singles | winner | validated | 2,044 | 66.8% | 0.611 | 0.694 | 0.621 |  |
+| WTA Tour qualifying singles | winner | validated | 3,278 | 67.5% | 0.590 | 0.693 | 0.599 |  |
+<!-- results:end -->
+
+*(This table is generated: `sportspred report summary --into README.md`.)*
 
 How to read this honestly:
 
@@ -66,6 +80,12 @@ How to read this honestly:
   so the base rate was selected and every such prediction is PASS.
 - **MLB** gains almost nothing over a plain Elo rating; MLB and the NHL are
   close to coin flips for most games, and the PASS rule passes on most of them.
+- **Tennis** is validated on a snapshot archive that ends in mid-2026 and
+  lists no upcoming matches, so it produces no live predictions until a
+  schedule is imported by CSV. Matches are dated by tournament week, so a
+  match never sees results from its own tournament. The archive's licence is
+  **non-commercial** (CC BY-NC-SA 4.0). ITF men is experimental only because
+  its history allows two walk-forward folds where the gate asks for three.
 - None of the backtests include **late availability news** (injury reports,
   confirmed line-ups, starting goalies or pitchers as announced): no
   as-published history of those was used. Features that need the actual
@@ -75,11 +95,10 @@ How to read this honestly:
 Everything else:
 
 - **adapter-only** (a model and a documented CSV import exist; no real data
-  ingested and validated here): tennis (ATP, WTA, Challenger, WTA 125, ITF,
-  doubles), UFC and boxing, cricket (T20, ODI, Test), rugby union and league,
-  volleyball, badminton, table tennis, esports (CS2, Valorant, LoL, Dota 2),
-  international basketball, MLS, NWSL. These run on a results-only rating
-  model that knows nothing sport-specific.
+  ingested and validated here): tennis doubles, UFC and boxing, cricket (T20,
+  ODI, Test), rugby union and league, volleyball, badminton, table tennis,
+  esports (CS2, Valorant, LoL, Dota 2), international basketball, MLS, NWSL.
+  These run on a results-only rating model that knows nothing sport-specific.
 - **unavailable** (declared, no model): golf and motorsport (field events need
   a finish-distribution model), player props, NBA / WNBA / college spreads and
   totals, NHL and MLB totals.
@@ -112,7 +131,9 @@ sportspred monitor --league nba
 
 Leagues with a working public-data adapter: `nba`, `wnba`, `ncaam`, `ncaaw`,
 `nfl`, `ncaaf`, `nhl`, `mlb`, `soccer_intl_men`, `soccer_intl_women`, `epl`,
-`laliga`, `bundesliga`, `seriea`, `ligue1`. For any other league - or when a
+`laliga`, `bundesliga`, `seriea`, `ligue1`, and tennis singles `atp`,
+`atp_qual`, `atp_challenger`, `itf_men`, `wta`, `wta_qual`, `wta_125`,
+`itf_women` (historical results only). For any other league - or when a
 feed is unreachable - use the CSV import ([docs/CSV_IMPORT.md](docs/CSV_IMPORT.md)):
 
 ```bash
@@ -208,7 +229,7 @@ src/sportspred/
   adapters/             cached downloads, CSV import, official NBA injury report, ESPN (adapter-only), synthetic demo
   features/ models/     opponent-adjusted ratings, schedule context, candidates, production models
   validation/           chronological folds, metrics, calibration, backtests, leakage tests, charts
-  sports/               one plugin per sport (basketball, football, hockey, baseball, soccer, generic, demo)
+  sports/               one plugin per sport (basketball, football, hockey, baseball, soccer, tennis, generic, demo)
   predict/              pregame engine: checks, statuses, confidence labels
   combos/ ledger/       dependency-aware combos; grading, reviews, lessons, drift monitoring
   ev/                   optional price comparison (paper only)

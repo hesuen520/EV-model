@@ -11,13 +11,13 @@ from __future__ import annotations
 
 import html
 import json
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import pandas as pd
 
 from ..config import Settings
 from ..core.enums import COVERAGE_DEFINITIONS, REC_STATUS_DEFINITIONS
-from ..core.timeutil import fmt_hst, hst_date, utcnow
+from ..core.timeutil import fmt_hst, hst_date, iso_z, parse_ts, utcnow
 from ..coverage import coverage_table
 from ..validation.plots import CHART_CSS, improvement_svg, reliability_svg
 
@@ -82,8 +82,10 @@ def slate_views(store: Any, *, include_synthetic: bool = False) -> Dict[str, Lis
     return dict(sorted(out.items()))
 
 
-def _prediction_card(p: Mapping[str, Any]) -> str:
+def _prediction_card(p: Mapping[str, Any], now_iso: Optional[str] = None) -> str:
     d, c, f, q = p["display"], p["confidence"], p["factors"], p["data_quality"]
+    started = ('<p class="started">This event has started. What follows is the pregame record, not a live '
+               'selection.</p>' if now_iso and str(p["event_start_utc"]) <= now_iso else "")
     title = (f"{d.get('side_b')} at {d.get('side_a')}" if d.get("side_a_role") == "home"
              else f"{d.get('side_a')} v {d.get('side_b')}")
     venue = ", ".join(x for x in (d.get("venue"), d.get("venue_city")) if x) or "venue not published"
@@ -101,7 +103,7 @@ def _prediction_card(p: Mapping[str, Any]) -> str:
     synthetic = '<p class="synthetic">SYNTHETIC DEMO - not a real event</p>' if p.get("is_synthetic") else ""
     return f"""
 <article class="card" data-league="{_e(p['league'])}" data-status="{_e(p['rec_status'])}">
-  {synthetic}
+  {synthetic}{started}
   <header><div><h3>{_e(title)}</h3>
     <p class="muted">{_e(d.get('competition'))} · {_e(d.get('start_hst'))} · {_e(venue)}</p></div>
     {_chip(p['rec_status'], _STATUS_KIND.get(p['rec_status'], 'muted'))}</header>
@@ -131,11 +133,13 @@ def _prediction_card(p: Mapping[str, Any]) -> str:
 
 
 def _slate_section(slates: Mapping[str, List[Dict[str, Any]]], combos: pd.DataFrame, labels: Mapping[str, str],
-                   today: str) -> str:
+                   today: str, now_iso: Optional[str] = None) -> str:
     if not slates:
         return '<p class="muted">No predictions recorded yet. Run <code>sportspred predict --league nba</code>.</p>'
     days = list(slates)
-    current = today if today in slates else next((d for d in days if d >= today), days[-1])
+    # Open on the first slate that still has an event to come.
+    pending = [d for d in days if now_iso and any(str(x["event_start_utc"]) > now_iso for x in slates[d])]
+    current = pending[0] if pending else (today if today in slates else next((d for d in days if d >= today), days[-1]))
     opts = "".join(f'<option value="{d}"{" selected" if d == current else ""}>{d} ({len(slates[d])})</option>' for d in days)
     leagues = sorted({p["league"] for ps in slates.values() for p in ps})
     lg_opts = '<option value="">All leagues</option>' + "".join(f'<option value="{_e(l)}">{_e(l)}</option>' for l in leagues)
@@ -158,20 +162,49 @@ def _slate_section(slates: Mapping[str, List[Dict[str, Any]]], combos: pd.DataFr
                         if combo_html else "<section class='combos'><h3>Combos</h3><p class='muted'>None recorded for this "
                         "date. Run <code>sportspred combos</code>.</p></section>")
         blocks.append(f'<div class="slate" data-day="{day}"{"" if day == current else " hidden"}>{combos_block}'
-                      + "".join(_prediction_card(p) for p in preds) + "</div>")
+                      + "".join(_prediction_card(p, now_iso) for p in preds) + "</div>")
     return (f'<div class="filters"><label>Date (HST) <select id="f-day">{opts}</select></label>'
             f'<label>League <select id="f-league">{lg_opts}</select></label>'
             f'<label>Status <select id="f-status">{st_opts}</select></label></div>' + "".join(blocks))
 
 
 # --------------------------------------------------------------- validation
+def _history_note(runs: Sequence[Mapping[str, Any]]) -> str:
+    if len(runs) < 2:
+        return ""
+    earlier = ", ".join(f"{_e(str(x['created_at_utc'])[:16].replace('T', ' '))}Z {_e(x['selected_model'])} "
+                        f"log loss {_num(x['log_loss'])}" for x in runs[:-1])
+    return (f" This league and market has been validated {len(runs)} times (re-runs followed data or defect fixes), "
+            f"so its final test period has been read {len(runs)} times in total. Earlier runs: {earlier}.")
+
+
 def validation_views(store: Any, *, include_synthetic: bool = False) -> List[Dict[str, Any]]:
     runs = store.validation_runs(include_synthetic=include_synthetic)
     latest = runs.drop_duplicates(["league", "market"], keep="last") if len(runs) else runs
     return [json.loads(r) for r in latest["report_json"]]
 
 
-def _validation_section(reports: Sequence[Mapping[str, Any]]) -> str:
+def validation_history(store: Any, *, include_synthetic: bool = False) -> Dict[Tuple[str, str], List[Dict[str, Any]]]:
+    """Every recorded run per (league, market), oldest first.
+
+    Each run reads its final test period once, but a league that was run
+    again (for example after a defect was fixed) has had that period read more
+    than once.  Showing the history keeps that visible."""
+    runs = store.validation_runs(include_synthetic=include_synthetic)
+    out: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    for _, run in runs.iterrows():
+        rep = json.loads(run["report_json"])
+        sel = rep.get("final_test", {}).get("selected", {})
+        out.setdefault((run["league"], run["market"]), []).append({
+            "created_at_utc": run["created_at_utc"], "run_id": rep.get("run_id"),
+            "selected_model": rep.get("selected_model"), "n": sel.get("n"), "accuracy": sel.get("accuracy"),
+            "log_loss": sel.get("log_loss"), "gates_passed": bool(rep.get("gates_passed")),
+        })
+    return out
+
+
+def _validation_section(reports: Sequence[Mapping[str, Any]],
+                        history: Optional[Mapping[Tuple[str, str], Sequence[Mapping[str, Any]]]] = None) -> str:
     if not reports:
         return '<p class="muted">No validation runs on file. Run <code>sportspred validate --league nba</code>.</p>'
     out = []
@@ -224,10 +257,10 @@ def _validation_section(reports: Sequence[Mapping[str, Any]]) -> str:
   log loss {_num(sel.get('log_loss'))}</span></summary>
   <p class="muted">{_e(r['data']['n_completed'])} completed events, {_e(r['data']['first_event'][:10])} to
   {_e(r['data']['last_event'][:10])}. {len(r['protocol']['dev_folds'])} walk-forward folds; final test blocks
-  {_e(', '.join(f.get('blocks', [])))} were read once, after the model was selected on development folds.
-  {_e(r.get('selection_note', ''))}.</p>
+  {_e(', '.join(f.get('blocks', [])))} were read once in this run, after the model was selected on development folds.
+  {_e(r.get('selection_note', ''))}.{_history_note((history or {}).get((r['league'], r['market']), []))}</p>
   <div class="charts">{charts}</div>
-  <h4>Final test (untouched until selection was fixed)</h4>{_table(finals, ['model', 'n', 'accuracy', 'log_loss', 'brier'])}
+  <h4>Final test (not used for selection)</h4>{_table(finals, ['model', 'n', 'accuracy', 'log_loss', 'brier'])}
   <h4>Development folds (pooled out-of-sample)</h4>{_table(cands, ['model', 'n', 'accuracy', 'log_loss', 'brier', 'calibration_error'])}
   <h4>Performance and coverage after the PASS rule (final test)</h4>{_table(passes, ['min_probability', 'selections', 'coverage', 'accuracy', 'interval', 'mean_predicted'])}
   <h4>Gates</h4><ul class="gates">{gates}</ul>
@@ -251,6 +284,7 @@ nav button{background:none;border:0;border-bottom:2px solid transparent;color:va
 nav button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
 .notice{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--ink2);font-size:13px}
 .synthetic{background:var(--critical);color:#fff;font-weight:700;padding:6px 10px;border-radius:6px;margin:0 0 8px}
+.started{color:var(--muted);border-left:3px solid var(--line);padding:2px 10px;margin:0 0 8px;font-size:13px}
 .card,.val,.combos{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;margin:12px 0}
 .card header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
 .pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0}
@@ -292,9 +326,10 @@ el.addEventListener('blur',()=>tip.style.display='none')});
 """
 
 
-def build_dashboard(store: Any, settings: Optional[Settings] = None, *, include_synthetic: bool = False) -> str:
+def build_dashboard(store: Any, settings: Optional[Settings] = None, *, include_synthetic: bool = False,
+                    now: Any = None) -> str:
     settings = settings or Settings()
-    now = utcnow()
+    now = utcnow() if now is None else parse_ts(now)
     slates = slate_views(store, include_synthetic=include_synthetic)
     combos = store.combos(include_synthetic=include_synthetic)
     labels = {p["prediction_id"]: f"{p['selection_label']} ({p['league']} {p['market']}, {_pct(p.get('prob'))})"
@@ -351,14 +386,15 @@ def build_dashboard(store: Any, settings: Optional[Settings] = None, *, include_
 ledger {'intact' if ledger_ok else 'PROBLEM: ' + _e('; '.join(problems))} · {len(all_preds)} predictions recorded, {n_final} currently FINAL</p>
 {banner}<p class="notice">{_e(NOTICE)}</p>
 <nav role="tablist">{''.join(f'<button role="tab" data-tab="{i}">{t}</button>' for i, t in (('slate', 'Slate & combos'), ('coverage', 'Coverage'), ('validation', 'Validation'), ('ledger', 'Ledger & review'), ('ev', 'EV (paper)'), ('health', 'Data health')))}</nav>
-<section id="slate"><h2>Slate</h2><ul class="gates">{rec_defs}</ul>{_slate_section(slates, combos, labels, hst_date(now).isoformat())}</section>
+<section id="slate"><h2>Slate</h2><ul class="gates">{rec_defs}</ul>{_slate_section(slates, combos, labels, hst_date(now).isoformat(), iso_z(now))}</section>
 <section id="coverage" hidden><h2>Coverage</h2><p class="muted">Every status is derived from ingested data and recorded
 validation runs; none is set by hand.</p><ul class="gates">{defs}</ul>
 {_table(cov_rows, ['sport', 'league', 'market', 'status', 'basis', 'final_test_n', 'accuracy', 'log_loss', 'results_through', 'data_source'], raw=['status', 'basis'])}
 <h4>Unavailable (declared, no model)</h4><p class="muted">{_e(', '.join(sorted(set(unavailable['league'] + ' ' + unavailable['market']))) or 'none')}</p></section>
 <section id="validation" hidden><h2>Validation</h2><p class="muted">Chronological walk-forward validation with a reserved
 final test period. Accuracy, calibration and price-dependent value are separate questions; this section is about the first two.</p>
-{_validation_section(validation_views(store, include_synthetic=include_synthetic))}</section>
+{_validation_section(validation_views(store, include_synthetic=include_synthetic),
+                     validation_history(store, include_synthetic=include_synthetic))}</section>
 <section id="ledger" hidden><h2>Ledger &amp; review</h2><p class="muted">Predictions are append-only and hash-chained; updates
 are new rows linked to the ones they supersede. A loss alone does not show the analysis was wrong.</p>
 <pre>{_e(json.dumps(summary, indent=1, default=str))}</pre><h4>Recent reviews</h4>{_table(review_rows, ['prediction', 'category', 'note'])}

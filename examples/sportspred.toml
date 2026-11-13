@@ -11,13 +11,15 @@ data_dir = "data"                  # store, raw downloads and reports live here 
 # These are selection and freshness RULES, not model weights. Model weights
 # are learned in validation. `sportspred validate` reports accuracy and
 # coverage at several thresholds (the PASS-rule table), on development folds
-# and on the untouched final test.
+# and on the final test, which plays no part in model selection.
 min_prob_binary = 0.60             # below this a two-way selection is PASS
 min_prob_three_way = 0.45
 min_prob_over_under = 0.55
 allowed_coverage = ["validated", "experimental"]
 require_interval_above_even = true # PASS when the model-uncertainty interval reaches a coin flip
 horizon_hours = 36.0               # only events starting within this window are predicted
+results_break_margin = 1.5         # results are "out of date" when the newest one is older than 1.5 times the
+                                   # league's typical longest yearly break (median over its own history)
 
 [selection.min_prob_overrides]
 # "nba:winner" = 0.62

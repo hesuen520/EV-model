@@ -1,7 +1,7 @@
 # Model card
 
-Last updated 2026-11-12. Numbers quoted here are from validation runs recorded
-in the store on that date; the generated source of truth is
+Last updated 2026-11-13. Numbers quoted here are from the newest validation run
+recorded in the store for each league and market; the generated source of truth is
 [validation/VALIDATION.md](validation/VALIDATION.md).
 
 ## Purpose and limits of use
@@ -13,7 +13,7 @@ analysis and paper tracking.
 They are **not** a betting system. No model sees betting odds. In the
 validation runs where a market benchmark existed (NFL, five club soccer
 leagues) the market's implied probabilities were more accurate than the
-model's. Nothing here guarantees a winning pick or a profit.
+model's in every case. Nothing here guarantees a winning pick or a profit.
 
 ## What every model has in common
 
@@ -39,6 +39,9 @@ by hand):
 - *Roster and availability*, where player data exists: quality of the players
   expected to take the floor, inferred from who has actually been playing;
   the primary goalie; the incumbent quarterback.
+- *Surface and serve*, in tennis: a rating per surface beside the all-surface
+  one, and opponent-adjusted service points won set against the opponent's
+  return.
 - *Schedule*: rest, back-to-backs, congestion, travel distance, time zones,
   home advantage, neutral sites, playoffs.
 
@@ -82,8 +85,13 @@ candidate.
    pipeline, so they are fitted per fold.
 4. **Selection** on pooled development-fold log loss with a one-standard-error
    preference for the simpler candidate.
-5. The selected candidate and the baselines are scored **once** on the final
-   test period.
+5. The selected candidate and the baselines are scored **once per run** on the
+   final test period. Most leagues were run two to four times, because data
+   handling and defects found in review were fixed and the run repeated; no
+   candidate list, selection rule or gate was changed in response to a
+   final-test number. Every run is kept, and the generated report lists them
+   all under "Run history". Runs made in scratch stores while a plugin was
+   being written are not in that history.
 6. Reported: sample sizes and dates; accuracy, Brier score, log loss and
    expected calibration error; reliability tables and charts; intervals from a
    bootstrap that resamples whole slates; season-by-season stability against
@@ -114,7 +122,7 @@ box scores, rest, back-to-backs, congestion, travel, time zones, playoffs.
 |---|---|---|---|---|---|---|
 | NBA | full logistic | 2,813 games, Oct 2024 - Nov 2026 | 67.7% (65.7-69.5) | 0.600 | 0.604 | validated |
 | WNBA | full logistic | 664 games, 2025-2026 | 65.4% | 0.626 | 0.644 | experimental (calibration error 0.031) |
-| NCAA men | boosted trees | 13,251 games | 74.9% | 0.488 | 0.511 | validated |
+| NCAA men | boosted trees | 13,251 games | 75.0% | 0.487 | 0.511 | validated |
 | NCAA women | boosted trees | 12,313 games | 78.3% | 0.439 | 0.473 | validated |
 
 On development folds the NBA model beat the Elo baseline in 15 of 15 seasons.
@@ -149,22 +157,28 @@ and results. Features: Elo with margin, opponent-adjusted points and expected
 points added per play (slow, fast), pass/rush matchups, turnovers, the
 incumbent quarterback's shrunk efficiency (whoever started the team's previous
 game), rest, byes, short weeks, travel, division games, roof and surface.
-Seasons are short, so ratings carry over with regression to the mean.
+Seasons are short, so ratings carry over with regression to the mean. The
+schedule file's listed quarterback is not always the one who played: for a
+completed game the starter is the listed quarterback only if he has a stat
+line for that team in that game, otherwise the team's quarterback with the
+most plays.
 
-- **NFL winner** (validated): 704 games, Sep 2024 - Nov 2026, accuracy 65.2%
-  (62.1-68.2), log loss 0.627; Elo 0.630; the de-vigged price in the schedule
+- **NFL winner** (validated): 704 games, Sep 2024 - Nov 2026, accuracy 65.5%
+  (62.4-68.4), log loss 0.626; Elo 0.630; the de-vigged price in the schedule
   file 0.603. Knowing the actual starting quarterback would give 0.619.
 - **NFL spread and total** (experimental): scored against the historical line
   in the schedule file. No candidate beat the 50% base rate on development
   folds, so the base rate is the selected "model" and every such prediction is
   PASS. This is the honest result for an efficient market.
-- **College football winner** (validated): 2,168 games, accuracy 71.2%, log
-  loss 0.552; Elo 0.578. Results-and-ratings only: no quarterback or injury
-  information.
+- **College football winner** (validated): 2,168 games, accuracy 70.8%
+  (68.7-72.7), log loss 0.546; Elo 0.578. Results-and-ratings only: no
+  quarterback or injury information.
 
 Observed temperature and wind are retrospective and excluded from selectable
 models. Sixteen tied NFL games have no binary outcome and are excluded from
-scoring.
+scoring. Travel features treat an international-series game as a normal road
+game for the designated visitor; the neutral venue's distance from both
+teams is not modelled.
 
 ### Hockey (NHL)
 
@@ -191,7 +205,7 @@ Data: Retrosheet game logs 2000-2025. Features: Elo, opponent-adjusted runs
 doubleheaders, bullpen workload in the preceding days.
 
 - **Winner** (validated): 4,949 games, 2024-2025, accuracy 56.5%, log loss
-  0.6799; Elo 0.6800; base rate 0.6912. **The gain over Elo is negligible.**
+  0.6798; Elo 0.6800; base rate 0.6912. **The gain over Elo is negligible.**
   With the actual starting pitcher (retrospective) the log loss is 0.6774.
 
 The selectable models do not know who starts: probable starters as announced
@@ -208,24 +222,80 @@ venues, rest, friendlies versus competitive matches, promoted clubs, shots on
 target. Expected-goals (xG) data was not available from any verified source.
 
 Final-test three-way log loss (lower is better): women's internationals 0.772
-(validated), men's internationals 0.843 (experimental), Serie A 0.980 and
-Ligue 1 0.992 (validated), La Liga 0.979, Bundesliga 1.000 and Premier League
-1.015 (experimental: calibration error above 0.03). The bookmaker benchmark is
-better in all five club leagues (0.956-0.994).
+and Ligue 1 0.992 (validated); men's internationals 0.843, La Liga 0.979,
+Serie A 0.980, Bundesliga 1.000 and Premier League 1.015 (experimental:
+calibration error above 0.03). The bookmaker benchmark is better in all five
+club leagues (0.956-0.994). The benchmark column in the source is Bet365 in
+most seasons and appears to be a multi-bookmaker average from 2019/20 to
+2024/25; the file does not say when a quote was taken.
+
+**Serie A changed status between runs.** It passed the calibration gate at
+0.028 and, after a fix to kick-off-time parsing that left its log loss
+unchanged (0.980), failed it at 0.033. With about 800 three-way matches in a
+final test the calibration estimate is too noisy for the gate to be stable
+near its threshold. The newest run is the one reported; treat "validated" on
+a club league as marginal.
 
 No line-ups, injuries or suspensions are in the data. International scores
 include extra time, so a match won in extra time counts as a win although it
-was a draw after 90 minutes. Club results in the source end on 2026-09-20; the
-built-in "results current" check keeps every later prediction PROVISIONAL.
+was a draw after 90 minutes. The men's international source also lists
+non-FIFA representative sides; they are rated on the same scale. Club results
+in the source end on 2026-09-20; the built-in "results current" check keeps
+every later prediction PROVISIONAL. A team renamed upstream stops the ingest
+with an instruction to add an alias, rather than being merged automatically.
+
+### Tennis (ATP, WTA, qualifying, Challenger, WTA 125, ITF; singles)
+
+Data: a mirror of Jeff Sackmann's match archive (results, surface, round,
+best-of, serve and return counts), 2000 to mid-2026. Each level is its own
+league with its own model, but **ratings are pooled within a tour** (all men's
+levels together, all women's together), so a player arriving at tour level
+from Challengers carries a rating earned there. Qualifying and main draw are
+separate leagues; doubles is not modelled (CSV import only).
+
+Features: all-surface Elo, surface-specific Elo, opponent-adjusted service
+points won against the opponent's return (long-term and recent), days since
+the previous tournament, matches in the previous 14 days, experience, and a
+best-of-five interaction. Rankings, seedings and head-to-head records are
+deliberately not inputs. Side A is assigned by player ID, never by strength,
+so the base rate is a coin flip by construction.
+
+| League | Selected | Final test | Accuracy | Log loss | Elo baseline | Status |
+|---|---|---|---|---|---|---|
+| ATP main draw | full logistic | 3,558 matches, Jan 2025 - May 2026 | 65.9% (64.0-67.9) | 0.614 | 0.624 | validated |
+| ATP qualifying | boosted trees | 1,799 | 64.0% | 0.621 | 0.640 | validated |
+| ATP Challenger | boosted trees | 8,661 | 63.3% | 0.639 | 0.641 | validated |
+| ITF men | boosted trees | 37,568 (2024 - mid-2026) | 71.5% | 0.557 | 0.583 | experimental (2 folds; 3 required) |
+| WTA main draw | full logistic | 3,380 | 66.9% (65.2-68.3) | 0.600 | 0.608 | validated |
+| WTA qualifying | full logistic | 3,278 | 67.5% | 0.590 | 0.599 | validated |
+| WTA 125 | full logistic | 2,044 | 66.8% | 0.611 | 0.621 | validated |
+| ITF women | boosted trees | 21,908 | 70.6% | 0.565 | 0.581 | validated |
+
+What this does **not** establish:
+
+- **Dates are tournament weeks, not match days.** A match uses nothing from
+  its own tournament, including earlier rounds, so the features are
+  point-in-time but coarser than a real pregame view: in-tournament form and
+  fatigue are invisible.
+- **No live use yet.** The archive is a snapshot with no upcoming matches, no
+  order of play and no withdrawals. Tennis produces no predictions until a
+  schedule is imported by CSV, and its "results current" check will hold
+  those PROVISIONAL because the newest result on file is from mid-2026.
+- No injury, fitness or withdrawal information; no court speed, altitude,
+  indoor/outdoor or weather. Retirements count as wins for the player who
+  advanced; walkovers are excluded.
+- No market benchmark was available. Tennis markets are known to be sharp;
+  beating an Elo baseline says nothing about beating a price.
+- The archive's licence is CC BY-NC-SA 4.0: **non-commercial use only**.
 
 ### Results-only leagues (CSV import)
 
-Tennis, UFC and boxing, cricket, rugby, volleyball, badminton, table tennis,
-esports and international basketball share one model: Elo, opponent-adjusted
-scoring where results carry scores, recent form, rest and experience, with
-side A chosen by a rule that ignores the result. It knows nothing
-sport-specific - no surface, serve and return, style, reach, weight class,
-maps, vetoes or line-ups - and has not been validated on real data here.
+Tennis doubles, UFC and boxing, cricket, rugby, volleyball, badminton, table
+tennis, esports and international basketball share one model: Elo,
+opponent-adjusted scoring where results carry scores, recent form, rest and
+experience, with side A chosen by a rule that ignores the result. It knows
+nothing sport-specific - no style, reach, weight class, maps, vetoes,
+pairings or line-ups - and has not been validated on real data here.
 Head-to-head records are not used at all, which avoids overweighting tiny
 samples. These leagues are adapter-only until results are imported and a
 validation run is recorded.
@@ -265,13 +335,28 @@ NHL) the final-test samples are too small to conclude anything.
 - Market benchmarks are undated in their sources; no timestamped odds history
   was available, so "does it beat an executable price" is untested.
 - Several final-test periods include the current, partial season.
-- MLB and club-soccer results in the reachable sources lag (2025-11-01 and
-  2026-09-20).
-- Tennis, combat sports, cricket, rugby, volleyball, racket sports and esports
-  have no validated model; golf and motorsport have no model; player props and
-  NBA spreads/totals are not implemented in this platform.
+- MLB, club-soccer and tennis results in the reachable sources lag
+  (2025-11-01, 2026-09-20 and mid-2026). A prediction built on results that
+  old is held PROVISIONAL by the "results current" check, which recognises
+  both unplayed fixtures on file and a source that has simply stopped (newest
+  result older than 1.5 typical off-seasons of that league).
+- Tennis is validated only on tournament-week dates and has no live schedule
+  feed. Tennis doubles, combat sports, cricket, rugby, volleyball, racket
+  sports and esports have no validated model; golf and motorsport have no
+  model; player props and NBA spreads/totals are not implemented in this
+  platform.
+- The calibration gate (0.03) is unstable for final tests of under about
+  1,000 events: Serie A and the WNBA sit within a few thousandths of it.
+- Known and not fixed, from the code audit: MLB's live path has never run on
+  a real upcoming game (no 2026 schedule is reachable) and its travel
+  time-zone feature does not handle a date-line crossing; tied MLB games are
+  dropped; NFL international games use ordinary road-game travel; the NHL
+  adapter re-downloads only the current season unless told otherwise.
 - Selection thresholds are rules chosen for readability, not optimised. Their
   measured effect is in the validation report.
-- The models were validated once, on one cut of history. Calibration can
-  drift; `sportspred monitor` compares live graded selections with what
-  validation says to expect.
+- Each model was validated on one cut of history, and most final-test
+  periods were read more than once because runs were repeated after fixes
+  (see the run history in the validation report). The repeated reads did not
+  drive any model choice, but the final-test numbers are no longer strictly
+  first-look numbers. Calibration can drift; `sportspred monitor` compares
+  live graded selections with what validation says to expect.

@@ -55,6 +55,26 @@ def test_page_is_self_contained_and_shows_required_fields(store, two_teams, sche
     assert "SYNTHETIC DEMO DATA" not in page and "not a real event" not in page
 
 
+def test_started_events_are_marked_and_the_page_opens_on_the_next_pending_slate(store, two_teams, scheduled_event):
+    later = pd.DataFrame([{
+        "league": "nba", "season": "2030", "start_time_utc": "2030-01-04T03:30:00Z", "status": "scheduled",
+        "provider": "espn", "provider_event_id": "402", "home_id": two_teams[1], "away_id": two_teams[0],
+    }])
+    later_id = store.upsert_events(later, sport="basketball")[0]["event_id"].iloc[0]
+    display = {"competition": "NBA", "side_a": "A", "side_b": "B", "side_a_role": "home", "start_hst": "x"}
+    store.insert_prediction(prediction(scheduled_event, two_teams, display=display))
+    store.insert_prediction(prediction(later_id, two_teams, display=display, event_start_utc="2030-01-04T03:30:00Z"))
+
+    before = build_dashboard(store, now="2030-01-01T12:00:00Z")
+    assert "This event has started" not in before
+    assert '<option value="2030-01-01" selected>' in before
+
+    # After the first game has started: its card says so, and the page opens on the slate still to come.
+    after = build_dashboard(store, now="2030-01-02T04:00:00Z")
+    assert after.count("This event has started") == 1
+    assert '<option value="2030-01-03" selected>' in after
+
+
 def test_synthetic_content_is_hidden_by_default_and_banner_labelled_on_request(tmp_path):
     settings = Settings()
     settings.paths.data_dir = str(tmp_path)

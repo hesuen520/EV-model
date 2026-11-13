@@ -34,11 +34,12 @@ import pandas as pd
 
 from ..core.enums import Availability, EventStatus
 from ..core.ids import norm_text
+from ..core.ids import person_key
 from ..core.timeutil import NaiveDatetimeError, iso_z, parse_ts, utcnow
 from ..sports import get_league
 
 __all__ = ["CsvImportError", "import_events", "import_results", "import_availability", "import_checks",
-           "write_templates", "TEMPLATES"]
+           "import_prop_lines", "write_templates", "TEMPLATES"]
 
 PathLike = Union[str, Path]
 
@@ -446,6 +447,92 @@ def import_checks(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
     return {"checks": len(rows)}
 
 
+def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[str] = None,
+                      collected_at: Any = None, horizon_hours: float = 72.0) -> Dict[str, int]:
+    """Thresholds of player-statistic markets, as read by the user.
+
+    Required columns: ``team`` (the player's team), ``player``, ``stat`` (one
+    of the league's modelled statistics, e.g. ``points``), ``line`` (a whole or
+    half number).  Optional: ``event_id`` (the ID the events were ingested or
+    imported with; default: the team's next scheduled game within
+    ``horizon_hours`` of the collection time), ``book`` (where it was read),
+    ``collected_at`` (when; default: now).
+
+    A threshold says what the market is - over or under *what*.  It is not a
+    price, it never enters the sports model, and without one no selection is
+    made for that player.  The whole file is checked before anything is
+    stored: an unknown team or player, a player outside the modelled rotation,
+    a statistic the league does not model, or a game that has already started
+    is an error with its line number.
+    """
+    plugin, spec = get_league(league)
+    stats = sorted(m.key.split(":", 1)[1] for m in spec.markets if m.key.startswith("player_prop:") and m.implemented)
+    if not stats:
+        raise CsvImportError(path, [f"{league} has no modelled player-statistic market"])
+    df = _read(path, ["team", "player", "stat", "line"])
+    errors: List[str] = []
+    default_collected = iso_z(collected_at or utcnow())
+    team_ids = _participants(store, league, list(df["team"]), create=False, kind="team", errors=errors)
+    known = store.query("SELECT provider_event_id, event_id FROM events WHERE league=?", [league])
+    with_id = known.dropna(subset=["provider_event_id"])
+    by_native = dict(zip(with_id["provider_event_id"], with_id["event_id"]))
+    rosters: Dict[str, pd.DataFrame] = {}
+    rows = []
+    for i, row in df.iterrows():
+        line_no = i + 2
+        stat = (_cell(row, "stat") or "").lower()
+        if stat not in stats:
+            errors.append(f"line {line_no}: stat {row['stat']!r} is not one of {stats}")
+        value = _num(row, "line", line_no, errors)
+        if value is None and _cell(row, "line") is None:
+            errors.append(f"line {line_no}: line is required")
+        elif value is not None and (value < 0 or (2.0 * value) != round(2.0 * value)):
+            errors.append(f"line {line_no}: line {row['line']!r} must be a whole or half number, zero or more")
+        collected = _time(_cell(row, "collected_at"), tz, line_no, "collected_at", errors) or default_collected
+        team_id = team_ids.get(_cell(row, "team") or "")
+        player = _cell(row, "player")
+        if not player:
+            errors.append(f"line {line_no}: player is required")
+        if team_id is None or not player:
+            continue
+        if collected not in rosters:
+            rosters[collected] = plugin.prop_players(store, league, now=collected)
+        pool = rosters[collected]
+        pool = pool[pool["team_id"] == team_id]
+        native = _cell(row, "event_id")
+        if native is not None:
+            event_id = by_native.get(native, native)
+            games = pool[pool["event_id"] == event_id]
+            if games.empty:
+                errors.append(f"line {line_no}: no upcoming game {native!r} of {row['team']} on file at {collected}")
+                continue
+        else:
+            limit = pd.Timestamp(collected) + pd.Timedelta(hours=horizon_hours)
+            games = pool[pool["start_time_utc"] <= limit]
+            if games.empty:
+                errors.append(f"line {line_no}: {row['team']} have no scheduled game within {horizon_hours:g} hours "
+                              f"of {collected}; give an event_id")
+                continue
+            games = games[games["start_time_utc"] == games["start_time_utc"].min()]
+            event_id = games["event_id"].iloc[0]
+        match = games[games["player_key"] == person_key(player)]
+        if match.empty:
+            errors.append(f"line {line_no}: {player!r} has not played for {row['team']} in their recent games; "
+                          "check the spelling and the team")
+            continue
+        if not bool(match["modelled"].iloc[0]):
+            errors.append(f"line {line_no}: {player!r} is outside the modelled rotation (too few games or minutes)")
+            continue
+        rows.append({"league": league, "event_id": event_id, "team_id": team_id,
+                     "player_id": str(match["player_id"].iloc[0]), "player_name": str(match["player_name"].iloc[0]),
+                     "stat": stat, "line": value, "book": _cell(row, "book"), "collected_at_utc": collected})
+    if errors:
+        raise CsvImportError(path, errors)
+    source = _source(store, path, "prop thresholds", league)
+    n = store.add_prop_lines(rows, source_id=source)
+    return {"thresholds": n, "players": len({(r["event_id"], r["player_id"]) for r in rows})}
+
+
 TEMPLATES: Dict[str, str] = {
     "events_template.csv": (
         "# One row per event. Timestamps need a zone (Z or an offset) or use --tz. Blank cells stay missing.\n"
@@ -468,6 +555,12 @@ TEMPLATES: Dict[str, str] = {
         "check_key,team,event_id,outcome,checked_at,published_at,detail\n"
         "injury_report,Example Kings,,nothing_listed,2026-04-03T12:00:00Z,,official report checked\n"
         "weather,,2026-ipl-015,reported,2026-04-03T12:00:00Z,,forecast checked\n"),
+    "prop_lines_template.csv": (
+        "# Thresholds of player-statistic markets. stat: points | rebounds | assists | threes | pra.\n"
+        "# line is the threshold only (no prices here). event_id is optional: default is the team's next game.\n"
+        "team,player,stat,line,event_id,book,collected_at\n"
+        "Example Kings,Example Player,points,24.5,,example book,2026-04-03T16:00:00Z\n"
+        "Example Kings,Example Player,rebounds,7,,example book,2026-04-03T16:00:00Z\n"),
 }
 
 

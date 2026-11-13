@@ -474,6 +474,11 @@ def run_validation(
         {"gate": "calibration", "passed": bool(fm["ece"] <= cfg.max_ece),
          "detail": f"final-test expected calibration error {fm['ece']:.4f} (maximum {cfg.max_ece})"},
     ]
+    # A plugin may add gates of its own - conditions that the protocol cannot see from the
+    # numbers (for instance that the thresholds scored against are not market thresholds).
+    for extra_gate in frame.extra.get("gates", []) or []:
+        gates.append({"gate": str(extra_gate["gate"]), "passed": bool(extra_gate["passed"]),
+                      "detail": str(extra_gate.get("detail", ""))})
     report: Dict[str, Any] = {
         "sport": sport,
         "league": frame.league,

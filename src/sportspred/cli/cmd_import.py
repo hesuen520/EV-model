@@ -96,6 +96,20 @@ def register(main: click.Group) -> None:
 
         _run(csv_import.import_checks, ctx.store, league, path, tz=tz)
 
+    @import_group.command("prop-lines")
+    @click.option("--league", required=True)
+    @click.option("--csv", "path", required=True, type=click.Path(exists=True, dir_okay=False))
+    @click.option("--tz", default=None)
+    @click.option("--collected-at", default=None,
+                  help="When the thresholds were read (rows may carry their own collected_at). Default: now.")
+    @pass_ctx
+    def import_prop_lines(ctx: Context, league: str, path: str, tz: Optional[str], collected_at: Optional[str]) -> None:
+        """Thresholds of player-statistic markets (the number, not a price)."""
+        from ..adapters import csv_import
+
+        _run(csv_import.import_prop_lines, ctx.store, league, path, tz=tz, collected_at=collected_at)
+        click.echo("Run `sportspred predict --league <league> --market player_prop:<stat>` to price them.")
+
     @main.command()
     @click.option("--dir", "directory", default="data/demo", show_default=True,
                   help="Separate data directory for the demo; real data is never touched.")

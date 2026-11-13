@@ -233,6 +233,9 @@ class AvailabilityEffect:
     worst_case_rows: Dict[str, pd.Series] = field(default_factory=dict)   # {"a": row if A's doubts sit, "b": ...}
     unmatched: List[str] = field(default_factory=list)
     quantified: bool = False
+    #: Published facts that rule a selection out altogether (the player a statistic
+    #: market is about is listed out): the engine records PASS with these reasons.
+    blockers: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -332,6 +335,19 @@ class SportPlugin(ABC):
             else:
                 effect.unmatched.append(text + " - reported but not used by this model")
         return effect
+
+    def prop_players(self, store: Any, league: str, *, now: Any = None) -> pd.DataFrame:
+        """Players a statistic-market threshold can be imported for, per upcoming
+        game: ``event_id, team_id, player_id, player_name, player_key,
+        start_time_utc, modelled``.  Empty for leagues without such markets."""
+        return pd.DataFrame(columns=["event_id", "team_id", "player_id", "player_name", "player_key",
+                                     "start_time_utc", "modelled"])
+
+    def validation_supplement(self, league: str, market: str, frame: FeatureFrame, candidate: "Candidate",
+                              plan: "SplitPlan") -> Optional[Dict[str, Any]]:
+        """Extra checks of the selected candidate that the shared protocol does
+        not perform; stored in the validation report under ``supplement``."""
+        return None
 
     def display_names(self, store: Any, league: str) -> Dict[str, str]:
         return store.participant_names()

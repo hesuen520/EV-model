@@ -162,6 +162,29 @@ CREATE TABLE IF NOT EXISTS check_log (
 CREATE INDEX IF NOT EXISTS ix_check_event ON check_log (league, check_key, event_id);
 CREATE INDEX IF NOT EXISTS ix_check_team ON check_log (league, check_key, team_id, checked_at_utc);
 
+-- Thresholds of player-statistic markets, as read from wherever the user reads them.
+-- A threshold defines the market (over or under *what*); it is not a price and the
+-- sports model never takes it as an input.  Append-only in practice: a later reading
+-- of the same market is a new row, and the reading in force is the newest one
+-- collected by the time of the prediction.
+CREATE TABLE IF NOT EXISTS prop_lines (
+  line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  league TEXT NOT NULL,
+  event_id TEXT NOT NULL REFERENCES events(event_id),
+  team_id TEXT,
+  player_id TEXT NOT NULL,                 -- the player id used in the league's box-score table
+  player_name TEXT NOT NULL,
+  stat TEXT NOT NULL,                      -- points | rebounds | assists | threes | pra
+  line REAL NOT NULL,
+  book TEXT,                               -- where the threshold was read (free text)
+  collected_at_utc TEXT NOT NULL,
+  source_id TEXT REFERENCES sources(source_id),
+  is_synthetic INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS ix_prop_lines ON prop_lines (league, stat, event_id, player_id, collected_at_utc);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_prop_lines
+  ON prop_lines (league, event_id, player_id, stat, collected_at_utc, line, IFNULL(book, ''));
+
 CREATE TABLE IF NOT EXISTS data_issues (
   issue_id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at_utc TEXT NOT NULL,

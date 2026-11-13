@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Mapping
 
 import pandas as pd
 
+from ..core.markets import market_text
 from ..core.timeutil import fmt_hst
 
 __all__ = ["prediction_from_row", "render_prediction", "render_slate_table"]
@@ -41,7 +42,7 @@ def render_slate_table(preds: Iterable[Mapping[str, Any]]) -> str:
             "start (HST)": d["start_hst"], "league": d["league"],
             "event": f"{d['side_b']} at {d['side_a']}" if d.get("side_a_role") == "home"
             else f"{d['side_a']} v {d['side_b']}",
-            "market": p["market"] + _line(p.get("line")),
+            "market": market_text(p),
             "selection": p["selection_label"], "prob": _pct(p.get("prob")),
             "model range": f"{_pct(p.get('prob_low'))}-{_pct(p.get('prob_high'))}",
             "status": p["rec_status"], "confidence": p["confidence"].get("label", ""),

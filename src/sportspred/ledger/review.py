@@ -32,6 +32,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from ..core.markets import model_market
 from ..core.ids import stable_id
 from ..core.timeutil import iso_z, utcnow
 
@@ -50,6 +51,10 @@ def graded_frame(store: Any, *, include_synthetic: bool = False) -> pd.DataFrame
         return pd.DataFrame()
     df = preds.merge(grades[["prediction_id", "outcome", "graded_at_utc", "result_json"]], on="prediction_id")
     df["hit"] = df["outcome"].map({"correct": 1.0, "incorrect": 0.0})
+    # Results are grouped by the market the model serves: every player's points market
+    # belongs to the one ``player_prop:points`` model.
+    df["ledger_market"] = df["market"]
+    df["market"] = [model_market(m) for m in df["market"]]
     return df
 
 

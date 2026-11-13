@@ -6,11 +6,12 @@ It works for every league key in `sportspred coverage --all`, including the
 ones that also have a public-dataset adapter.
 
 ```bash
-sportspred templates my_csv/                       # writes four example files
+sportspred templates my_csv/                       # writes five example files
 sportspred import events       --league cricket_t20_men --csv my_csv/events.csv --create-participants
 sportspred import results      --league cricket_t20_men --csv my_csv/results.csv
 sportspred import availability --league nba --csv injuries.csv --league-wide
 sportspred import checks       --league nhl --csv checks.csv
+sportspred import prop-lines   --league nba --csv lines.csv      # thresholds of player-statistic markets
 ```
 
 After importing results: `sportspred validate --league <key>`, then `train`,
@@ -114,6 +115,41 @@ in the settings file (`[selection.max_age_hours]`,
 `[selection.recheck_within_hours]`). The gates for "validated" are settings
 too (`[validation]`). Loosening either weakens what FINAL and "validated"
 mean; the defaults are the ones every recorded result here was produced with.
+
+## prop-lines (thresholds of player-statistic markets)
+
+```bash
+sportspred import prop-lines --league nba --csv lines.csv
+sportspred predict --league nba --market player_prop:points --detail
+```
+
+`team` (the player's team), `player`, `stat` (`points`, `rebounds`,
+`assists`, `threes`, `pra`), `line` (a whole or half number); optional
+`event_id` (default: the team's next scheduled game within 72 hours of the
+collection time), `book` (where you read it), `collected_at` (default: now, or
+`--collected-at`).
+
+A threshold says what the market is - over or under *what*. It is not a price
+(prices belong to the EV module), and the sports model never takes it as an
+input: it only decides where the model's distribution is read. Without an
+imported threshold there is no selection for that player.
+
+- The whole file is checked first. An unknown team, a player who has not
+  appeared for that team in its recent games, a player outside the modelled
+  rotation (fewer than 8 earlier appearances or under 15 recent minutes), a
+  statistic the league does not model, or a threshold that is not a whole or
+  half number is an error with its line number, and nothing is stored.
+- A later reading of the same market is a new row; the threshold in force for
+  a prediction is the newest one collected by the prediction time. Importing
+  the same reading twice stores it once.
+- A whole-number threshold can be tied. The prediction then records three
+  probabilities - over, under and push - that sum to one.
+- A prediction is recorded under the key `player_prop:<stat>:<player id>`, so
+  one game can hold one selection per player and statistic. When the threshold
+  changes, the next prediction supersedes the earlier one in the ledger; the
+  earlier one stays stored.
+- Grading reads the player's line in the box score: correct, incorrect, push
+  (landed exactly on a whole-number threshold) or void (he did not play).
 
 ## Prices
 

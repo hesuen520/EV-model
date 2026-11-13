@@ -18,6 +18,7 @@ import pandas as pd
 from ..config import Settings
 from ..core.enums import COVERAGE_DEFINITIONS, REC_STATUS_DEFINITIONS
 from ..core.slates import slate_date_of
+from ..core.markets import market_text, model_market
 from ..core.timeutil import fmt_hst, hst_date, iso_z, parse_ts, utcnow
 from ..coverage import coverage_table
 from ..validation.plots import CHART_CSS, improvement_svg, reliability_svg
@@ -106,7 +107,6 @@ def _prediction_card(p: Mapping[str, Any], now_iso: Optional[str] = None) -> str
     venue = ", ".join(x for x in (d.get("venue"), d.get("venue_city")) if x) or "venue not published"
     if d.get("neutral_site"):
         venue += " (neutral site)"
-    line = "" if p.get("line") is None or p["line"] != p["line"] else f" {p['line']:+g}"
     unc = c.get("event_uncertainty", {})
     mod = c.get("model_uncertainty", {})
     sources = "".join(
@@ -122,7 +122,7 @@ def _prediction_card(p: Mapping[str, Any], now_iso: Optional[str] = None) -> str
   <header><div><h3>{_e(title)}</h3>
     <p class="muted">{_e(d.get('competition'))} · {_e(d.get('start_hst'))} · {_e(venue)}</p></div>
     {_chip(p['rec_status'], _STATUS_KIND.get(p['rec_status'], 'muted'))}</header>
-  <div class="pick"><div><span class="k">Market</span><b>{_e(p['market'])}{_e(line)}</b><small>{_e(d.get('market_note') or '')}</small></div>
+  <div class="pick"><div><span class="k">Market</span><b>{_e(market_text(p))}</b><small>{_e(d.get('market_note') or '')}</small></div>
     <div><span class="k">Selection</span><b>{_e(p['selection_label'])}</b></div>
     <div><span class="k">Model probability</span><b class="big">{_pct(p.get('prob'))}</b>
       <small>model range {_pct(p.get('prob_low'))} - {_pct(p.get('prob_high'))}</small></div>
@@ -292,11 +292,31 @@ def _validation_section(reports: Sequence[Mapping[str, Any]],
   <h4>Final test (not used for selection)</h4>{_table(finals, ['model', 'n', 'accuracy', 'log_loss', 'brier'])}
   <h4>Development folds (pooled out-of-sample)</h4>{_table(cands, ['model', 'n', 'accuracy', 'log_loss', 'brier', 'calibration_error'])}
   {_segment_table(f.get('by_segment') or [])}
+  {_sweep_table(r.get('supplement'))}
   <h4>Performance and coverage after the PASS rule (final test)</h4>{_table(passes, ['min_probability', 'selections', 'coverage', 'accuracy', 'interval', 'mean_predicted'])}
   <h4>Gates</h4><ul class="gates">{gates}</ul>
   {_bullets('Limitations', r.get('limitations', []))}
 </details>""")
     return "".join(out)
+
+
+def _sweep_table(supplement: Optional[Mapping[str, Any]]) -> str:
+    """Player-statistic markets: how the selected model scores at thresholds
+    other than the reference one, including whole numbers (pushes)."""
+    if not supplement or supplement.get("kind") != "threshold_sweep":
+        return ""
+    part = (supplement.get("folds") or {}).get("final_test") or {}
+    rows = [{"threshold": "reference" if x["shift"] == 0 else f"reference {x['shift']:+g}", "n": x["n"],
+             "over_rate": _pct(x["over_rate"]), "predicted_over": _pct(x["mean_predicted_over"]),
+             "calibration_error": _num(x["ece"]), "log_loss": _num(x["log_loss"]),
+             "push_rate": _pct(x["push_rate"]), "predicted_push": _pct(x["mean_predicted_push"])}
+            for x in sorted(part.get("rows", []), key=lambda x: x["shift"])]
+    if not rows:
+        return ""
+    return ("<h4>Thresholds away from the reference (final test)</h4>"
+            f"<p class=\"muted\">{_e(supplement.get('note', ''))}</p>"
+            + _table(rows, ["threshold", "n", "over_rate", "predicted_over", "calibration_error", "log_loss",
+                            "push_rate", "predicted_push"]))
 
 
 # ----------------------------------------------------------------- the page

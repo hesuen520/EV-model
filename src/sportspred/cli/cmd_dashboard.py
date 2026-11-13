@@ -50,7 +50,7 @@ def write_validation_docs(store, out_dir: Path) -> Path:
             f"{'' if not bench else format(bench['market']['log_loss'], '.4f') + ' (model ' + format(bench['model_same_events']['log_loss'], '.4f') + ' on the same ' + str(bench['n']) + ' events)'} |")
     for r in reports:
         s, f, d = r["final_test"]["selected"], r["final_test"], r["dev"]
-        key = f"{r['league']}_{r['market']}"
+        key = f"{r['league']}_{r['market']}".replace(":", "_")
         rel = f.get("reliability_selected_outcome", [])
         (out_dir / "charts" / f"{key}_calibration.svg").write_text(
             standalone(reliability_svg(rel, title=f"{r['league']} {r['market']}: calibration of selections (final test)")))
@@ -99,6 +99,22 @@ def write_validation_docs(store, out_dir: Path) -> Path:
             for g in f["by_segment"]:
                 lines.append(f"| {g['segment']} | {100 * g['share']:.1f}% | {g['n']} | {100 * g['accuracy']:.1f}% | "
                              f"{g['log_loss']:.4f} | {100 * g['mean_top_probability']:.1f}% |")
+        sweep = r.get("supplement") or {}
+        if sweep.get("kind") == "threshold_sweep":
+            lines += ["", "Thresholds away from the reference. " + sweep.get("note", ""), ""]
+            for label, title in (("last_development_fold", "Last development fold"), ("final_test", "Final test")):
+                part = (sweep.get("folds") or {}).get(label)
+                if not part:
+                    continue
+                lines += [f"{title} (seasons {', '.join(part['blocks'])}):", "",
+                          "| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | "
+                          "Tied | Predicted tie |", "|---|---|---|---|---|---|---|---|"]
+                for x in sorted(part["rows"], key=lambda x: x["shift"]):
+                    name = "reference" if x["shift"] == 0 else f"reference {x['shift']:+g}"
+                    lines.append(f"| {name} | {x['n']} | {100 * x['over_rate']:.1f}% | "
+                                 f"{100 * x['mean_predicted_over']:.1f}% | {x['ece']:.4f} | {x['log_loss']:.4f} | "
+                                 f"{100 * x['push_rate']:.1f}% | {100 * x['mean_predicted_push']:.1f}% |")
+                lines.append("")
         corr = r.get("same_day_residual_correlation") or {}
         if corr.get("rho") is not None:
             lines += ["", f"Same-slate residual correlation (used by the combo builder): {corr['rho']:+.4f} "
@@ -129,15 +145,50 @@ def write_validation_docs(store, out_dir: Path) -> Path:
 
 
 _MARKET_LABELS = {"winner": "winner", "winner_3way": "three-way (home / draw / away)",
-                  "spread": "spread (at the historical line)", "total": "total (at the historical line)"}
+                  "spread": "spread (at the historical line)", "total": "total (at the historical line)",
+                  "player_prop:points": "player points (against a reference threshold, not a market line)",
+                  "player_prop:rebounds": "player rebounds (reference threshold)",
+                  "player_prop:assists": "player assists (reference threshold)",
+                  "player_prop:threes": "player three-pointers made (reference threshold)",
+                  "player_prop:pra": "player points + rebounds + assists (reference threshold)"}
 _SPORT_MARKET_LABELS = {("hockey", "winner"): "winner (incl. overtime and shootout)",
                         ("hockey", "winner_3way"): "three-way after regulation"}
 SUMMARY_START, SUMMARY_END = "<!-- results:start -->", "<!-- results:end -->"
 
 
+def props_table(store) -> str:
+    """Results of the player-statistic markets, kept apart from the event
+    markets: they are scored against reference thresholds, not market lines."""
+    from ..dashboard import validation_views
+    from ..sports import get_league
+
+    lines = ["| League | Statistic | Status | Selected model | Final-test player-games | Accuracy | Log loss | "
+             "Base rate | Season average + Poisson | Calibration error | Worst calibration error at a shifted threshold |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in sorted(validation_views(store), key=lambda r: (r["sport"], r["league"], r["market"])):
+        if not r["market"].startswith("player_prop:"):
+            continue
+        f = r["final_test"]
+        s, baselines = f["selected"], f.get("baselines") or {}
+        rows = (((r.get("supplement") or {}).get("folds") or {}).get("final_test") or {}).get("rows") or []
+        worst = max((x["ece"] for x in rows if x["shift"] != 0), default=float("nan"))
+        try:
+            name = get_league(r["league"])[1].name
+        except Exception:  # noqa: BLE001
+            name = r["league"]
+        naive = (baselines.get("season_average_poisson") or {}).get("log_loss", float("nan"))
+        lines.append(
+            f"| {name} | {r['market'].split(':', 1)[1]} | {'validated' if r.get('gates_passed') else 'experimental'} | "
+            f"{r['selected_model']} | {s['n']:,} | {100 * s['accuracy']:.1f}% | {s['log_loss']:.3f} | "
+            f"{(baselines.get('base_rate') or {}).get('log_loss', float('nan')):.3f} | {naive:.3f} | {s['ece']:.3f} | "
+            f"{worst:.3f} |")
+    return "\n".join(lines)
+
+
 def summary_table(store, sport: Optional[str] = None) -> str:
     """Compact results table (one row per validated league and market), built
-    from the newest recorded run of each; optionally for one sport."""
+    from the newest recorded run of each; optionally for one sport.  Player-
+    statistic markets have a table of their own (:func:`props_table`)."""
     from ..dashboard import validation_views
     from ..sports import get_league
 
@@ -147,7 +198,7 @@ def summary_table(store, sport: Optional[str] = None) -> str:
     lines = ["| League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | "
              "Market benchmark |", "|---|---|---|---|---|---|---|---|---|"]
     for r in sorted(validation_views(store), key=lambda r: (r["sport"], r["league"], r["market"])):
-        if sport is not None and r["sport"] != sport:
+        if (sport is not None and r["sport"] != sport) or r["market"].startswith("player_prop:"):
             continue
         f = r["final_test"]
         s, baselines = f["selected"], f.get("baselines") or {}
@@ -198,7 +249,8 @@ def register(main: click.Group) -> None:
 
     @report.command("summary")
     @click.option("--into", "into", default=None, type=click.Path(dir_okay=False, exists=True),
-                  help=f"Fill every block between {SUMMARY_START} (or '<!-- results:start sport=NAME -->') and "
+                  help=f"Fill every block between {SUMMARY_START} (or '<!-- results:start sport=NAME -->', or "
+                       "'<!-- results:start props -->' for the player-statistic markets) and "
                        f"{SUMMARY_END} in this file.")
     @pass_ctx
     def report_summary(ctx: Context, into: Optional[str]) -> None:
@@ -209,12 +261,15 @@ def register(main: click.Group) -> None:
         import re
 
         text = Path(into).read_text()
-        block = re.compile(r"<!-- results:start(?: sport=(\w+))? -->.*?<!-- results:end -->", re.S)
+        block = re.compile(r"<!-- results:start(?: (sport=\w+|props))? -->.*?<!-- results:end -->", re.S)
         if not block.search(text):
             raise click.ClickException(f"{into} has no {SUMMARY_START} ... {SUMMARY_END} block")
 
         def fill(match: "re.Match") -> str:
-            sport = match.group(1)
+            option = match.group(1)
+            if option == "props":
+                return "<!-- results:start props -->\n" + props_table(ctx.store) + "\n" + SUMMARY_END
+            sport = option.split("=", 1)[1] if option else None
             head = f"<!-- results:start sport={sport} -->" if sport else SUMMARY_START
             return head + "\n" + summary_table(ctx.store, sport) + "\n" + SUMMARY_END
 

@@ -78,6 +78,19 @@ src/evmodel/   pre-existing price/EV toolkit (odds conversion, de-vig, EV, Kelly
     common pool from `participant_scope(league)`, so imports for any of its
     leagues find the same people.
 
+13. **A threshold is not a price, and not an input.** A market defined by a
+    threshold the user reads somewhere (a player's points over or under 24.5)
+    gets that threshold through `sportspred import prop-lines`. It decides
+    where the model's distribution is read and nothing else: it is never a
+    model input, and without one there is no selection. A history scored
+    against thresholds that did not come from a market carries a failed gate
+    (`market_thresholds`) and cannot be labelled validated.
+14. **One ledger key per selection.** A prediction about one player is
+    recorded under `player_prop:<stat>:<player id>`; the model, its validation
+    run and its coverage status belong to the model market
+    `player_prop:<stat>`. `core.markets.model_market` goes from the first to
+    the second wherever results are grouped by model.
+
 ## Writing a sport plugin
 
 Create `src/sportspred/sports/<sport>/` with `__init__.py` exporting
@@ -94,7 +107,9 @@ implementation. A plugin implements `sports/base.py::SportPlugin`:
 | `required_checks(...)` | `CheckSpec`s that must be complete for a FINAL status (injury report, starting goalie, probable pitcher, lineup, weather ...) with freshness windows |
 | `market_benchmark(...)` | optional market-implied probabilities for comparison (label the timing honestly: opening / closing) |
 | `explain(...)` | supporting factors, opponent strength, upset risks, availability assumptions, missing data |
-| `apply_availability(...)` | optional: fold published availability into a row, list uncertain players, build worst-case rows |
+| `apply_availability(...)` | optional: fold published availability into a row, list uncertain players, build worst-case rows; `blockers` rule a selection out altogether (the player a statistic market is about is listed out) |
+| `prop_players(store, league, now)` | optional: the players a statistic-market threshold may be imported for, per upcoming game |
+| `validation_supplement(...)` | optional: extra checks of the selected candidate, stored in the report (basketball props: thresholds away from the reference one, and pushes) |
 
 ### FeatureFrame
 
@@ -107,6 +122,16 @@ probability matrix is side A. Three-way markets use `("home","draw","away")`.
 Rows for events without a result as of `now` are the upcoming rows the engine
 predicts. Add `n_pending_prior` (unplayed earlier games of either side) when
 the plugin declares the `prior_games_complete` check.
+
+**Several rows per event.** A frame of player-statistic rows has one row per
+player-game: `event_id` is then a composite key (`<event>|<player>`) that is
+unique per row, `game_id` names the real event, `ledger_market` gives each
+row's ledger key, and `line` holds the threshold (a reference threshold on
+completed rows, the imported one on upcoming rows). With
+`extra["requires_line"]` the engine predicts only rows that have a threshold.
+`extra["gates"]` adds gates that the protocol cannot see from the numbers.
+`stat_value` and `minutes_played` are outcome columns candidates learn from;
+they are not declared inputs, so validation blanks them on scored rows.
 
 ### Shared primitives
 
@@ -122,6 +147,11 @@ the plugin declares the `prior_games_complete` check.
   `SkCandidate` (any scikit-learn classifier; estimators must be picklable).
   Custom models subclass `sports.base.Candidate` (fit on a DataFrame, return
   an `(n, k)` probability matrix).
+* `models.counts` - count-distribution candidates for threshold markets on a
+  count: a mean model (a column, exposure x rate, or the two-stage
+  minutes-then-rate model) with a Poisson or negative-binomial spread, read at
+  each row's threshold; `push_prob` gives the chance of an exact tie and
+  `projection` the mean and percentiles the engine records.
 
 ### Validation, training, prediction
 

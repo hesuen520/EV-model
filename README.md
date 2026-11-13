@@ -107,6 +107,36 @@ How to read this honestly:
   announced. Features that need the actual starter are measured separately as
   retrospective upper bounds and can never be selected.
 
+### Player statistics (NBA and WNBA): built, experimental by construction
+
+Points, rebounds, assists, three-pointers made and points + rebounds +
+assists, each over or under a threshold. Three things are modelled: playing
+time (expected minutes), production per minute (the player's own rates, what
+the opponent allows, what absent team-mates leave behind) and the outcome
+distribution, so the answer is a probability of finishing over, under or
+exactly on a threshold - not a projected average.
+
+<!-- results:start props -->
+<!-- results:end -->
+
+*(Generated: `sportspred report summary --into README.md`.)*
+
+- **These numbers are against a reference threshold, not a bookmaker's
+  line.** No history of market thresholds is reachable, so each completed
+  player-game is scored against the half point just above the median of that
+  player's previous 15 games. Beating a naive threshold shows the
+  distribution is informative and calibrated; it says nothing about beating a
+  market line, which already contains most of what the model knows and news
+  it does not. A gate records this and keeps every such market
+  **experimental** until real thresholds have been collected and scored.
+- The last column is the worst calibration error when the same model is read
+  at thresholds moved away from the reference (for points, up to 6 either
+  way), including whole-number thresholds where a tie is a push.
+- A prediction needs a threshold you import
+  (`sportspred import prop-lines`); without one there is no selection. A
+  player listed out gets PASS; one listed doubtful or questionable makes the
+  selection conditional on him playing.
+
 Everything else:
 
 - **adapter-only** (a model and a documented CSV import exist; no real data
@@ -116,8 +146,8 @@ Everything else:
   results-only rating model that knows nothing sport-specific; MLS and NWSL
   are declared under the soccer model with no data ingested.
 - **unavailable** (declared, no model): golf and motorsport (field events need
-  a finish-distribution model), player props, NBA / WNBA / college spreads and
-  totals, NHL and MLB totals.
+  a finish-distribution model), NBA / WNBA / college spreads and totals, NHL
+  and MLB totals.
 - **demo-only**: two synthetic leagues used for the offline demo and tests.
 
 ## Install
@@ -137,6 +167,8 @@ sportspred validate --league nba          # walk-forward validation; records the
 sportspred train --league nba             # fits the model the validation run selected
 sportspred live nba-injury-report         # official injury report (public archive of every version)
 sportspred predict --league nba --detail  # records pregame predictions in the immutable ledger
+sportspred import prop-lines --league nba --csv lines.csv        # player thresholds you read (not prices)
+sportspred predict --league nba --market player_prop:points      # over / under / push at those thresholds
 sportspred slate                          # today's slate (Pacific/Honolulu), with statuses
 sportspred combos                         # strongest supported three-leg combo, or the PASS message
 sportspred dashboard                      # writes data/reports/dashboard.html (open it; no server)

@@ -25,6 +25,8 @@ from ..base import (
 from .adapter import SDV_LEAGUES, ingest_sdv
 from .features import (FEATURE_LABELS, BasketballConfig, build_winner_frame, report_features, roster_quality,
                        winner_features)
+from .props import (STAT_LABELS, STATS, PropConfig, apply_prop_availability, build_prop_frame, candidate_players,
+                    explain_prop, prop_candidates, prop_market, split_prop_market, threshold_sweep)
 
 __all__ = ["BasketballPlugin"]
 
@@ -35,17 +37,22 @@ _SPREAD = MarketDecl("spread", OutcomeType.OVER_UNDER, False, includes_overtime=
                      note="point spread at an exact line")
 _TOTAL = MarketDecl("total", OutcomeType.OVER_UNDER, False, includes_overtime=True,
                     note="total points at an exact line")
-_PROP = MarketDecl("player_prop", OutcomeType.OVER_UNDER, False, note="player statistic over/under")
+#: One modelled market per statistic.  A prediction's ledger key adds the player:
+#: ``player_prop:points:<player id>``.
+_PROPS = tuple(
+    MarketDecl(prop_market(stat), OutcomeType.OVER_UNDER, True,
+               note=f"player {STAT_LABELS[stat]} over/under at an exact threshold; void if the player does not play")
+    for stat in STATS)
 
 
 class BasketballPlugin(SportPlugin):
     sport = "basketball"
     leagues = (
         LeagueSpec("nba", "basketball", "NBA", gender="men", level="pro",
-                   markets=(_WINNER, _SPREAD, _TOTAL, _PROP), real_data_source=_SDV_SOURCE,
+                   markets=(_WINNER, _SPREAD, _TOTAL, *_PROPS), real_data_source=_SDV_SOURCE,
                    live_feeds="ESPN site API; official NBA injury report"),
         LeagueSpec("wnba", "basketball", "WNBA", gender="women", level="pro",
-                   markets=(_WINNER, _SPREAD, _TOTAL, _PROP), real_data_source=_SDV_SOURCE,
+                   markets=(_WINNER, _SPREAD, _TOTAL, *_PROPS), real_data_source=_SDV_SOURCE,
                    live_feeds="ESPN site API"),
         LeagueSpec("ncaam", "basketball", "NCAA Division I men", gender="men", level="college",
                    markets=(_WINNER, _SPREAD, _TOTAL), real_data_source=_SDV_SOURCE,
@@ -70,13 +77,33 @@ class BasketballPlugin(SportPlugin):
         return ingest_sdv(store, league, seasons=seasons, refresh=refresh, fetcher=fetcher)
 
     # -------------------------------------------------------------- features
+    def _prop_config(self, league: str) -> PropConfig:
+        return PropConfig(regulation_minutes=self._CONFIG.get(league, BasketballConfig()).regulation_minutes)
+
     def feature_frame(self, store: Any, league: str, market: str, *, now: Any = None) -> FeatureFrame:
         decl = self.league(league).market(market)
+        stat, _ = split_prop_market(market)
+        if stat is not None and decl.implemented:
+            return build_prop_frame(store, league, stat, now=now, cfg=self._prop_config(league))
         if market != "winner" or not decl.implemented:
             raise NotImplementedError(f"{league} market {market!r} has no feature builder yet")
         return build_winner_frame(store, league, now=now, cfg=self._CONFIG.get(league))
 
+    def prop_players(self, store: Any, league: str, *, now: Any = None) -> pd.DataFrame:
+        if not any(m.key.startswith("player_prop:") and m.implemented for m in self.league(league).markets):
+            return super().prop_players(store, league, now=now)
+        return candidate_players(store, league, now=now, cfg=self._prop_config(league))
+
+    def validation_supplement(self, league: str, market: str, frame: FeatureFrame, candidate: Candidate,
+                              plan: SplitPlan) -> Optional[Dict[str, Any]]:
+        if split_prop_market(market)[0] is None:
+            return None
+        return threshold_sweep(frame, candidate, plan)
+
     def candidates(self, league: str, market: str, frame: FeatureFrame) -> List[Candidate]:
+        stat, _ = split_prop_market(market)
+        if stat is not None:
+            return prop_candidates(stat, frame)
         f = winner_features(league)
         team = ["home_edge", "elo_diff", "net_slow_diff"]
         core = team + ["net_fast_diff", "rest_diff", "b2b_a", "b2b_b"]
@@ -114,6 +141,12 @@ class BasketballPlugin(SportPlugin):
         ]
 
     def split_plan(self, league: str, market: str, frame: FeatureFrame) -> SplitPlan:
+        if split_prop_market(market)[0] is not None:
+            per_season = frame.completed.groupby("block").size()
+            typical = float(per_season.median()) if len(per_season) else 0.0
+            return SplitPlan(n_final_blocks=2, min_train_blocks=4, n_calib_blocks=1,
+                             burn_in_blocks=int(frame.extra.get("burn_in_seasons", 1)),
+                             min_block_events=max(50, int(0.5 * typical)), max_dev_folds=8)
         cfg = self._CONFIG.get(league, BasketballConfig())
         per_season = frame.completed.groupby("block").size()
         typical = float(per_season.median()) if len(per_season) else 0.0
@@ -143,6 +176,8 @@ class BasketballPlugin(SportPlugin):
         rotation, restore confirmed returns, and build the worst-case rows in
         which each side's questionable players also sit."""
         effect = AvailabilityEffect(row=row.copy())
+        if split_prop_market(market)[0] is not None:
+            return apply_prop_availability(row, frame, availability, effect)
         rosters = frame.extra.get("rosters") or {}
         rate = frame.extra.get("league_rate")
         reg = float(frame.extra.get("regulation_minutes") or 240.0)
@@ -244,6 +279,8 @@ class BasketballPlugin(SportPlugin):
     def explain(self, league: str, market: str, row: pd.Series, frame: FeatureFrame,
                 contributions: Optional[Mapping[str, float]] = None) -> Explanation:
         exp = Explanation()
+        if split_prop_market(market)[0] is not None:
+            return explain_prop(row, frame, exp)
         names = frame.extra.get("names", {})
         home = names.get(row["side_a_id"], "home side")
         away = names.get(row["side_b_id"], "away side")

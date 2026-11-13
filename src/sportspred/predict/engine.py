@@ -61,13 +61,15 @@ def load_promoted(store: Any, league: str, market: str) -> FittedModel:
 
 
 def _class_labels(frame: FeatureFrame, row: Mapping[str, Any], names: Mapping[str, str],
-                  line: Optional[float]) -> Dict[str, Tuple[str, str]]:
+                  line: Optional[float], subject: Optional[str] = None,
+                  unit: Optional[str] = None) -> Dict[str, Tuple[str, str]]:
     """class name -> (selection id, display label).
 
     Conventions: for spread markets ``line`` is the handicap applied to side A
     (the home side), negative when side A is favoured, so side A covers when
     ``margin_A + line > 0`` and side B's handicap is ``-line``.  For totals
-    the classes are ``under`` / ``over`` at ``line``.
+    the classes are ``under`` / ``over`` at ``line``.  A market about one
+    player (``subject``) names him and the statistic (``unit``) in the label.
     """
     name_a = names.get(row["side_a_id"], row["side_a_id"])
     name_b = names.get(row["side_b_id"], row["side_b_id"])
@@ -81,6 +83,8 @@ def _class_labels(frame: FeatureFrame, row: Mapping[str, Any], names: Mapping[st
             out[cls] = (row["side_a_id"], name_a if line is None else f"{name_a} {line:+g}")
         elif cls in ("away_cover", "b_cover"):
             out[cls] = (row["side_b_id"], name_b if line is None else f"{name_b} {-line:+g}")
+        elif cls in ("over", "under") and subject:
+            out[cls] = (cls, f"{subject} {cls}" + ("" if line is None else f" {line:g}") + (f" {unit}" if unit else ""))
         elif cls in ("over", "under"):
             out[cls] = (cls, cls.capitalize() if line is None else f"{cls.capitalize()} {line:g}")
         else:
@@ -214,17 +218,24 @@ def predict_league(
     rows = frame.upcoming
     rows = rows[(rows["start_time_utc"] > now_ts)
                 & (rows["start_time_utc"] <= now_ts + pd.Timedelta(hours=horizon))]
+    if frame.extra.get("requires_line"):
+        # A market defined by a threshold cannot be priced without one: no threshold, no selection.
+        rows = rows[rows["line"].notna()]
     if rows.empty:
         return []
+    # A frame with several rows per game (one per player) names the game in ``game_id``
+    # and the ledger key of each row's market in ``ledger_market``.
+    rows = rows.assign(_event=rows["game_id"] if "game_id" in rows.columns else rows["event_id"],
+                       _market=rows["ledger_market"] if "ledger_market" in rows.columns else market)
     # An event with only a date is stored at 00:00Z of that date, but the date began up
     # to 14 hours earlier somewhere east of Greenwich: it may already be under way.
-    current = store.events(event_ids=rows["event_id"].tolist(), with_results=False,
+    current = store.events(event_ids=rows["_event"].unique().tolist(), with_results=False,
                            include_synthetic=True).set_index("event_id")
-    rows = rows[rows["event_id"].map(current["status"]).eq("scheduled")]     # never a live or finished event
+    rows = rows[rows["_event"].map(current["status"]).eq("scheduled")]     # never a live or finished event
     if rows.empty:
         return []
     precision = current["time_precision"]
-    date_only = rows["event_id"].map(precision).ne("datetime").to_numpy()
+    date_only = rows["_event"].map(precision).ne("datetime").to_numpy()
     earliest = rows["start_time_utc"] - pd.to_timedelta(np.where(date_only, DATE_ONLY_LEAD_HOURS, 0.0), unit="h")
     rows = rows[earliest > now_ts]
     if rows.empty:
@@ -244,18 +255,22 @@ def predict_league(
     unresolved, results_through, latest_result, usual_break = _unresolved_past_events(
         store, league, now_ts, settings.selection.unresolved_window_days)
     break_margin = settings.selection.results_break_margin
-    events = store.events(event_ids=rows["event_id"].tolist(), with_results=False, include_synthetic=True)
+    events = store.events(event_ids=rows["_event"].unique().tolist(), with_results=False, include_synthetic=True)
     events = events.set_index("event_id")
     feature_names = model.candidate.feature_names() or frame.feature_cols
-    prior = store.predictions(event_ids=rows["event_id"].tolist(), market=market, latest_only=True,
-                              include_synthetic=True)
-    prior_by_event = {r["event_id"]: r for _, r in prior.iterrows()}
+    prior = store.predictions(event_ids=rows["_event"].unique().tolist(), latest_only=True, include_synthetic=True)
+    prior_by_event = {(r["event_id"], r["market"]): r for _, r in prior.iterrows()}
+    push_fn = getattr(model.candidate, "push_prob", None)
+    projection_fn = getattr(model.candidate, "projection", None)
+    subject_col = "player_name" if "player_name" in rows.columns else None
+    unit = frame.extra.get("stat_label")
 
     out: List[Dict[str, Any]] = []
     for _, base_row in rows.iterrows():
-        ev = events.loc[base_row["event_id"]]
+        event_id, ledger_market = base_row["_event"], base_row["_market"]
+        ev = events.loc[event_id]
         team_ids = [base_row["side_a_id"], base_row["side_b_id"]]
-        avail = store.availability_as_of(league, now_dt, team_ids=team_ids, event_id=base_row["event_id"],
+        avail = store.availability_as_of(league, now_dt, team_ids=team_ids, event_id=event_id,
                                          include_synthetic=True)
         effect = plugin.apply_availability(league, market, base_row, frame, avail)
         row = effect.row
@@ -265,14 +280,18 @@ def predict_league(
         line = None
         if frame.outcome == OutcomeType.OVER_UNDER and "line" in row.index and row["line"] == row["line"]:
             line = float(row["line"])
-        labels = _class_labels(frame, row, names, line)
+        subject = str(row[subject_col]) if subject_col else None
+        labels = _class_labels(frame, row, names, line, subject, unit if subject else None)
         cls = frame.classes[k]
         selection, selection_label = labels[cls]
         # A plugin may supply the probability of an exact tie against the line
         # (``p_push``); the class probabilities are then conditional on no push
         # and are scaled so that the recorded distribution includes the push.
         p_push = 0.0
-        if "p_push" in row.index and row["p_push"] == row["p_push"]:
+        if callable(push_fn) and line is not None:
+            # A count model knows the chance of landing exactly on a whole-number threshold.
+            p_push = float(min(max(push_fn(pd.DataFrame([row]))[0], 0.0), 0.5))
+        elif "p_push" in row.index and row["p_push"] == row["p_push"]:
             p_push = float(min(max(row["p_push"], 0.0), 0.5))
         scale = 1.0 - p_push
         prob, prob_low, prob_high = float(P[k]) * scale, float(low[k]) * scale, float(high[k]) * scale
@@ -280,7 +299,11 @@ def predict_league(
         if p_push > 0.0:
             probs["push"] = p_push
 
-        checks = evaluate_checks(specs, row, check_log, now=now_ts, settings=settings, names=names)
+        check_row = row
+        if row["event_id"] != event_id:                 # checks are logged against the game, not the player row
+            check_row = row.copy()
+            check_row["event_id"] = event_id
+        checks = evaluate_checks(specs, check_row, check_log, now=now_ts, settings=settings, names=names)
         # Built in for every league: ratings are only current if every earlier
         # event of both sides has a result on file.
         behind = unresolved.get(row["side_a_id"], 0) + unresolved.get(row["side_b_id"], 0)
@@ -315,6 +338,7 @@ def predict_league(
             pass_reasons.append(f"too many model inputs are missing ({len(missing)} of {len(feature_names)})")
         if model_mismatch:
             pass_reasons.append(model_mismatch)
+        pass_reasons += list(effect.blockers)
         if prob < min_prob:
             pass_reasons.append(f"model probability {prob:.3f} is below the selection minimum {min_prob:.2f}")
         elif (settings.selection.require_interval_above_even
@@ -366,6 +390,10 @@ def predict_league(
         row_for_explain = row.copy()
         row_for_explain["_pick_is_a"] = cls in ("home", "a", "home_cover", "a_cover")
         row_for_explain["_pick_class"] = cls
+        projection = None
+        if callable(projection_fn):
+            projection = {k: float(v) for k, v in projection_fn(pd.DataFrame([row])).iloc[0].items()}
+            row_for_explain["_projection"] = projection
         explanation = plugin.explain(league, market, row_for_explain, frame, contributions)
         explanation.availability_assumptions += effect.applied + effect.unmatched
         for side_name, items in ((names.get(row["side_a_id"]), effect.uncertain_a),
@@ -399,6 +427,8 @@ def predict_league(
             "venue": ev["venue_name"], "venue_city": ev["venue_city"],
             "neutral_site": None if ev["neutral_site"] != ev["neutral_site"] else bool(ev["neutral_site"]),
             "market": market, "market_note": decl.note, "line": line,
+            **({"player": subject, "player_id": str(row["player_id"]), "stat": frame.extra.get("stat"),
+                "projection": projection} if subject else {}),
             "status_definition": REC_STATUS_DEFINITIONS[status],
             # When this prediction was made - not when any source was last read; each
             # check carries its own time.
@@ -414,7 +444,7 @@ def predict_league(
                    for _, r in src.iterrows()]
         snapshot = {c: (None if row[c] != row[c] else float(row[c])) for c in feature_names if c in row.index}
         record: Dict[str, Any] = {
-            "created_at_utc": iso_z(now_dt), "event_id": row["event_id"], "market": market, "line": line,
+            "created_at_utc": iso_z(now_dt), "event_id": event_id, "market": ledger_market, "line": line,
             "selection": selection,
             "selection_label": selection_label, "prob": prob, "prob_low": prob_low, "prob_high": prob_high,
             "probs": probs, "model_name": model.model_name, "model_version": model.model_version,
@@ -422,7 +452,7 @@ def predict_league(
             "checks": checks, "confidence": confidence, "factors": explanation.as_dict(),
             "features": snapshot, "data_quality": quality, "sources": sources, "display": display,
         }
-        previous = prior_by_event.get(row["event_id"])
+        previous = prior_by_event.get((event_id, ledger_market))
         if previous is not None:
             same = (
                 previous["model_version"] == record["model_version"]
@@ -445,7 +475,7 @@ def predict_league(
             try:
                 record["prediction_id"] = store.insert_prediction(record)
             except LedgerError as exc:
-                log.warning("prediction for %s not written: %s", row["event_id"], exc)
+                log.warning("prediction for %s %s not written: %s", event_id, ledger_market, exc)
                 record["ledger_error"] = str(exc)
         out.append(record)
     return out

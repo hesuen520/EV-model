@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import logging
 import sqlite3
 from contextlib import contextmanager
@@ -1154,6 +1155,44 @@ class Store:
                  detail, int(bool(is_synthetic))),
             )
         return cid
+
+    # ---------------------------------------------------------- prop thresholds
+    def add_prop_lines(self, rows: Sequence[Mapping[str, Any]], *, source_id: Optional[str] = None) -> int:
+        """Record thresholds of player-statistic markets.  Each row needs
+        ``league, event_id, player_id, player_name, stat, line,
+        collected_at_utc``; ``team_id`` and ``book`` are optional."""
+        payload = []
+        for row in rows:
+            line = float(row["line"])
+            if not math.isfinite(line) or line < 0:
+                raise StoreError(f"prop threshold {row['line']!r} is not a non-negative number")
+            if (2.0 * line) != round(2.0 * line):
+                raise StoreError(f"prop threshold {line!r} is not a whole or half number")
+            synthetic = is_demo_league(row["league"])
+            payload.append((row["league"], row["event_id"], _opt(row.get("team_id")), str(row["player_id"]),
+                            row["player_name"], row["stat"], line, _opt(row.get("book")),
+                            iso_z(row["collected_at_utc"]), source_id, int(synthetic)))
+        with self.conn() as con:
+            before = con.total_changes
+            # The same reading imported twice is stored once.
+            con.executemany(
+                """INSERT OR IGNORE INTO prop_lines (league, event_id, team_id, player_id, player_name, stat, line,
+                       book, collected_at_utc, source_id, is_synthetic) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                payload)
+            return int(con.total_changes - before)
+
+    def prop_lines_as_of(self, league: str, as_of: Any, *, stat: Optional[str] = None) -> pd.DataFrame:
+        """The threshold in force for each (event, player, statistic): the
+        newest one collected at or before ``as_of``."""
+        sql = "SELECT * FROM prop_lines WHERE league=? AND collected_at_utc <= ?"
+        params: List[Any] = [league, iso_z(as_of)]
+        if stat is not None:
+            sql += " AND stat=?"
+            params.append(stat)
+        df = self.query(sql + " ORDER BY collected_at_utc, line_id", params)
+        if df.empty:
+            return df
+        return df.drop_duplicates(["event_id", "player_id", "stat"], keep="last").reset_index(drop=True)
 
     def checks_as_of(self, league: str, as_of: Any, *, include_synthetic: bool = False) -> pd.DataFrame:
         sql = "SELECT * FROM check_log WHERE league=? AND checked_at_utc <= ?"

@@ -105,10 +105,12 @@ def _total(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> Tuple[
 
 
 def _player_prop(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> Tuple[str, Dict[str, Any]]:
-    stat = pred["market"].split(":", 1)[1] if ":" in pred["market"] else ""
+    # ``player_prop:<stat>:<player id>``; older records carry the player in their display data.
+    parts = pred["market"].split(":")
+    stat = parts[1] if len(parts) > 1 else ""
     cols = PROP_STATS.get(stat)
     meta = {**json.loads(pred.get("features_json") or "{}"), **json.loads(pred.get("display_json") or "{}")}
-    player_id = meta.get("player_id")
+    player_id = parts[2] if len(parts) > 2 else meta.get("player_id")
     if cols is None or player_id is None or not store.has_table(ev["league"], "player_box"):
         return "no_result", {"note": f"cannot grade statistic {stat!r} from the data on file"}
     box = store.read_table(ev["league"], "player_box")

@@ -52,7 +52,11 @@ def validate_league(store: Store, league: str, market: str = "winner", *,
         frame, candidates, plan, sport=spec.sport, config=_validation_config(settings),
         benchmark=benchmark, is_synthetic=is_demo_league(league),
     )
-    report["feature_frame"] = {k: v for k, v in frame.extra.items() if k not in ("rosters", "names")}
+    selected = next(c for c in candidates if c.name == report["selected_model"])
+    supplement = plugin.validation_supplement(league, market, frame, selected, plan)
+    if supplement is not None:
+        report["supplement"] = supplement
+    report["feature_frame"] = {k: v for k, v in frame.extra.items() if k not in ("rosters", "names", "rotation")}
     report["run_id"] = store.save_validation_run(report)
     store.write_table(league, f"oos_{market}", oos, is_synthetic=is_demo_league(league), mode="replace")
     return report, oos

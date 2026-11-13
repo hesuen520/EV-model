@@ -127,6 +127,11 @@ def test_regulation_three_way_quote_is_not_comparable_with_a_winner_prediction(s
     assert comparable("winner", RULES["moneyline_incl_ot"])[0]
     assert not comparable("winner_3way", RULES["moneyline_incl_ot"])[0]
     assert comparable("player_prop:points", RULES["player_prop_void_if_dnp"])[0]
+    # Sport-specific rule sets are not comparable with another sport's prediction.
+    assert comparable("winner", RULES["tennis_void_on_retirement"], "tennis")[0]
+    ok, why = comparable("winner", RULES["tennis_void_on_retirement"], "basketball")
+    assert not ok and "written for tennis" in why
+    assert comparable("winner", RULES["moneyline_incl_ot"], "basketball")[0]
 
 
 def test_bad_price_rows_are_rejected_with_line_numbers(store, two_teams, scheduled_event, tmp_path):
@@ -243,3 +248,31 @@ def test_prediction_side_never_imports_prices():
     assert not offenders, offenders
     for module in ("pipeline.py", "coverage.py", "config.py"):
         assert "evmodel" not in (root / module).read_text() and "from .ev" not in (root / module).read_text()
+
+
+def test_a_feature_frame_that_lists_a_price_as_a_model_input_is_refused():
+    """Validation and training both call ``FeatureFrame.validate``; a price
+    column among the inputs stops them, whatever a plugin author intended."""
+    import pandas as pd
+    import pytest
+
+    from sportspred.core.enums import OutcomeType
+    from sportspred.sports.base import FeatureFrame
+
+    def frame(features, extra=None, retro=()):
+        df = pd.DataFrame({
+            "event_id": ["e1", "e2"], "start_time_utc": pd.to_datetime(["2030-01-01T00:00:00Z", "2030-01-02T00:00:00Z"]),
+            "block": ["2030", "2030"], "y": [0.0, 1.0], "side_a_id": ["a", "a"], "side_b_id": ["b", "b"],
+            **{c: [0.1, 0.2] for c in list(features) + list(retro)},
+        })
+        return FeatureFrame("nfl", "winner", OutcomeType.BINARY, ("away", "home"), df, list(features),
+                            retrospective_cols=list(retro), extra=extra or {})
+
+    frame(["elo_diff", "rest_diff"]).validate()                                  # ordinary inputs pass
+    for bad in ("home_moneyline", "implied_prob_home", "closing_odds", "market_prob"):
+        with pytest.raises(ValueError, match="price columns may not be model inputs"):
+            frame(["elo_diff", bad]).validate()
+    with pytest.raises(ValueError, match="b365_home"):                           # declared by the plugin as a price
+        frame(["elo_diff", "b365_home"], extra={"price_cols": ["b365_home"]}).validate()
+    with pytest.raises(ValueError, match="price columns"):                       # retrospective inputs are checked too
+        frame(["elo_diff"], retro=["spread_odds"]).validate()

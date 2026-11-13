@@ -14,11 +14,10 @@ src/sportspred/
   validation/  chronological folds, metrics, calibration, walk-forward backtest, leakage tests
   sports/      one sub-package per sport, each exporting PLUGIN (auto-discovered)
   predict/     pregame engine: checks, FINAL/PROVISIONAL/CONDITIONAL/PASS, confidence labels
-  props/       player props (playing time x opportunity x outcome distribution)
   combos/      multi-leg combinations with explicit dependency handling
   ev/          optional, separate price comparison (wraps evmodel); paper tracking only
   ledger/      grading, settlement, reviews, lessons, drift monitoring
-  dashboard/   Streamlit app + static HTML export
+  dashboard/   static, self-contained HTML export (no server)
   cli/         `sportspred` command; cmd_*.py modules are auto-discovered
   coverage.py  coverage table computed from the registry + recorded validation runs
   config.py    Settings (TOML + environment)
@@ -46,8 +45,12 @@ src/evmodel/   pre-existing price/EV toolkit (odds conversion, de-vig, EV, Kelly
 5. **Selection on development folds only.** `run_validation` reads the final
    test period once, after selection. Update rates and other hyper-parameters
    are tuned on burn-in blocks only.
-6. **Odds never enter the sports model.** Only `sportspred.ev` reads prices.
-   Market benchmarks appear in validation reports as comparisons only.
+6. **Odds never enter the sports model.** No price is ever a feature, and
+   validation refuses a feature frame that lists one. Prices are read in
+   three places only: `sportspred.ev` (comparison with recorded
+   probabilities); a plugin's `market_benchmark` (validation reports, as a
+   comparison); and the football plugin, where the historical spread or total
+   **line** defines what the over/under market's outcome is.
 7. **UTC in storage** (`YYYY-MM-DDTHH:MM:SSZ`), **HST in display**
    (`core.timeutil.fmt_hst`). Naive datetimes are rejected.
 8. **Coverage is earned.** `coverage.py` derives every status from ingested

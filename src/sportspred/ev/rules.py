@@ -82,6 +82,7 @@ class SettlementRules:
     canceled: str = "void"         # void | half (prediction markets often settle 50-50)
     dead_heat: str = "divide"      # field events
     note: str = ""
+    sports: Tuple[str, ...] = ()   # sports these rules belong to; empty = any sport
 
 
 RULES: Dict[str, SettlementRules] = {r.key: r for r in (
@@ -96,13 +97,14 @@ RULES: Dict[str, SettlementRules] = {r.key: r for r in (
     SettlementRules("total_incl_ot", "Total, overtime included; landing on the line is a push.",
                     market="total", includes_overtime=True),
     SettlementRules("tennis_void_on_retirement", "Match winner; any retirement or walkover voids the bet.",
-                    market="winner", retirement="void"),
+                    market="winner", retirement="void", sports=("tennis",)),
     SettlementRules("tennis_action_after_first_set",
                     "Match winner; a retirement after one completed set stands, before that the bet is void.",
-                    market="winner", retirement="void_before_first_set"),
+                    market="winner", retirement="void_before_first_set", sports=("tennis",)),
     SettlementRules("tennis_action_on_retirement", "Match winner; the player who advances wins, however it ended.",
-                    market="winner", retirement="action"),
-    SettlementRules("mma_draw_void", "Fight winner; a draw or no contest voids the bet.", market="winner", draw="push"),
+                    market="winner", retirement="action", sports=("tennis",)),
+    SettlementRules("mma_draw_void", "Fight winner; a draw or no contest voids the bet.", market="winner", draw="push",
+                    sports=("mma", "boxing")),
     SettlementRules("prediction_market_winner_incl_ot",
                     "Winner contract, overtime included; a tie or a cancelled event settles 50-50.",
                     market="winner", includes_overtime=True, draw="half", canceled="half",
@@ -112,14 +114,21 @@ RULES: Dict[str, SettlementRules] = {r.key: r for r in (
 )}
 
 
-def comparable(prediction_market: str, rules: SettlementRules) -> Tuple[bool, str]:
+def comparable(prediction_market: str, rules: SettlementRules, sport: Optional[str] = None) -> Tuple[bool, str]:
     """Can a quote governed by ``rules`` be compared with a prediction of
     ``prediction_market``?  A model probability for "wins including overtime"
-    says nothing about a regulation-time three-way price, and vice versa."""
+    says nothing about a regulation-time three-way price, and vice versa.
+
+    Two things are checked: the market family, and - for rule sets written
+    for particular sports - the sport, when it is given.  Nothing else is:
+    whether the venue's own house rules match the rule set is for the person
+    supplying the quote to verify."""
     family = prediction_market.split(":", 1)[0]
     if family != rules.market:
         return False, (f"the quote settles as {rules.market!r} ({rules.description}) but the prediction is for "
                        f"{prediction_market!r}")
+    if sport is not None and rules.sports and sport not in rules.sports:
+        return False, (f"the rule set {rules.key!r} is written for {' / '.join(rules.sports)}, not for {sport}")
     return True, ""
 
 

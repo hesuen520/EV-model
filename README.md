@@ -72,12 +72,18 @@ How to read this honestly:
   events, better than the naive baseline with the interval excluding zero,
   calibration error under 3 points, point-in-time features). It does **not**
   mean the model beats a market.
-- Where a market benchmark exists, **the market is better** than the model in
-  every case. The NFL and soccer benchmark prices are undated in their source
-  (possibly closing numbers, which contain later news), so the comparison is
-  indicative only.
-- Against the **NFL spread and total**, no sports-only model beat a coin flip,
-  so the base rate was selected and every such prediction is PASS.
+- Where a market benchmark exists for a winner market (NFL and the five club
+  soccer leagues), **the market is better** than the model every time. The
+  benchmark prices are undated in their source (possibly closing numbers,
+  which contain later news), so the comparison is indicative only.
+- Against the **NFL spread and total**, no sports-only model beat a coin flip
+  (nor, at these lines, does the price itself), so the base rate was selected
+  and every such prediction is PASS.
+- **A model that failed a gate still makes selections by default.** Each
+  prediction carries its validation status, and "experimental" ones are
+  labelled as such. Set `allowed_coverage = ["validated"]` in the settings to
+  turn every experimental selection into PASS. Combos already use validated
+  legs only.
 - **MLB** gains almost nothing over a plain Elo rating; MLB and the NHL are
   close to coin flips for most games, and the PASS rule passes on most of them.
 - **Tennis** is validated on a snapshot archive that ends in mid-2026 and
@@ -97,8 +103,9 @@ Everything else:
 - **adapter-only** (a model and a documented CSV import exist; no real data
   ingested and validated here): tennis doubles, UFC and boxing, cricket (T20,
   ODI, Test), rugby union and league, volleyball, badminton, table tennis,
-  esports (CS2, Valorant, LoL, Dota 2), international basketball, MLS, NWSL.
-  These run on a results-only rating model that knows nothing sport-specific.
+  esports (CS2, Valorant, LoL, Dota 2) and international basketball run on a
+  results-only rating model that knows nothing sport-specific; MLS and NWSL
+  are declared under the soccer model with no data ingested.
 - **unavailable** (declared, no model): golf and motorsport (field events need
   a finish-distribution model), player props, NBA / WNBA / college spreads and
   totals, NHL and MLB totals.
@@ -139,11 +146,13 @@ feed is unreachable - use the CSV import ([docs/CSV_IMPORT.md](docs/CSV_IMPORT.m
 ```bash
 sportspred templates my_csv/
 sportspred import events --league ufc --csv my_csv/events.csv --create-participants
-sportspred import availability --league nhl --csv goalies.csv
+sportspred import availability --league nhl --csv goalies.csv --check-key starting_goalie
 ```
 
-No data is ever substituted: if a source cannot be reached the command says so
-and records nothing.
+No data is ever invented or substituted from elsewhere. If a source cannot be
+reached the command says so and records nothing new; if an earlier download of
+the same file is in the local cache, that copy is reused with a warning that
+gives its collection time.
 
 ## What a prediction contains
 
@@ -161,9 +170,13 @@ collection and publication times; the last check time; and a status:
 | **CONDITIONAL** | holds only if a stated condition is true, e.g. a named questionable player plays. |
 | **PASS** | evidence inadequate or a selection rule failed. |
 
-A report's age is measured from when it was **published**, not when it was
-downloaded. Confidence labels come from the observed out-of-sample hit rate of
-the probability band a selection falls in, never from the raw probability.
+How old is a report? Where the source states when the report was
+**published** - the official NBA injury report, `import checks` rows, and
+`import availability --published-at` - its age is measured from that time,
+not from the download. A live list with no publication time (the ESPN
+adapter, or a CSV imported without one) is as old as the moment it was read.
+Confidence labels come from the observed out-of-sample hit rate of the
+probability band a selection falls in, never from the raw probability.
 
 Tonight's real NBA slate, for example, is PROVISIONAL: the newest official
 injury report in the public archive was published the previous evening, and
@@ -183,11 +196,15 @@ fewer picks and `PASS — insufficient support for a three-leg combo.`
 Only FINAL legs can form a recommendation; PROVISIONAL legs appear, if at all,
 in a preview labelled as not a recommendation.
 
-The whole selection rule is back-tested over historical slates
-(`sportspred combos validate --league nba`). For NBA three-leg combos on the
+The core of the rule - take the most probable qualifying legs of one league's
+slate and multiply - is back-tested over historical slates
+(`sportspred combos validate --league nba`). That backtest does **not** cover
+the FINAL-status filter (no historical check states exist), combos across
+leagues, or the dependency handling. For NBA three-leg combos on the
 final-test slates the estimated all-win probability averaged 50.8% and 52.2%
-actually won (268 slates). Adding a leg can never raise the probability that
-every selection wins.
+actually won (268 slates). It does not always hold up: on NHL development
+slates the three-leg estimate averaged 38.9% and 31.5% won (317 slates).
+Adding a leg can never raise the probability that every selection wins.
 
 ## Optional EV module
 

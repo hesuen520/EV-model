@@ -138,6 +138,10 @@ class FeatureFrame:
                 raise ValueError(
                     f"{int(late.sum())} rows use information from at/after their own start (e.g. {bad})"
                 )
+        # Odds never enter a sports model: refuse a frame that lists a price as an input.
+        from ..validation.leakage import assert_no_price_features
+
+        assert_no_price_features(self)
 
     @property
     def completed(self) -> pd.DataFrame:

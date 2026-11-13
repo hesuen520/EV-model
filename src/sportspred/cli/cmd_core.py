@@ -120,6 +120,35 @@ def register(main: click.Group) -> None:
                 "to load results yourself.") from exc
         click.echo(str(report))
 
+    @main.command("check-leakage")
+    @click.option("--league", required=True)
+    @click.option("--market", default="winner", show_default=True)
+    @click.option("--cutoffs", default=3, show_default=True, help="How many past instants to rebuild features at.")
+    @pass_ctx
+    def check_leakage(ctx: Context, league: str, market: str, cutoffs: int) -> None:
+        """Point-in-time test: rebuild features as of past instants and compare.
+
+        Features of the first slate after each instant are built knowing only
+        what was on file before it, and must equal the values obtained from the
+        full history.  Any difference means a feature used information from
+        its own slate or later.  Read-only.
+        """
+        from ..sports import get_league
+        from ..validation.leakage import asof_invariance
+
+        plugin, _ = get_league(league)
+        result = asof_invariance(plugin, ctx.store, league, market, n_cutoffs=cutoffs)
+        if result.empty:
+            raise click.ClickException("no comparable events: ingest results for this league first")
+        for cutoff, part in result.groupby("cutoff"):
+            click.echo(f"as of {cutoff:%Y-%m-%d %H:%M:%S}Z: {int(part['n_events'].max())} events, {len(part)} features, "
+                       f"largest difference {part['max_abs_diff'].max():.3g}")
+        bad = result[~result["ok"]]
+        if len(bad):
+            click.echo(bad.sort_values("max_abs_diff", ascending=False).head(10).to_string(index=False))
+            raise click.ClickException(f"{league} {market}: LEAKAGE - {bad['feature'].nunique()} feature(s) differ")
+        click.echo(f"{league} {market}: no leakage found at {result['cutoff'].nunique()} cut-offs")
+
     @main.command()
     @click.option("--league", required=True)
     @click.option("--market", default="winner", show_default=True)

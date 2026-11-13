@@ -1,8 +1,9 @@
 # EV module (optional, separate, paper tracking only)
 
 The prediction engine produces sports-based probabilities and records them in
-the ledger. It cannot import this module, and no price is ever a model input
-(a test scans the source to enforce that). Only afterwards, and only if you
+the ledger. It cannot import this module (a test scans the prediction-side
+source for such imports), and no price is ever a model input (validation
+refuses a feature frame that lists a price column). Only afterwards, and only if you
 supply prices, are those probabilities compared with timestamped executable
 quotes.
 
@@ -51,8 +52,11 @@ settings file (`[[ev.presets]]`).
 
 A model probability for "wins, overtime included" says nothing about a
 regulation-time three-way price. Each quote therefore names the rule set it
-settles under, and a quote whose rules do not match the prediction's market is
-rejected as *not comparable*.
+settles under, and a quote is rejected as *not comparable* when its rule set
+is for a different market family (winner, three-way, spread, total) or was
+written for a different sport (the tennis and combat rule sets). Nothing finer
+is checked: whether a venue's house rules really match the rule set you name
+is yours to verify.
 
 | Situation | Handling |
 |---|---|
@@ -62,7 +66,6 @@ rejected as *not comparable*.
 | postponed / cancelled | void at sportsbooks; 50-50 under the prediction-market rule set (venues publish per-market windows - read them) |
 | tennis retirement | three selectable policies: void, action after one completed set (needs `sets_completed` on file, otherwise left unsettled for manual handling), or action |
 | walkover, no contest | void |
-| player did not play (props) | void |
 | result corrected later | a new settlement is appended and linked to the one it replaces; nothing is overwritten |
 
 Books differ. Pick the rule set that matches the venue you are comparing
@@ -76,7 +79,7 @@ verify before relying on them.
 
 | Key | Formula | Source |
 |---|---|---|
-| `kalshi_taker` | round up to the cent(0.07 x contracts x price x (1 - price)), times a per-series multiplier (default 1); some series also charge maker fees | https://kalshi.com/fee-schedule |
+| `kalshi_taker` | round up to the cent(0.07 x contracts x price x (1 - price)). Kalshi applies a per-series multiplier and some series charge maker fees; **neither is modelled here** - add a fee schedule with the series' own rate if yours differs | https://kalshi.com/fee-schedule |
 | `polymarket_us_taker` | 0.0695 x contracts x price x (1 - price) | https://docs.polymarket.us/fees |
 | `polymarket_intl_sports_taker` | 0.05 x shares x price x (1 - price); US persons may not trade on the international platform | https://docs.polymarket.com/trading/fees |
 | `exchange_2pct` | illustrative 2% commission on net winnings | set your exchange's rate |

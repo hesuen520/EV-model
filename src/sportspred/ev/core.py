@@ -216,7 +216,7 @@ def evaluate_one(pred: Mapping[str, Any], quote: Mapping[str, Any], quotes: pd.D
         "fair_odds_decimal": 1.0 / p, "rec_status": pred["rec_status"],
     }
     reasons: List[str] = []
-    ok, why = comparable(pred["market"], rules)
+    ok, why = comparable(pred["market"], rules, pred.get("sport"))
     if not ok:
         return {**out, "status": "not comparable", "eligible": False, "reasons": [why]}
     implied = raw_implied(quote)

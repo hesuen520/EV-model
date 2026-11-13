@@ -13,7 +13,8 @@ analysis and paper tracking.
 They are **not** a betting system. No model sees betting odds. In the
 validation runs where a market benchmark existed (NFL, five club soccer
 leagues) the market's implied probabilities were more accurate than the
-model's in every case. Nothing here guarantees a winning pick or a profit.
+model's in every winner market; on the NFL spread and total neither the
+models nor the price beat a coin flip. Nothing here guarantees a winning pick or a profit.
 
 ## What every model has in common
 
@@ -77,8 +78,11 @@ candidate.
 ## Validation protocol
 
 1. Completed events are cut into chronological blocks (seasons).
-2. The most recent blocks are the **final test period** and are not touched
-   during development.
+2. The most recent blocks are the **final test period**. No selection,
+   tuning or calibration code reads them. Their scores are, however, printed
+   at the end of every run - including runs made while the code was being
+   written - so they were visible to the author throughout, and "untouched"
+   would overstate it.
 3. **Walk-forward development folds**: fit on earlier blocks, fit the
    calibrator (Platt scaling on log-probabilities) on the next block, score on
    the block after that. Imputation and scaling live inside the fitted
@@ -86,12 +90,15 @@ candidate.
 4. **Selection** on pooled development-fold log loss with a one-standard-error
    preference for the simpler candidate.
 5. The selected candidate and the baselines are scored **once per run** on the
-   final test period. Most leagues were run two to four times, because data
-   handling and defects found in review were fixed and the run repeated; no
-   candidate list, selection rule or gate was changed in response to a
-   final-test number. Every run is kept, and the generated report lists them
-   all under "Run history". Runs made in scratch stores while a plugin was
-   being written are not in that history.
+   final test period. Most leagues have two or three recorded runs, because
+   data handling and defects found in review were fixed and the run repeated.
+   No candidate list, selection rule or gate was changed because of a
+   final-test number - a statement of the author's intent that the record
+   cannot prove. Fixes did change outcomes: after duplicate college football
+   records were removed the selected candidate changed (ratings-only to full
+   logistic), and Serie A changed status. Every recorded run is kept and
+   listed under "Run history" in the generated report. Runs made in scratch
+   stores while a plugin was being written were not recorded.
 6. Reported: sample sizes and dates; accuracy, Brier score, log loss and
    expected calibration error; reliability tables and charts; intervals from a
    bootstrap that resamples whole slates; season-by-season stability against
@@ -138,7 +145,8 @@ history: over 26,798 NBA team-games with an absent rotation player it predicts
 the quality of the rotation that actually played with an error (RMSE) of 0.0104
 on development seasons and 0.0130 on the final period, against 0.0161 and
 0.0200 with no adjustment; a replacement-level alternative fitted on
-development seasons was no better. *Caveat:* player quality is a box-score
+development seasons was essentially the same (0.0103 and 0.0130). The
+analysis is `scripts/analysis/nba_availability_redistribution.py`. *Caveat:* player quality is a box-score
 composite (Game Score per minute, a published formula used only to define the
 input). It undervalues low-usage defenders and shooters, so ruling such a
 player out can nudge the estimate *up*. History shows the measure does move
@@ -166,6 +174,14 @@ most plays.
 - **NFL winner** (validated): 704 games, Sep 2024 - Nov 2026, accuracy 65.5%
   (62.4-68.4), log loss 0.626; Elo 0.630; the de-vigged price in the schedule
   file 0.603. Knowing the actual starting quarterback would give 0.619.
+  *Live predictions use one input the backtest did not.* The schedule file
+  lists a projected starter for upcoming games. It is a third-party
+  projection, not a team announcement; it is stored as a "probable"
+  statement and, when present, replaces the incumbent in the quarterback
+  feature. That substitution has not been validated. Expected points added
+  come from nflfastR's play-value model, which was itself estimated on
+  seasons inside the backtest period (a mild look-ahead in the scale, not in
+  the results).
 - **NFL spread and total** (experimental): scored against the historical line
   in the schedule file. No candidate beat the 50% base rate on development
   folds, so the base rate is the selected "model" and every such prediction is
@@ -304,8 +320,11 @@ validation run is recorded.
 
 A probability becomes a selection only if the league-market's coverage status
 is allowed, enough inputs are present, the probability clears the configured
-minimum (0.60 two-way, 0.45 three-way, 0.55 over/under by default) and its
-model-uncertainty interval stays above a coin flip. These are explicit,
+minimum (0.60 two-way, 0.45 three-way, 0.55 over/under by default) and, for
+two-way and over/under markets, its model-uncertainty interval stays above a
+coin flip (a three-way selection has no such test). By default both
+"validated" and "experimental" league-markets may produce selections; the
+status is shown on every prediction. These are explicit,
 editable rules; the validation report shows accuracy and coverage at each
 threshold on both development folds and the final test.
 
@@ -325,8 +344,13 @@ back-tested over historical slates: for the NBA, development slates 50.4%
 estimated versus 49.2% observed (1,746 slates), final-test slates 50.8% versus
 52.2% (268 slates). Selecting the most confident legs also selects the most
 overstated ones: at a leg minimum of 0.80 the development slates show 64.7%
-estimated versus 57.3% observed. For leagues with few qualifying slates (NFL,
-NHL) the final-test samples are too small to conclude anything.
+estimated versus 57.3% observed. The NHL shows the rule failing: on
+development slates three-leg combos were estimated at 38.9% and won 31.5%
+(317 slates, interval 26.7-36.9%); its 67 final-test slates went the other
+way (35.0% estimated, 49.3% observed), and the NFL has 40. Those final-test
+samples are too small to conclude anything. The backtest covers "most
+probable qualifying legs of one league, multiplied"; it does not cover the
+FINAL-status filter, combos across leagues, or the dependency handling.
 
 ## Known limitations
 

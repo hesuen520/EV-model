@@ -10,6 +10,7 @@ means a feature depends on information from the event's own slate or later.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -17,7 +18,31 @@ import pandas as pd
 
 from ..core.timeutil import DISPLAY_TZ_NAME
 
-__all__ = ["asof_invariance", "assert_asof_invariance", "default_cutoffs"]
+__all__ = ["asof_invariance", "assert_asof_invariance", "default_cutoffs", "assert_no_price_features"]
+
+#: Column names that can only mean a betting price.  A spread or total *line*
+#: is not in this list: it defines what an over/under market's outcome is.
+_PRICE_NAME = re.compile(
+    r"(^|_)(odds|moneyline|ml|price|prices|implied|vig|juice|overround|handicap|bookmaker|sportsbook|market|"
+    r"closing|opening)(_|$)")
+
+
+def assert_no_price_features(frame: Any) -> None:
+    """Refuse a feature frame whose model inputs include a betting price.
+
+    Odds are kept out of the sports models by construction; this makes the
+    rule a hard stop instead of a convention.  A column is refused when its
+    name can only mean a price, or when the plugin lists it under
+    ``frame.extra["price_cols"]`` (the columns it reads for a benchmark).
+    Both selectable and retrospective inputs are checked.
+    """
+    declared = {str(c) for c in (frame.extra or {}).get("price_cols", ())}
+    inputs = [str(c) for c in list(frame.feature_cols) + list(getattr(frame, "retrospective_cols", []) or [])]
+    bad = sorted({c for c in inputs if c in declared or _PRICE_NAME.search(c.lower())})
+    if bad:
+        raise ValueError(
+            f"{frame.league} {frame.market}: price columns may not be model inputs: {', '.join(bad)}. "
+            "Prices belong to the market benchmark and the separate EV module only.")
 
 
 def default_cutoffs(completed: pd.DataFrame, n: int = 4, seed: int = 0) -> List[pd.Timestamp]:

@@ -255,7 +255,8 @@ def import_results(store: Any, league: str, path: PathLike) -> Dict[str, int]:
 
 def import_availability(store: Any, league: str, path: PathLike, *, tz: Optional[str] = None,
                         league_wide: bool = False, check_key: str = "injury_report",
-                        horizon_hours: float = 48.0, collected_at: Any = None) -> Dict[str, int]:
+                        horizon_hours: float = 48.0, collected_at: Any = None,
+                        report_published_at: Any = None) -> Dict[str, int]:
     """Availability statements as published.
 
     Required columns: ``team, player, status`` (``out`` | ``doubtful`` |
@@ -263,6 +264,13 @@ def import_availability(store: Any, league: str, path: PathLike, *, tz: Optional
     Optional: ``role`` (e.g. ``starting_goalie``, ``probable_pitcher``),
     ``detail``, ``published_at`` (when the source published it),
     ``collected_at`` (when you read it; default: now).
+
+    How old the report is: ``report_published_at`` says when the report this
+    file transcribes was published, and the pregame check is then aged from
+    that time.  Without it the check is as old as its collection time (the
+    list is taken to be the source's current one when it was read).  A row's
+    own ``published_at`` dates that single statement - a long-term injury is
+    old news on a current list - so it does not age the check.
 
     The matching pregame check is logged as ``reported`` for every team in the
     file.  With ``league_wide`` (the file is a complete league report) teams
@@ -275,6 +283,11 @@ def import_availability(store: Any, league: str, path: PathLike, *, tz: Optional
     errors: List[str] = []
     valid = {a.value for a in Availability}
     default_collected = iso_z(collected_at or utcnow())
+    report_published = None
+    if report_published_at is not None:
+        report_published = _time(str(report_published_at), tz, 0, "report publication time", errors)
+        if report_published and report_published > default_collected:
+            errors.append("the report's publication time is later than its collection time")
     ids = _participants(store, league, list(df["team"]), create=False, kind="team", errors=errors)
     rows = []
     for i, row in df.iterrows():
@@ -300,14 +313,15 @@ def import_availability(store: Any, league: str, path: PathLike, *, tz: Optional
     listed = {t: c for t, c in zip(frame.get("team_id", []), frame.get("collected_at_utc", []))}
     for team, when in listed.items():
         store.log_check(league, check_key, "reported", checked_at=when, team_id=team, source_id=source,
-                        is_synthetic=league.startswith("demo_"))
+                        published_at=report_published, is_synthetic=league.startswith("demo_"))
     nothing = 0
     if league_wide:
         upcoming = store.upcoming(league, now=default_collected, horizon_hours=horizon_hours,
                                   include_synthetic=league.startswith("demo_"))
         for team in (set(upcoming["home_id"].dropna()) | set(upcoming["away_id"].dropna())) - set(listed):
             store.log_check(league, check_key, "nothing_listed", checked_at=default_collected, team_id=team,
-                            source_id=source, detail="league-wide report; team not listed",
+                            source_id=source, published_at=report_published,
+                            detail="league-wide report; team not listed",
                             is_synthetic=league.startswith("demo_"))
             nothing += 1
     return {"statements": n, "teams_reported": len(listed), "teams_nothing_listed": nothing}

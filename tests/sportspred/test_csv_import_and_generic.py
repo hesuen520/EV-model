@@ -84,6 +84,27 @@ def test_blank_cells_stay_missing_and_winner_without_scores_is_accepted(store, t
     assert ev["winner_id"] == ev["away_id"]
 
 
+def test_availability_check_is_aged_from_the_report_publication_time_when_stated(store, tmp_path):
+    """A statement's own date does not age a current list, but a stated report
+    publication time does - and it must not be later than the collection."""
+    import_events(store, LEAGUE, _csv(tmp_path, HEADER + "g1,2030,2030-04-02T18:00:00Z,scheduled,Alpha,Beta,0,,,,\n"),
+                  create_participants=True)
+    report = _csv(tmp_path, "team,player,status,published_at\nAlpha,A. Batter,out,2030-03-25T12:00:00Z\n", "inj.csv")
+
+    import_availability(store, LEAGUE, report, collected_at="2030-04-01T20:00:00Z")
+    log = store.checks_as_of(LEAGUE, "2030-04-01T21:00:00Z")
+    assert len(log) == 1 and pd.isna(log.iloc[0]["published_at_utc"])     # aged from collection
+
+    import_availability(store, LEAGUE, report, collected_at="2030-04-01T22:00:00Z",
+                        report_published_at="2030-03-31T09:00:00Z")
+    log = store.checks_as_of(LEAGUE, "2030-04-01T23:00:00Z")
+    assert "2030-03-31T09:00:00Z" in set(log["published_at_utc"].dropna())
+
+    with pytest.raises(CsvImportError, match="later than its collection time"):
+        import_availability(store, LEAGUE, report, collected_at="2030-04-01T22:00:00Z",
+                            report_published_at="2030-04-02T09:00:00Z")
+
+
 def test_league_wide_availability_distinguishes_nothing_listed_from_never_checked(store, tmp_path):
     events = _csv(tmp_path, HEADER
                   + "e1,2030,2030-04-02T14:00:00Z,scheduled,A,B,0,,,,\n"

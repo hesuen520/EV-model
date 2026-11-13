@@ -60,15 +60,28 @@ def register(main: click.Group) -> None:
     @click.option("--league-wide", is_flag=True,
                   help="The file is a complete league report: unlisted teams with an upcoming event are "
                        "recorded as 'checked, nothing listed'.")
-    @click.option("--check-key", default="injury_report", show_default=True)
+    @click.option("--check-key", default="injury_report", show_default=True,
+                  help="Which pregame check this file satisfies, e.g. starting_goalie or probable_pitcher.")
+    @click.option("--published-at", default=None,
+                  help="When the report this file transcribes was published. The check is aged from this time; "
+                       "without it, from the collection time.")
+    @click.option("--collected-at", default=None,
+                  help="When the source was read (default: now). State it when importing a file saved earlier.")
     @pass_ctx
     def import_availability(ctx: Context, league: str, path: str, tz: Optional[str], league_wide: bool,
-                            check_key: str) -> None:
+                            check_key: str, published_at: Optional[str], collected_at: Optional[str]) -> None:
         """Injury / line-up statements as published; also logs the pregame check."""
         from ..adapters import csv_import
+        from ..core.timeutil import parse_ts
 
+        when = None
+        if collected_at:
+            try:
+                when = parse_ts(collected_at, assume_tz=tz)
+            except Exception as exc:  # noqa: BLE001 - reported to the user as a usage error
+                raise click.ClickException(f"--collected-at: {exc}") from exc
         _run(csv_import.import_availability, ctx.store, league, path, tz=tz, league_wide=league_wide,
-             check_key=check_key)
+             check_key=check_key, collected_at=when, report_published_at=published_at)
         click.echo("Re-run `sportspred predict` to update statuses.")
 
     @import_group.command("checks")

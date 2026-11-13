@@ -69,8 +69,8 @@ predictions are re-graded with a linked new grade.
 | `status` | yes | `out` (confirmed absence), `doubtful`, `questionable`, `probable`, `uncertain` (all four: uncertain availability), `available` (confirmed) |
 | `role` | no | e.g. `starting_goalie`, `probable_pitcher`, `starting_qb` |
 | `detail` | no | free text |
-| `published_at` | no | when the source published the statement |
-| `collected_at` | no | when you read it (default: now). A prediction only sees statements collected before it |
+| `published_at` | no | when the source published this one statement. It dates the statement, not the report: a long-term injury is old news on a current list, so this does not age the pregame check |
+| `collected_at` | no | when you read the source (default: the time of the import - state it, or pass `--collected-at`, when importing a file you saved earlier). A prediction only sees statements collected before it |
 
 Three situations are kept apart: a **confirmed absence** (`out`), **uncertain
 availability** (the middle four statuses) and **missing information** (no row
@@ -80,6 +80,11 @@ that have an event in the next 48 hours and are not in the file are logged as
 *checked, nothing listed* - which completes their check - instead of being
 left as *never checked*.
 
+**How old the check is.** Pass `--published-at` with the time the report you
+transcribed was published, and the check's age is measured from then. Without
+it, the check is as old as its collection time: the file is taken to be the
+source's current list at the moment you read it.
+
 ## checks
 
 `check_key`, `outcome` (`reported`, `nothing_listed`, `not_published`),
@@ -88,8 +93,11 @@ left as *never checked*.
 yet; it does not complete the check.
 
 Each league's required checks and their freshness windows are listed by
-`sportspred predict --detail`; they can be tightened in the settings file
-(`[selection.max_age_hours]`, `[selection.recheck_within_hours]`).
+`sportspred predict --detail`; they can be changed - tightened or loosened -
+in the settings file (`[selection.max_age_hours]`,
+`[selection.recheck_within_hours]`). The gates for "validated" are settings
+too (`[validation]`). Loosening either weakens what FINAL and "validated"
+mean; the defaults are the ones every recorded result here was produced with.
 
 ## Prices
 

@@ -279,6 +279,7 @@ def predict_league(
             contributions = {c: float(contrib.iloc[0][c]) for c in contrib.columns}
         row_for_explain = row.copy()
         row_for_explain["_pick_is_a"] = cls in ("home", "a", "home_cover", "a_cover")
+        row_for_explain["_pick_class"] = cls
         explanation = plugin.explain(league, market, row_for_explain, frame, contributions)
         explanation.availability_assumptions += effect.applied + effect.unmatched
         for side_name, items in ((names.get(row["side_a_id"]), effect.uncertain_a),

@@ -32,7 +32,7 @@ import pandas as pd
 
 from ...adapters.http import Fetcher
 from ..base import IngestReport
-from .adapter import date_start, finish_report, resolve_teams, retire_vanished, write_matches
+from .adapter import date_start, finish_report, resolve_teams, retire_vanished, write_matches, refuse_mass_disappearance
 
 __all__ = ["IntlSource", "INTL_SOURCES", "competition_stage", "normalize_results", "ingest_international"]
 
@@ -139,6 +139,8 @@ def ingest_international(store, league: str, *, seasons: Optional[Sequence[int]]
     ids = resolve_teams(store, league, names, PROVIDER)
     rows["home_id"] = ids.iloc[: len(rows)].to_numpy()
     rows["away_id"] = ids.iloc[len(rows):].to_numpy()
+    if not seasons:
+        refuse_mass_disappearance(store, league, PROVIDER, rows["provider_event_id"])
     write_matches(store, rows, report)
     if not seasons:
         retire_vanished(store, league, PROVIDER, rows["provider_event_id"], report)

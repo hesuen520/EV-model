@@ -266,7 +266,7 @@ def build_winner_frame(store: Any, league: str, *, now: Any = None,
     # That makes a historical rebuild (now = some past instant) see exactly
     # what was knowable then, which the leakage tests rely on.
     completed_mask = (ev["status"] == "final") & ev["winner_id"].notna() & (ev["start_time_utc"] < now_ts)
-    upcoming_mask = ev["status"].isin(["scheduled", "final"]) & (ev["start_time_utc"] > now_ts)
+    upcoming_mask = ev["status"].isin(["scheduled", "final"]) & (ev["start_time_utc"] >= now_ts)
     ev = ev[completed_mask | upcoming_mask].sort_values(["start_time_utc", "event_id"]).reset_index(drop=True)
     if ev.empty:
         raise ValueError(f"no events on file for {league}; run `sportspred ingest --league {league}` first")

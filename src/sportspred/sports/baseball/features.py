@@ -369,7 +369,7 @@ def build_winner_frame(store: Any, league: str, *, now: Any = None,
     # store knows about it today, and its result and statistics are ignored.
     ev = ev.assign(
         completed=(ev["status"] == "final") & ev["winner_id"].notna() & (ev["start_time_utc"] < now_ts))
-    upcoming = ev["status"].isin(["scheduled", "final"]) & (ev["start_time_utc"] > now_ts)
+    upcoming = ev["status"].isin(["scheduled", "final"]) & (ev["start_time_utc"] >= now_ts)
     ev = ev[ev["completed"] | upcoming].copy()
     if ev.empty:
         raise ValueError(f"no events on file for {league}; run `sportspred ingest --league {league}` first")

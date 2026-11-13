@@ -162,7 +162,7 @@ def _load_events(store: Any, league: str, now_ts: pd.Timestamp) -> pd.DataFrame:
         raise ValueError(f"no events on file for {league}; run `sportspred ingest --league {league}` first")
     scored = ev["home_score"].notna() & ev["away_score"].notna()
     ev["played"] = (ev["status"] == "final") & scored & (ev["start_time_utc"] < now_ts)
-    ev["upcoming"] = ev["start_time_utc"] > now_ts
+    ev["upcoming"] = ev["start_time_utc"] >= now_ts
     return ev
 
 

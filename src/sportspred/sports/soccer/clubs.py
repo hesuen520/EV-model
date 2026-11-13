@@ -41,7 +41,7 @@ from ...adapters.http import Fetcher, NotFound
 from ...core.timeutil import utcnow
 from ...sports import DataUnavailable
 from ..base import IngestReport
-from .adapter import date_start, finish_report, resolve_teams, retire_vanished, write_matches
+from .adapter import date_start, finish_report, resolve_teams, retire_vanished, write_matches, refuse_mass_disappearance
 from .club_names import FIXTURE_NAMES, canonical_result_name
 
 __all__ = ["ClubLeague", "CLUB_LEAGUES", "season_start_year", "kickoff_utc", "normalize_matches",
@@ -88,8 +88,12 @@ def kickoff_utc(dates: pd.Series, times: pd.Series, tz: str) -> Tuple[pd.Series,
     """``(start_time_utc, time_precision)``: the local kick-off converted to
     UTC where a time is given, otherwise 00:00Z of the date (``date``)."""
     text = times.astype("string").str.strip()
-    has_time = text.str.match(r"^\d{1,2}:\d{2}").fillna(False).to_numpy(dtype=bool)
-    local = pd.to_datetime(dates.astype(str) + " " + text.where(has_time, "00:00"), errors="coerce")
+    hhmm = text.str.extract(r"^(\d{1,2}:\d{2})")[0]
+    has_time = hhmm.notna().to_numpy(dtype=bool)
+    # Parse with an explicit format: letting pandas infer one from the first
+    # (untimed) row turned every timed row into a missing value.
+    day = pd.to_datetime(dates).dt.strftime("%Y-%m-%d")
+    local = pd.to_datetime(day + " " + hhmm.fillna("00:00").str.zfill(5), format="%Y-%m-%d %H:%M", errors="coerce")
     exact = local.dt.tz_localize(tz, ambiguous="NaT", nonexistent="NaT").dt.tz_convert("UTC")
     ok = has_time & exact.notna().to_numpy()
     return date_start(dates).where(~ok, exact), np.where(ok, "datetime", "date")
@@ -225,6 +229,8 @@ def ingest_club(store, league: str, *, seasons: Optional[Sequence[int]] = None,
     names = pd.concat([rows["home_name"], rows["away_name"]])
     ids = resolve_teams(store, league, names, RESULTS_PROVIDER)
     rows["home_id"], rows["away_id"] = ids.iloc[: len(rows)].to_numpy(), ids.iloc[len(rows):].to_numpy()
+    if wanted is None:
+        refuse_mass_disappearance(store, league, RESULTS_PROVIDER, rows["provider_event_id"])
     events = write_matches(store, rows, report)
     if wanted is None:
         retire_vanished(store, league, RESULTS_PROVIDER, rows["provider_event_id"], report)
@@ -261,4 +267,20 @@ def ingest_club(store, league: str, *, seasons: Optional[Sequence[int]] = None,
         fx_ids = resolve_teams(store, league, fx_names, RESULTS_PROVIDER)
         new["home_id"], new["away_id"] = fx_ids.iloc[: len(new)].to_numpy(), fx_ids.iloc[len(new):].to_numpy()
         write_matches(store, new, report)
+    _retire_played_fixtures(store, league, report)
     return finish_report(store, league, report, sources)
+
+
+def _retire_played_fixtures(store, league: str, report: IngestReport) -> None:
+    """A fixture-feed placeholder whose match already has a result on file is
+    retired.  In a double round-robin a (season, home, away) pairing is one
+    match, so this does not depend on the placeholder's date being right."""
+    ev = store.events(league, with_results=False)
+    played = ev[(ev["status"] == "final") & (ev["provider"] == RESULTS_PROVIDER)]
+    done = set(zip(played["season"], played["home_id"], played["away_id"]))
+    stale = ev[(ev["provider"] == FIXTURES_PROVIDER) & (ev["status"] == "scheduled")]
+    stale = stale[[key in done for key in zip(stale["season"], stale["home_id"], stale["away_id"])]]
+    if len(stale):
+        n = store.cancel_events(stale["event_id"].tolist(),
+                                "fixture placeholder superseded by the result of the same match")
+        report.warnings.append(f"{n} fixture placeholders were retired because their results are on file")

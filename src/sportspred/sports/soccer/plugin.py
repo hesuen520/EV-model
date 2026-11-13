@@ -54,7 +54,8 @@ class SoccerPlugin(SportPlugin):
         LeagueSpec("soccer_intl_men", "soccer", "Men's international football", gender="men",
                    level="international", markets=(_INTL_MARKET,),
                    real_data_source=_INTL_SOURCE.format(repo="martj42/international_results"),
-                   notes="full internationals only; date-only; fixtures appear upstream only occasionally"),
+                   notes="date-only; the source also lists non-FIFA representative sides and their tournaments, which "
+                         "are rated on the same scale; fixtures appear upstream only occasionally"),
         LeagueSpec("soccer_intl_women", "soccer", "Women's international football", gender="women",
                    level="international", markets=(_INTL_MARKET,),
                    real_data_source=_INTL_SOURCE.format(repo="martj42/womens-international-results"),
@@ -155,9 +156,36 @@ class SoccerPlugin(SportPlugin):
         return pd.DataFrame({
             "event_id": odds["event_id"].to_numpy(),
             "p_home": implied[:, 0], "p_draw": implied[:, 1], "p_away": implied[:, 2],
-            "benchmark_label": "Bet365 1X2 (Football-Data.co.uk via xgabora), margin removed proportionally",
+            "benchmark_label": "bookmaker 1X2 price in the Football-Data.co.uk file (via xgabora): Bet365 in most "
+                               "seasons, apparently a multi-bookmaker average in 2019/20-2024/25; margin removed "
+                               "proportionally",
             "benchmark_timing": "pre-match; the file does not record when the quote was taken (not marked closing)",
         })
+
+    @staticmethod
+    def _explain_draw(exp: Explanation, row: pd.Series, home: str, away: str) -> Explanation:
+        """A draw selection is supported by the sides being close and the game
+        being low scoring; anything one-sided is a risk to it."""
+        elo_gap = float(row["elo_diff"])
+        exp.opponent_strength.append(
+            f"Elo: {home} {row['elo_a']:.0f}, {away} {row['elo_b']:.0f} (1500 is average; home advantage not included)")
+        (exp.supporting if abs(elo_gap) < 60 else exp.upset_risks).append(
+            f"Elo gap of {abs(elo_gap):.0f} points " + ("- the sides are closely matched" if abs(elo_gap) < 60
+                                                        else f"favours {home if elo_gap > 0 else away}"))
+        if row.get("goal_sum_exp") == row.get("goal_sum_exp"):
+            low = float(row["goal_sum_exp"]) < 2.4
+            (exp.supporting if low else exp.upset_risks).append(
+                f"goal ratings expect about {float(row['goal_sum_exp']):.1f} goals in total "
+                + ("(low-scoring games are drawn more often)" if low else "(open games are drawn less often)"))
+        if row.get("home_edge") == 1.0:
+            exp.upset_risks.append(f"home advantage favours {home}")
+        exp.upset_risks.append("a draw is the least likely single outcome in most matches, even when it is the "
+                               "model's most likely one here")
+        exp.availability_assumptions.append(
+            "No line-up, injury or suspension information is in the model: both sides are assumed to field "
+            "the strength their recent results reflect.")
+        exp.missing_data.append("expected goals (xG) and player-level data are not available to this model")
+        return exp
 
     # ------------------------------------------------------------ explanation
     def explain(self, league: str, market: str, row: pd.Series, frame: FeatureFrame,
@@ -168,6 +196,8 @@ class SoccerPlugin(SportPlugin):
         away = names.get(row["side_b_id"], "away side")
         pick_home = bool(row.get("_pick_is_a", True))
         pick = home if pick_home else away
+        if row.get("_pick_class") == "draw":
+            return self._explain_draw(exp, row, home, away)
 
         def known(key: str) -> bool:
             return row.get(key) == row.get(key) and row.get(key) is not None

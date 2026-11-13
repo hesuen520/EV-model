@@ -18,9 +18,10 @@ from typing import List, Optional
 
 import pandas as pd
 
+from .. import DataUnavailable
 from ..base import IngestReport
 
-__all__ = ["SPORT", "date_start", "resolve_teams", "write_matches", "retire_vanished", "finish_report"]
+__all__ = ["SPORT", "date_start", "resolve_teams", "write_matches", "retire_vanished", "refuse_mass_disappearance", "finish_report"]
 
 SPORT = "soccer"
 
@@ -53,6 +54,24 @@ def write_matches(store, rows: pd.DataFrame, report: IngestReport) -> pd.DataFra
     final = events[events["status"] == "final"]
     store.upsert_results(final[[c for c in _RESULT_COLS if c in final.columns]])
     return events
+
+
+def refuse_mass_disappearance(store, league: str, provider: str, current_ids: pd.Series) -> None:
+    """Stop an ingest, before anything is written, when a large share of the
+    stored matches is missing from the new file.
+
+    That pattern means a team was renamed upstream (every one of its matches
+    disappears and reappears under the new name) or the download is
+    incomplete.  Writing it would store that team's history twice.
+    """
+    stored = store.events(league, with_results=False)
+    mine = stored[(stored["provider"] == provider) & (stored["status"] != "canceled")]
+    gone = mine[~mine["provider_event_id"].isin(set(current_ids))]
+    if len(mine) and len(gone) > _MAX_VANISHED_SHARE * len(stored):
+        raise DataUnavailable(
+            f"{len(gone)} of {len(mine)} stored {league} matches are missing from the new {provider} file. "
+            "A team has probably been renamed upstream, or the download is incomplete. Nothing was written. "
+            "Add the new name as an alias of the existing team (Store.add_alias) and ingest again.")
 
 
 def retire_vanished(store, league: str, provider: str, current_ids: pd.Series, report: IngestReport) -> None:

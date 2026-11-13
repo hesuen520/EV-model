@@ -175,7 +175,7 @@ def build_three_way_frame(store: Any, league: str, *, now: Any = None,
     # store knows about it today, and its result and statistics are ignored.
     scored = ev["home_score"].notna() & ev["away_score"].notna()
     completed_all = ((ev["status"] == "final") & scored & (ev["start_time_utc"] < now_ts)).to_numpy()
-    upcoming_all = (ev["status"].isin(["scheduled", "final"]) & (ev["start_time_utc"] > now_ts)).to_numpy()
+    upcoming_all = (ev["status"].isin(["scheduled", "final"]) & (ev["start_time_utc"] >= now_ts)).to_numpy()
     # Scheduled for a date that has passed, but no result on file yet.
     overdue = ((ev["status"] == "scheduled") & (ev["start_time_utc"] <= now_ts)).to_numpy()
     if not (completed_all | upcoming_all).any():

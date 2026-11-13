@@ -78,7 +78,7 @@ def oriented_events(store: Any, league: str, now_ts: pd.Timestamp, opts: Generic
     ev = ev[~ev["stage"].isin(opts.excluded_stages) & ev["home_id"].notna() & ev["away_id"].notna()]
     decided = ev["winner_id"].notna() | (ev["is_draw"].fillna(0).astype(int) == 1)
     done = (ev["status"] == "final") & decided & (ev["start_time_utc"] < now_ts)
-    upcoming = ev["status"].isin(["scheduled", "final"]) & (ev["start_time_utc"] > now_ts)
+    upcoming = ev["status"].isin(["scheduled", "final"]) & (ev["start_time_utc"] >= now_ts)
     ev = ev[done | upcoming].sort_values(["start_time_utc", "event_id"]).reset_index(drop=True)
     if ev.empty:
         raise ValueError(f"no events on file for {league}; import results first (see docs/CSV_IMPORT.md)")

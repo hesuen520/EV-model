@@ -22,8 +22,10 @@ What the files do and do not contain:
 * the mirror is a snapshot: its newest matches are from mid-2026.
 
 League keys keep levels apart: tour-level main draw, tour-level qualifying,
-Challenger / WTA 125 main draw, and ITF.  Davis Cup and Billie Jean King Cup
-ties (team events) are left out.
+Challenger / WTA 125 main draw, and ITF.  Olympic singles count as tour main
+draw.  Left out: Davis Cup and Billie Jean King Cup ties (team events);
+qualifying below tour level; and a few hundred ITF-level and early-2000s
+rows that sit in the tour-level file under level codes no league claims.
 """
 
 from __future__ import annotations
@@ -67,16 +69,17 @@ def _lvl(df: pd.DataFrame) -> pd.Series:
 
 
 TENNIS_LEAGUES: Dict[str, TennisLeague] = {l.key: l for l in (
-    TennisLeague("atp", "men", "atp", "atp_matches", 2000, lambda d: _lvl(d).isin(["G", "M", "A", "F"]) & ~_is_q(d)),
+    TennisLeague("atp", "men", "atp", "atp_matches", 2000,
+                 lambda d: _lvl(d).isin(["G", "M", "A", "F", "O"]) & ~_is_q(d)),          # O: Olympic singles
     TennisLeague("atp_qual", "men", "atp", "atp_matches_qual_chall", 2008,
                  lambda d: _lvl(d).isin(["G", "M", "A"]) & _is_q(d)),
     TennisLeague("atp_challenger", "men", "atp", "atp_matches_qual_chall", 2008,
                  lambda d: _lvl(d).eq("C") & ~_is_q(d)),
     TennisLeague("itf_men", "men", "atp", "atp_matches_futures", 2015, lambda d: ~_is_q(d)),
     TennisLeague("wta", "women", "wta", "wta_matches", 2000,
-                 lambda d: _lvl(d).isin(["G", "PM", "P", "I", "F", "T1", "T2", "T3", "T4", "T5", "W"]) & ~_is_q(d)),
+                 lambda d: _lvl(d).isin(["G", "PM", "P", "I", "F", "T1", "T2", "T3", "T4", "T5", "W", "O"]) & ~_is_q(d)),
     TennisLeague("wta_qual", "women", "wta", "wta_matches_qual_itf", 2008,
-                 lambda d: _lvl(d).isin(["G", "PM", "P", "I"]) & _is_q(d)),
+                 lambda d: _lvl(d).isin(["G", "PM", "P", "I", "T1", "T2", "T3", "T4", "T5", "W"]) & _is_q(d)),
     TennisLeague("wta_125", "women", "wta", "wta_matches_qual_itf", 2012, lambda d: _lvl(d).eq("C") & ~_is_q(d)),
     TennisLeague("itf_women", "women", "wta", "wta_matches_qual_itf", 2015,
                  lambda d: _lvl(d).isin(_ITF_W) & ~_is_q(d)),

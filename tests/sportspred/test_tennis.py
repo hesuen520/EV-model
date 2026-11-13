@@ -96,9 +96,18 @@ def test_a_match_never_uses_its_own_tournament_week(store, demo_tour):
         def feature_frame(self, st, league, market, *, now=None):
             return build_tennis_frame(st, league, market, now=now, cfg=TennisConfig(burn_in_years=1))
 
-    cut = [pd.Timestamp("2016-03-06T23:59:59Z"), pd.Timestamp("2017-02-05T23:59:59Z")]
+    # At the start of a tournament week the previous week is complete: what the builder
+    # knows then is exactly what the backtest gave that week's matches.
+    cut = [pd.Timestamp("2016-03-07T00:00:00Z"), pd.Timestamp("2017-02-06T00:00:00Z")]
     result = asof_invariance(Builder(), store, LEAGUE, "winner", cutoffs=cut)
     assert len(result) and result["ok"].all() and result["n_events"].min() >= 10
+    # One second earlier the week in progress is still unknown, so the same matches are
+    # built from LESS information than in the backtest - a difference in the safe direction.
+    early = build_tennis_frame(store, LEAGUE, now="2016-03-06T23:59:59Z", cfg=TennisConfig(burn_in_years=1)).df
+    monday = pd.Timestamp("2016-03-07T00:00:00Z")
+    a = early[early["start_time_utc"] == monday].set_index("event_id")["games_played_a"]
+    b = df[df["start_time_utc"] == monday].set_index("event_id")["games_played_a"]
+    assert (a <= b.loc[a.index]).all() and (a < b.loc[a.index]).any()
 
 
 def test_quarter_finals_are_main_draw_matches_not_qualifying():

@@ -596,6 +596,10 @@ def build_frame(store: Any, league: str, market: str = "winner", *, now: Any = N
             "fast_lr": cfg.fast_lr, "burn_in_seasons": [int(s) for s in burn], "families": sorted(families),
             "tuning_note": "Elo and rating update rates were tuned on the burn-in seasons only.",
             "target_col": target_col, **counts,
+            # Price and line columns this plugin reads (the line defines an over/under
+            # market's outcome; the prices are a benchmark).  None may ever be a model input.
+            "price_cols": ["line", "spread_line", "total_line", "home_moneyline", "away_moneyline",
+                           "home_spread_odds", "away_spread_odds", "over_odds", "under_odds"],
             # Not written to validation reports: the lookup tables used at prediction time.
             "rosters": {"qb": qb_table, "level_rows": push_rows},
         },

@@ -190,3 +190,61 @@ def test_results_are_reported_per_segment_and_pass_thresholds_fit_the_market(lea
     assert seg["mismatch"]["n"] + seg["close game"]["n"] == report["final_test"]["selected"]["n"]
     # A two-way market reports no threshold below 0.5 (every event clears it).
     assert min(r["min_prob"] for r in report["final_test"]["pass_rule"]) == 0.5
+
+
+def test_blinding_leaves_the_base_rate_baseline_exactly_as_it_was(league):
+    """The baseline that the 'better than naive' gate is measured against
+    splits its frequencies by home/neutral.  Blinding once hid that column
+    from it, quietly weakening the baseline."""
+    from sportspred.validation.backtest import _blind
+
+    rng = np.random.default_rng(3)
+    n = 1800
+    home_edge = np.where(np.arange(n) % 3 == 0, 0.0, 1.0)              # a third of games at neutral sites
+    done = pd.DataFrame({
+        "event_id": [f"e{i}" for i in range(n)], "block": 2030, "home_edge": home_edge,
+        "elo_diff": rng.normal(0, 100, n), "margin": rng.normal(0, 10, n),
+        "y": (rng.uniform(size=n) < np.where(home_edge == 1.0, 0.62, 0.50)).astype(float),
+    })
+    classes = ("away", "home")
+    base = PriorCandidate("base_rate", by="home_edge")
+    assert base.feature_names() == ["home_edge"]
+    base.fit(done.iloc[:1500], classes)
+    rows = done.iloc[1500:]
+    plain, blinded = base.predict_proba(rows), base.predict_proba(_blind(rows, base, "block"))
+    assert np.array_equal(plain, blinded) and len(np.unique(plain[:, 1])) == 2      # two groups, both kept
+    logit = logit_candidate("elo_logit", ["home_edge", "elo_diff"])
+    logit.fit(done.iloc[:1500], classes)
+    assert np.allclose(logit.predict_proba(rows), logit.predict_proba(_blind(rows, logit, "block")))
+
+
+def test_blinding_also_hides_an_outcome_kept_in_a_text_or_date_column(league):
+    from sportspred.validation.backtest import _blind
+
+    frame = _Builder().feature_frame(league, LEAGUE, "winner")
+    rows = frame.completed.head(50).copy()
+    rows["result_text"] = np.where(rows["y"] == 1, "home win", "away win")
+    rows["result_cat"] = rows["result_text"].astype("category")
+    rows["decided_at"] = rows["start_time_utc"] + pd.Timedelta(hours=3)
+    blind = _blind(rows, logit_candidate("elo_logit", ["home_edge", "elo_diff"]), "block")
+    for col in ("result_text", "result_cat", "decided_at", "y", "margin"):
+        assert blind[col].isna().all(), col
+    assert blind["elo_diff"].equals(rows["elo_diff"]) and blind["event_id"].equals(rows["event_id"])
+
+
+def test_price_guard_knows_this_projects_own_price_columns_and_spares_honest_names():
+    from sportspred.core.enums import OutcomeType
+    from sportspred.validation.leakage import assert_no_price_features
+
+    def frame(features, extra=None):
+        df = pd.DataFrame({c: [0.0] for c in features})
+        return FeatureFrame("nfl", "winner", OutcomeType.BINARY, ("away", "home"), df, list(features), extra=extra or {})
+
+    for bad in ("odd_home", "spread_line", "total_line", "open_spread", "closing_odds", "b365h", "homeodds",
+                "market_prob", "impl_prob", "vegas_spread"):
+        with pytest.raises(ValueError, match="price columns"):
+            assert_no_price_features(frame(["elo_diff", bad]))
+    with pytest.raises(ValueError, match="price columns"):            # declared by the plugin, any letter case
+        assert_no_price_features(frame(["elo_diff", "Line"], extra={"price_cols": ["line"]}))
+    assert_no_price_features(frame(["elo_diff", "market_value_diff", "opening_day", "is_opening_round",
+                                    "closing_pitcher_era", "ml_rating", "golf_handicap", "implied_rest_days"]))

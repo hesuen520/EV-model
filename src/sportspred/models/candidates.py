@@ -44,6 +44,11 @@ class PriorCandidate(Candidate):
     def clone(self) -> "PriorCandidate":
         return PriorCandidate(self.name, self.by, self.description)
 
+    def feature_names(self) -> List[str]:
+        # The column the frequencies are split by is an input like any other: validation
+        # hands a candidate only what it declares.
+        return [self.by] if self.by is not None else []
+
     @staticmethod
     def _freq(y: np.ndarray, k: int) -> np.ndarray:
         counts = np.bincount(y.astype(int), minlength=k).astype(float) + 1.0  # Laplace smoothing

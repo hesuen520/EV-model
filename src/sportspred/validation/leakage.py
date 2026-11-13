@@ -20,11 +20,16 @@ from ..core.timeutil import DISPLAY_TZ_NAME
 
 __all__ = ["asof_invariance", "assert_asof_invariance", "default_cutoffs", "assert_no_price_features"]
 
-#: Column names that can only mean a betting price.  A spread or total *line*
-#: is not in this list: it defines what an over/under market's outcome is.
+#: Column names that can only mean a betting price or line.  Deliberately specific:
+#: "opening_day" or "market_value" are honest feature names.  A plugin that reads prices
+#: also lists its own columns in ``frame.extra["price_cols"]`` - that list, not this
+#: pattern, is the main defence.
 _PRICE_NAME = re.compile(
-    r"(^|_)(odds|moneyline|ml|price|prices|implied|vig|juice|overround|handicap|bookmaker|sportsbook|market|"
-    r"closing|opening)(_|$)")
+    r"(^|_)(odds?|moneyline|money_line|prices?|implied_(prob\w*|odds|price)|vig|juice|overround|bookmaker|"
+    r"sportsbook|vegas|"
+    r"spread_line|total_line|(open|close|opening|closing)_(spread|total|line|odds|price)|"
+    r"(market|book|mkt|consensus|impl)_(prob|price|odds))(_|$)"
+    r"|odds|moneyline|^b365|^pinnacle|^psh$|^psd$|^psa$")
 
 
 def assert_no_price_features(frame: Any) -> None:
@@ -36,9 +41,9 @@ def assert_no_price_features(frame: Any) -> None:
     ``frame.extra["price_cols"]`` (the columns it reads for a benchmark).
     Both selectable and retrospective inputs are checked.
     """
-    declared = {str(c) for c in (frame.extra or {}).get("price_cols", ())}
+    declared = {str(c).lower() for c in (frame.extra or {}).get("price_cols", ())}
     inputs = [str(c) for c in list(frame.feature_cols) + list(getattr(frame, "retrospective_cols", []) or [])]
-    bad = sorted({c for c in inputs if c in declared or _PRICE_NAME.search(c.lower())})
+    bad = sorted({c for c in inputs if c.lower() in declared or _PRICE_NAME.search(c.lower())})
     if bad:
         raise ValueError(
             f"{frame.league} {frame.market}: price columns may not be model inputs: {', '.join(bad)}. "
@@ -46,15 +51,17 @@ def assert_no_price_features(frame: Any) -> None:
 
 
 def default_cutoffs(completed: pd.DataFrame, n: int = 4, seed: int = 0) -> List[pd.Timestamp]:
-    """Cut-off instants spread over the later 60% of the history, each one
-    second before the first event of a slate."""
+    """Cut-off instants spread over the later 60% of the history, each the
+    start of the first event of a slate.  (An event starting exactly at the
+    cut-off is upcoming, so nothing of that slate is known at it - and for
+    sources dated by tournament week, the previous week is complete at it.)"""
     starts = completed["start_time_utc"].sort_values().reset_index(drop=True)
     days = starts.dt.tz_convert(DISPLAY_TZ_NAME).dt.strftime("%Y-%m-%d")
     first_of_day = starts[~days.duplicated()].reset_index(drop=True)
     lo = int(len(first_of_day) * 0.4)
     rng = np.random.default_rng(seed)
     picks = sorted(rng.choice(np.arange(lo, len(first_of_day)), size=min(n, len(first_of_day) - lo), replace=False))
-    return [first_of_day[i] - pd.Timedelta(seconds=1) for i in picks]
+    return [first_of_day[i] for i in picks]
 
 
 def asof_invariance(plugin: Any, store: Any, league: str, market: str, *,
@@ -72,7 +79,10 @@ def asof_invariance(plugin: Any, store: Any, league: str, market: str, *,
     rows: List[Dict[str, Any]] = []
     for cutoff in cutoffs:
         asof = plugin.feature_frame(store, league, market, now=cutoff.to_pydatetime())
-        up = asof.upcoming.sort_values("start_time_utc")
+        # The first slate at or after the cut-off - not rows before it that merely have
+        # no outcome yet (a tournament week still in progress, an unplayed postponed game).
+        up = asof.upcoming
+        up = up[up["start_time_utc"] >= cutoff].sort_values("start_time_utc")
         if up.empty:
             continue
         first_day = up["start_time_utc"].dt.tz_convert(DISPLAY_TZ_NAME).dt.strftime("%Y-%m-%d")

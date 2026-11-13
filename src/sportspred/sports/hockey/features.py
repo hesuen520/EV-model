@@ -146,7 +146,7 @@ def _events_as_of(store: Any, league: str, now_ts: pd.Timestamp, stale_days: flo
     ev = ev[ev["stage"].isin(STAGES)]
     start = ev["start_time_utc"]
     completed = (ev["status"] == "final") & ev["winner_id"].notna() & (start < now_ts)
-    upcoming = ev["status"].isin(["scheduled", "final"]) & (start > now_ts)
+    upcoming = ev["status"].isin(["scheduled", "final"]) & (start >= now_ts)
     stale = ev["status"].isin(["scheduled", "live"]) & (start <= now_ts) & (start > now_ts - pd.Timedelta(days=stale_days))
     frame = ev[completed | upcoming].sort_values(["start_time_utc", "event_id"]).reset_index(drop=True)
     return frame, ev[stale]

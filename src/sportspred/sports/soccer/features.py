@@ -313,6 +313,8 @@ def build_three_way_frame(store: Any, league: str, *, now: Any = None,
             "fast_lr": cfg.fast_lr, "goal_cap": GOAL_CAP, "burn_in_blocks": [int(b) for b in burn],
             "tuning_blocks": [int(b) for b in burn[cfg.warmup_blocks:]], "model_features": list(feature_cols),
             "tuning_note": "Elo and attack/defence update rates were tuned on the tuning blocks only.",
+            # The bookmaker columns this plugin reads for the benchmark; never a model input.
+            "price_cols": ["odd_home", "odd_draw", "odd_away"],
         },
     )
 

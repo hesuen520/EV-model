@@ -96,15 +96,20 @@ def _blind(rows: pd.DataFrame, cand: Candidate, block_col: str) -> pd.DataFrame:
 
     A feature frame also carries the outcome (``y``, scores, margins) and
     retrospective columns.  A candidate is handed the whole frame, so nothing
-    but this stops one from reading them when it predicts: any numeric column
-    that is not among its declared inputs is set to missing, and a prediction
-    built on one fails loudly instead of scoring perfectly.
+    but this stops one from reading them when it predicts: every column that
+    is not among its declared inputs is set to missing, whatever its type, and
+    a prediction built on one cannot score.  (What blinding cannot stop is two
+    candidates that deliberately share state between them; candidates come
+    from the plugin's own list, not from outside.)
     """
     keep = set(cand.feature_names()) | set(_PREDICT_CONTEXT) | {block_col}
     out = rows.copy()
     for col in out.columns:
-        if col not in keep and pd.api.types.is_numeric_dtype(out[col]):
-            out[col] = np.nan
+        if col in keep:
+            continue
+        # Numbers become NaN; anything else (text, categories, dates) becomes missing too -
+        # an outcome can hide in a text column as easily as in a number.
+        out[col] = np.nan if pd.api.types.is_numeric_dtype(out[col]) else None
     return out
 
 

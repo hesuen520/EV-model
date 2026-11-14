@@ -70,7 +70,7 @@ GENERIC_LEAGUES: Dict[str, Tuple[str, str, str, str, Optional[str], GenericOptio
 }
 #: Multi-competitor competitions: declared so the coverage table is complete and honest.
 FIELD_LEAGUES: Dict[str, Tuple[str, str]] = {
-    "pga_tour": ("golf", "PGA Tour"), "f1": ("motorsport", "Formula 1"), "nascar_cup": ("motorsport", "NASCAR Cup Series"),
+    "pga_tour": ("golf", "PGA Tour"), "nascar_cup": ("motorsport", "NASCAR Cup Series"),
     "indycar": ("motorsport", "IndyCar"), "motogp": ("motorsport", "MotoGP"),
 }
 

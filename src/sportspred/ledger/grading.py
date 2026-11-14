@@ -161,8 +161,36 @@ def _player_prop(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> 
     return ("correct" if (pred["selection"] == "over") == (value > line) else "incorrect"), detail
 
 
+#: Finishing markets: a classified finish at or inside this position.
+FINISH_KINDS: Dict[str, int] = {"win": 1, "podium": 3, "points": 10}
+
+
+def _finish(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    """``finish:<kind>:<entrant id>``: graded from the race's classification.
+    Void when the entrant did not take the start; nothing is graded until a
+    classification is on file."""
+    parts = pred["market"].split(":")
+    limit = FINISH_KINDS.get(parts[1]) if len(parts) > 1 else None
+    entrant = parts[2] if len(parts) > 2 else None
+    if limit is None or entrant is None or not store.has_table(ev["league"], "race_entries"):
+        return "no_result", {"note": "cannot grade this finishing market from the data on file"}
+    entries = store.read_table(ev["league"], "race_entries")
+    race = entries[entries["event_id"] == ev["event_id"]]
+    if race.empty or not race["classified"].astype(bool).any():
+        return "no_result", {"note": "the classification of this race is not on file yet"}
+    mine = race[race["driver_id"].astype(str) == str(entrant)]
+    if mine.empty or not bool(mine.iloc[0]["started"]):
+        return "void", {"note": "did not take the start"}
+    position = mine.iloc[0]["position"]
+    classified = position == position
+    inside = bool(classified and float(position) <= limit)
+    detail = {"kind": parts[1], "position": float(position) if classified else None,
+              "classified": bool(classified), "position_text": str(mine.iloc[0].get("position_text"))}
+    return ("correct" if (pred["selection"] == "yes") == inside else "incorrect"), detail
+
+
 for _family, _grader in (("winner", _winner), ("winner_3way", _winner_3way), ("spread", _spread),
-                         ("total", _total), ("player_prop", _player_prop)):
+                         ("total", _total), ("player_prop", _player_prop), ("finish", _finish)):
     register_grader(_family, _grader)
 
 

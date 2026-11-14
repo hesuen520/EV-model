@@ -107,7 +107,8 @@ def legs_from_ledger(store: Any, predictions: pd.DataFrame) -> List[Leg]:
                 if isinstance(src.get(key), str):
                     entities.add(src[key])
         a, b = display.get("side_a"), display.get("side_b")
-        label = (f"{b} at {a}" if display.get("side_a_role") == "home" else f"{a} v {b}") if a and b else p["event_id"]
+        label = display.get("event_name") or (
+            (f"{b} at {a}" if display.get("side_a_role") == "home" else f"{a} v {b}") if a and b else p["event_id"])
         legs.append(Leg(
             prediction_id=p["prediction_id"], event_id=p["event_id"], league=p["league"], sport=p["sport"],
             market=p["market"], line=None if pd.isna(p["line"]) else float(p["line"]),

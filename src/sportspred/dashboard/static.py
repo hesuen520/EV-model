@@ -102,8 +102,8 @@ def _prediction_card(p: Mapping[str, Any], now_iso: Optional[str] = None) -> str
     if now_iso and min(str(p["event_start_utc"]), start_now or "9") <= now_iso and status_now not in ("canceled", "postponed"):
         notes.append("This event has started. What follows is the pregame record, not a live selection.")
     started = "".join(f'<p class="started">{_e(n)}</p>' for n in notes)
-    title = (f"{d.get('side_b')} at {d.get('side_a')}" if d.get("side_a_role") == "home"
-             else f"{d.get('side_a')} v {d.get('side_b')}")
+    title = d.get("event_name") or (f"{d.get('side_b')} at {d.get('side_a')}" if d.get("side_a_role") == "home"
+                                    else f"{d.get('side_a')} v {d.get('side_b')}")
     venue = ", ".join(x for x in (d.get("venue"), d.get("venue_city")) if x) or "venue not published"
     if d.get("neutral_site"):
         venue += " (neutral site)"

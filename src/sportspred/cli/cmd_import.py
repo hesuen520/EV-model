@@ -110,6 +110,21 @@ def register(main: click.Group) -> None:
         _run(csv_import.import_prop_lines, ctx.store, league, path, tz=tz, collected_at=collected_at)
         click.echo("Run `sportspred predict --league <league> --market player_prop:<stat>` to price them.")
 
+    @import_group.command("grid")
+    @click.option("--league", default="f1", show_default=True)
+    @click.option("--csv", "path", required=True, type=click.Path(exists=True, dir_okay=False))
+    @click.option("--event-id", default=None, help="The race (its id in the source). Default: the next scheduled race.")
+    @click.option("--tz", default=None)
+    @click.option("--collected-at", default=None, help="When the grid was read. Default: now.")
+    @pass_ctx
+    def import_grid(ctx: Context, league: str, path: str, event_id: Optional[str], tz: Optional[str],
+                    collected_at: Optional[str]) -> None:
+        """The official starting grid of a race (driver, grid slot or PL)."""
+        from ..sports.motorsport.grid import import_grid as run
+
+        _run(run, ctx.store, league, path, tz=tz, collected_at=collected_at, event_id=event_id)
+        click.echo("Run `sportspred predict --league f1 --market finish:win` (or finish:podium, finish:points).")
+
     @main.command()
     @click.option("--dir", "directory", default="data/demo", show_default=True,
                   help="Separate data directory for the demo; real data is never touched.")

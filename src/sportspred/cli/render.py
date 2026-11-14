@@ -40,8 +40,8 @@ def render_slate_table(preds: Iterable[Mapping[str, Any]]) -> str:
         d = p["display"]
         rows.append({
             "start (HST)": d["start_hst"], "league": d["league"],
-            "event": f"{d['side_b']} at {d['side_a']}" if d.get("side_a_role") == "home"
-            else f"{d['side_a']} v {d['side_b']}",
+            "event": d.get("event_name") or (f"{d['side_b']} at {d['side_a']}" if d.get("side_a_role") == "home"
+                                             else f"{d['side_a']} v {d['side_b']}"),
             "market": market_text(p),
             "selection": p["selection_label"], "prob": _pct(p.get("prob")),
             "model range": f"{_pct(p.get('prob_low'))}-{_pct(p.get('prob_high'))}",
@@ -61,7 +61,8 @@ def _bullets(title: str, items: List[str]) -> List[str]:
 
 def render_prediction(p: Mapping[str, Any]) -> str:
     d, c = p["display"], p["confidence"]
-    head = f"{d['side_b']} at {d['side_a']}" if d.get("side_a_role") == "home" else f"{d['side_a']} v {d['side_b']}"
+    head = d.get("event_name") or (f"{d['side_b']} at {d['side_a']}" if d.get("side_a_role") == "home"
+                                   else f"{d['side_a']} v {d['side_b']}")
     venue = ", ".join(x for x in (d.get("venue"), d.get("venue_city")) if x) or "venue not published"
     site = "" if d.get("neutral_site") is None else (" (neutral site)" if d["neutral_site"] else "")
     lines = [

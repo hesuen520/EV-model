@@ -12,23 +12,28 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Optional
 
-__all__ = ["model_market", "market_family", "market_subject", "market_text"]
+__all__ = ["model_market", "market_family", "market_subject", "market_text", "SUBJECT_FAMILIES"]
 
 
 def market_family(market: str) -> str:
     return str(market).split(":", 1)[0]
 
 
+#: Families whose ledger keys name a subject: ``<family>:<detail>:<subject id>``.
+SUBJECT_FAMILIES = ("player_prop", "finish")
+
+
 def model_market(market: str) -> str:
-    """``player_prop:points:1629029`` -> ``player_prop:points``; any other key unchanged."""
+    """``player_prop:points:1629029`` -> ``player_prop:points`` and
+    ``finish:win:p_ab12`` -> ``finish:win``; any other key unchanged."""
     parts = str(market).split(":")
-    return ":".join(parts[:2]) if parts[0] == "player_prop" and len(parts) > 2 else str(market)
+    return ":".join(parts[:2]) if parts[0] in SUBJECT_FAMILIES and len(parts) > 2 else str(market)
 
 
 def market_subject(market: str) -> Optional[str]:
-    """The player id of a player-statistic ledger key, else ``None``."""
+    """The subject (player, driver) of a per-subject ledger key, else ``None``."""
     parts = str(market).split(":")
-    return parts[2] if parts[0] == "player_prop" and len(parts) > 2 else None
+    return parts[2] if parts[0] in SUBJECT_FAMILIES and len(parts) > 2 else None
 
 
 def market_text(prediction: Mapping[str, Any]) -> str:

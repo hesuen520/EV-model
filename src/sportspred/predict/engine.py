@@ -86,6 +86,10 @@ def _class_labels(frame: FeatureFrame, row: Mapping[str, Any], names: Mapping[st
             out[cls] = (row["side_b_id"], name_b if line is None else f"{name_b} {-line:+g}")
         elif cls in ("over", "under") and subject:
             out[cls] = (cls, f"{subject} {cls}" + ("" if line is None else f" {line:g}") + (f" {unit}" if unit else ""))
+        elif cls in ("yes", "no") and subject:
+            # A yes-or-no question about one subject: "Lando Norris to win" / "... not to win".
+            phrase = frame.extra.get("yes_label" if cls == "yes" else "no_label") or cls
+            out[cls] = (cls, f"{subject} {phrase}")
         elif cls in ("over", "under"):
             out[cls] = (cls, cls.capitalize() if line is None else f"{cls.capitalize()} {line:g}")
         else:
@@ -323,6 +327,9 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
     if frame.extra.get("requires_line"):
         # A market defined by a threshold cannot be priced without one: no threshold, no selection.
         rows = rows[rows["line"].notna()]
+    for column in frame.extra.get("required_columns") or []:
+        # A model that starts from a pregame fact (a starting grid) has nothing to say before it is on file.
+        rows = rows[rows[column].notna()]
     if rows.empty:
         return []
     # A frame with several rows per game (one per player) names the game in ``game_id``
@@ -370,6 +377,19 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
     frame.extra["model_features"] = list(model.candidate.feature_names())
     subject_col = "player_name" if "player_name" in rows.columns else None
     unit = frame.extra.get("stat_label")
+    allowed = frame.extra.get("selection_classes")
+    # A model of a whole field (a race) must see every starter of the event at once.
+    field_pred: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    field_proj: Dict[str, Dict[str, float]] = {}
+    if getattr(model.candidate, "predicts_field", False):
+        for _, part in rows.groupby("_event", sort=False):
+            pred_all = model.predict(part)
+            proj_all = projection_fn(part) if callable(projection_fn) else None
+            for i, row_id in enumerate(part["event_id"]):
+                field_pred[row_id] = (pred_all["P"][i].astype(float), pred_all["low"][i].astype(float),
+                                      pred_all["high"][i].astype(float))
+                if proj_all is not None:
+                    field_proj[row_id] = {k: float(v) for k, v in proj_all.iloc[i].items()}
 
     out: List[Dict[str, Any]] = []
     for _, base_row in rows.iterrows():
@@ -396,8 +416,15 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
         if frame.outcome == OutcomeType.OVER_UNDER and "line" in row.index and row["line"] == row["line"]:
             line = float(row["line"])
         # P: each class as it will settle; a push (exact tie with the line) is none of them.
-        P, low, high, p_push = _outcome_probabilities(model, row, line, count_model)
+        if base_row["event_id"] in field_pred:
+            (P, low, high), p_push = field_pred[base_row["event_id"]], 0.0
+        else:
+            P, low, high, p_push = _outcome_probabilities(model, row, line, count_model)
         k = int(np.argmax(P))
+        if allowed:
+            # Only some sides are offered as selections ("to win", never "not to win").
+            offered = [i for i, c in enumerate(frame.classes) if c in allowed]
+            k = max(offered, key=lambda i: P[i])
         subject = str(row[subject_col]) if subject_col else None
         labels = _class_labels(frame, row, names, line, subject, unit if subject else None)
         cls = frame.classes[k]
@@ -526,9 +553,10 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
         row_for_explain = row.copy()
         row_for_explain["_pick_is_a"] = cls in ("home", "a", "home_cover", "a_cover")
         row_for_explain["_pick_class"] = cls
-        projection = None
-        if callable(projection_fn):
+        projection = field_proj.get(base_row["event_id"])
+        if projection is None and callable(projection_fn) and not field_pred:
             projection = {k: float(v) for k, v in projection_fn(pd.DataFrame([row])).iloc[0].items()}
+        if projection is not None:
             row_for_explain["_projection"] = projection
         explanation = plugin.explain(league, market, row_for_explain, frame, contributions)
         explanation.availability_assumptions += effect.applied + effect.unmatched + effect.conditions
@@ -565,21 +593,25 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
             "method": f"{len(model.replicas)} bootstrap refits (resampled by slate)",
         }
         precision_date = ev["time_precision"] != "datetime"
+        two_sided = isinstance(ev["home_id"], str) and isinstance(ev["away_id"], str)
         display = {
             "competition": spec.name, "league": league, "sport": spec.sport, "season": ev["season"],
             "stage": ev["stage"],
             # A row about one player has his team as side A; the event is shown as it is played.
-            "side_a": names.get(ev["home_id"] if subject else row["side_a_id"], row["side_a_id"]),
-            "side_b": names.get(ev["away_id"] if subject else row["side_b_id"], row["side_b_id"]),
-            "side_a_role": "home" if (subject or ev["home_id"] == row["side_a_id"]) and ev["neutral_site"] != 1
-            else "a",
+            # A field event (a race) has no sides: it is shown by its name.
+            "side_a": names.get(ev["home_id"] if subject and two_sided else row["side_a_id"], row["side_a_id"]),
+            "side_b": names.get(ev["away_id"] if subject and two_sided else row["side_b_id"], row["side_b_id"]),
+            "side_a_role": "home" if two_sided and (subject or ev["home_id"] == row["side_a_id"])
+            and ev["neutral_site"] != 1 else "a",
+            **({"event_name": str(row["event_name"])} if isinstance(row.get("event_name"), str) else {}),
             "start_hst": fmt_hst(ev["start_time_utc"], date_only=precision_date),
             "start_utc": iso_z(ev["start_time_utc"]),
             "venue": ev["venue_name"], "venue_city": ev["venue_city"],
             "neutral_site": None if ev["neutral_site"] != ev["neutral_site"] else bool(ev["neutral_site"]),
             "market": market, "market_note": decl.note, "line": line,
             **({"player": subject, "player_id": str(row["player_id"]), "stat": frame.extra.get("stat"),
-                "player_team": names.get(row["side_a_id"], row["side_a_id"]), "projection": projection}
+                "player_team": names.get(row["side_a_id"] if two_sided else row["side_b_id"], None),
+                "projection": projection}
                if subject else {}),
             **({"threshold": {"line": line, "read_at_utc": row.get("line_collected_at_utc"),
                               "read_at_hst": fmt_hst(row["line_collected_at_utc"])

@@ -617,6 +617,13 @@ TEMPLATES: Dict[str, str] = {
         "check_key,team,event_id,outcome,checked_at,published_at,detail\n"
         "injury_report,Example Kings,,nothing_listed,2026-04-03T12:00:00Z,,official report checked\n"
         "weather,,2026-ipl-015,reported,2026-04-03T12:00:00Z,,forecast checked\n"),
+    "grid_template.csv": (
+        "# The official starting grid of the next race. grid: the slot (1 = pole) or PL for a pit-lane start.\n"
+        "# constructor is only needed for a driver new to the series or to his team.\n"
+        "driver,grid,constructor\n"
+        "Example Driver,1,\n"
+        "Another Driver,2,\n"
+        "Third Driver,PL,Example Team\n"),
     "prop_lines_template.csv": (
         "# Thresholds of player-statistic markets. stat: points | rebounds | assists | threes | pra.\n"
         "# line is the threshold only (no prices here). event_id is optional: default is the team's next game.\n"

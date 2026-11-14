@@ -131,10 +131,14 @@ def test_csv_only_leagues_raise_instead_of_inventing_data(store):
     assert store.events(LEAGUE).empty
 
 
-def test_field_sports_are_declared_but_honestly_unimplemented():
-    for key in ("f1", "pga_tour"):
+def test_field_sports_without_a_model_are_declared_but_honestly_unimplemented():
+    """Golf and the motorsport series with no data adapter are in the coverage table as
+    "no model".  Formula 1 has its own plugin (tests/sportspred/test_motorsport.py)."""
+    for key in ("pga_tour", "nascar_cup", "indycar", "motogp"):
         _, spec = get_league(key)
         assert all(not m.implemented for m in spec.markets)
+    plugin, spec = get_league("f1")
+    assert plugin.sport == "motorsport" and all(m.implemented for m in spec.markets)
 
 
 def test_side_a_never_depends_on_the_result_when_there_is_no_home_side(store):

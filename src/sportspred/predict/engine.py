@@ -565,7 +565,7 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
             if items:
                 explanation.availability_assumptions.append(
                     f"uncertain for {side_name}: " + "; ".join(items) + " (assumed to play as recently)")
-        if avail.empty:
+        if avail.empty and any(c.scope == "team" for c in specs):
             explanation.missing_data.append("no availability report on file for either side")
 
         confidence = confidence_for(prob_decided, None if model_mismatch else report, settings.confidence)

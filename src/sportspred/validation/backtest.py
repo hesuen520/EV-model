@@ -474,6 +474,23 @@ def run_validation(
         {"gate": "calibration", "passed": bool(fm["ece"] <= cfg.max_ece),
          "detail": f"final-test expected calibration error {fm['ece']:.4f} (maximum {cfg.max_ece})"},
     ]
+    # A plugin may name a stronger reference than the base rate - the baseline anyone would
+    # use (the starting grid for a race).  The selected model must beat it on the final test,
+    # paired on the same rows, with the interval (resampled by slate) excluding zero.
+    reference = frame.extra.get("skill_reference")
+    if reference:
+        if reference == selected:
+            gates.append({"gate": f"skill_over_{reference}", "passed": False,
+                          "detail": f"the selected model is {reference} itself"})
+        elif reference in final_oos:
+            ref_rows = final_oos[reference]
+            d = M.paired_bootstrap_diff(M.log_loss, _P(sel_final, classes), _P(ref_rows, classes), _y(sel_final),
+                                        final_groups, n_boot=cfg.n_boot, seed=cfg.seed)
+            final_block["skill_vs_reference"] = {"reference": reference, "metric": "log_loss", **d}
+            gates.append({"gate": f"skill_over_{reference}",
+                          "passed": bool(np.isfinite(d["low"]) and d["low"] > 0),
+                          "detail": f"final-test log-loss improvement over {reference}: {d['diff']:.5f} "
+                                    f"(95% interval {d['low']:.5f} to {d['high']:.5f})"})
     # A plugin may add gates of its own - conditions that the protocol cannot see from the
     # numbers (for instance that the thresholds scored against are not market thresholds).
     for extra_gate in frame.extra.get("gates", []) or []:

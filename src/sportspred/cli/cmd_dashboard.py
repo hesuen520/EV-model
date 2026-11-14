@@ -58,7 +58,7 @@ def write_validation_docs(store, out_dir: Path) -> Path:
         ref = next((k for k in stab if k != "base_rate"), next(iter(stab), None))
         lines += ["", f"## {r['league']} - {r['market']}", "",
                   f"{r['data']['n_completed']} completed "
-                  f"{'player-games' if r['market'].startswith('player_prop:') else 'events'} from "
+                  f"{'player-games' if r['market'].startswith('player_prop:') else 'driver starts' if r['market'].startswith('finish:') else 'events'} from "
                   f"{r['data']['first_event'][:10]} to "
                   f"{r['data']['last_event'][:10]}; {len(r['protocol']['dev_folds'])} walk-forward folds; final test "
                   f"blocks {', '.join(f['blocks'])}. Selected: `{r['selected_model']}` ({r['selection_note']}).", "",
@@ -102,6 +102,17 @@ def write_validation_docs(store, out_dir: Path) -> Path:
                 lines.append(f"| {g['segment']} | {100 * g['share']:.1f}% | {g['n']} | {100 * g['accuracy']:.1f}% | "
                              f"{g['log_loss']:.4f} | {100 * g['mean_top_probability']:.1f}% |")
         sweep = r.get("supplement") or {}
+        if sweep.get("kind") == "per_race":
+            lines += ["", "Per race. " + sweep.get("note", ""), "",
+                      "| Period | Races | Model's top picks that did | First on the grid that did | "
+                      "Sum of the model's probabilities per race |", "|---|---|---|---|---|"]
+            for label, title in (("last_development_fold", "Last development fold"), ("final_test", "Final test")):
+                part = (sweep.get("folds") or {}).get(label)
+                if part:
+                    lines.append(f"| {title} ({', '.join(part['blocks'])}) | {part['races']} | "
+                                 f"{part['model_hits_per_race']:.2f} of {part['k']} | "
+                                 f"{part['grid_hits_per_race']:.2f} of {part['k']} | "
+                                 f"{part['mean_probability_sum_per_race']:.2f} (should be about {part['k']}) |")
         if sweep.get("kind") == "threshold_sweep":
             lines += ["", "Thresholds away from the reference. " + sweep.get("note", ""), ""]
             for label, title in (("last_development_fold", "Last development fold"), ("final_test", "Final test")):
@@ -152,7 +163,9 @@ _MARKET_LABELS = {"winner": "winner", "winner_3way": "three-way (home / draw / a
                   "player_prop:rebounds": "player rebounds (reference threshold)",
                   "player_prop:assists": "player assists (reference threshold)",
                   "player_prop:threes": "player three-pointers made (reference threshold)",
-                  "player_prop:pra": "player points + rebounds + assists (reference threshold)"}
+                  "player_prop:pra": "player points + rebounds + assists (reference threshold)",
+                  "finish:win": "race winner (each starter: yes or no)",
+                  "finish:podium": "podium finish (top three)", "finish:points": "points finish (top ten)"}
 _SPORT_MARKET_LABELS = {("hockey", "winner"): "winner (incl. overtime and shootout)",
                         ("hockey", "winner_3way"): "three-way after regulation"}
 SUMMARY_START, SUMMARY_END = "<!-- results:start -->", "<!-- results:end -->"
@@ -187,6 +200,39 @@ def props_table(store) -> str:
     return "\n".join(lines)
 
 
+def field_table(store) -> str:
+    """Results of the race-finish markets.  Rows are drivers, events are races,
+    and the headline accuracy of a yes-or-no question about twenty starters is
+    mostly "no" - so this table shows log loss against the grid alone and how
+    the model's top picks did per race instead."""
+    from ..dashboard import validation_views
+    from ..sports import get_league
+
+    lines = ["| Series | Market | Status | Selected model | Final-test races | Driver starts | Log loss | Base rate | "
+             "Grid position alone | Calibration error | Model's top picks that did, per race | First on the grid "
+             "that did, per race |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in sorted(validation_views(store), key=lambda r: (r["sport"], r["league"], r["market"])):
+        if not r["market"].startswith("finish:"):
+            continue
+        f = r["final_test"]
+        s, baselines = f["selected"], f.get("baselines") or {}
+        per_race = (((r.get("supplement") or {}).get("folds") or {}).get("final_test")) or {}
+        try:
+            name = get_league(r["league"])[1].name
+        except Exception:  # noqa: BLE001
+            name = r["league"]
+        k = per_race.get("k")
+        lines.append(
+            f"| {name} | {_MARKET_LABELS.get(r['market'], r['market'])} | "
+            f"{'validated' if r.get('gates_passed') else 'experimental'} | {r['selected_model']} | "
+            f"{per_race.get('races', '')} | {s['n']:,} | {s['log_loss']:.3f} | "
+            f"{(baselines.get('base_rate') or {}).get('log_loss', float('nan')):.3f} | "
+            f"{(baselines.get('grid_logit') or {}).get('log_loss', float('nan')):.3f} | {s['ece']:.3f} | "
+            f"{per_race.get('model_hits_per_race', float('nan')):.2f} of {k} | "
+            f"{per_race.get('grid_hits_per_race', float('nan')):.2f} of {k} |")
+    return "\n".join(lines)
+
+
 def summary_table(store, sport: Optional[str] = None) -> str:
     """Compact results table (one row per validated league and market), built
     from the newest recorded run of each; optionally for one sport.  Player-
@@ -200,7 +246,7 @@ def summary_table(store, sport: Optional[str] = None) -> str:
     lines = ["| League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | "
              "Market benchmark |", "|---|---|---|---|---|---|---|---|---|"]
     for r in sorted(validation_views(store), key=lambda r: (r["sport"], r["league"], r["market"])):
-        if (sport is not None and r["sport"] != sport) or r["market"].startswith("player_prop:"):
+        if (sport is not None and r["sport"] != sport) or r["market"].startswith(("player_prop:", "finish:")):
             continue
         f = r["final_test"]
         s, baselines = f["selected"], f.get("baselines") or {}
@@ -263,7 +309,7 @@ def register(main: click.Group) -> None:
         import re
 
         text = Path(into).read_text()
-        block = re.compile(r"<!-- results:start(?: (sport=\w+|props))? -->.*?<!-- results:end -->", re.S)
+        block = re.compile(r"<!-- results:start(?: (sport=\w+|props|field))? -->.*?<!-- results:end -->", re.S)
         if not block.search(text):
             raise click.ClickException(f"{into} has no {SUMMARY_START} ... {SUMMARY_END} block")
 
@@ -271,6 +317,8 @@ def register(main: click.Group) -> None:
             option = match.group(1)
             if option == "props":
                 return "<!-- results:start props -->\n" + props_table(ctx.store) + "\n" + SUMMARY_END
+            if option == "field":
+                return "<!-- results:start field -->\n" + field_table(ctx.store) + "\n" + SUMMARY_END
             sport = option.split("=", 1)[1] if option else None
             head = f"<!-- results:start sport={sport} -->" if sport else SUMMARY_START
             return head + "\n" + summary_table(ctx.store, sport) + "\n" + SUMMARY_END

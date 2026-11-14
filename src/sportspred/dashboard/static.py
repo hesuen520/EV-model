@@ -303,6 +303,16 @@ def _validation_section(reports: Sequence[Mapping[str, Any]],
 def _sweep_table(supplement: Optional[Mapping[str, Any]]) -> str:
     """Player-statistic markets: how the selected model scores at thresholds
     other than the reference one, including whole numbers (pushes)."""
+    if supplement and supplement.get("kind") == "per_race":
+        rows = [{"period": f"{title} ({', '.join(part['blocks'])})", "races": part["races"],
+                 "model_top_picks_that_did": f"{part['model_hits_per_race']:.2f} of {part['k']}",
+                 "first_on_the_grid_that_did": f"{part['grid_hits_per_race']:.2f} of {part['k']}",
+                 "probability_sum_per_race": f"{part['mean_probability_sum_per_race']:.2f}"}
+                for label, title in (("last_development_fold", "Last development fold"), ("final_test", "Final test"))
+                for part in [(supplement.get("folds") or {}).get(label)] if part]
+        return ("<h4>Per race</h4>" + f"<p class=\"muted\">{_e(supplement.get('note', ''))}</p>"
+                + _table(rows, ["period", "races", "model_top_picks_that_did", "first_on_the_grid_that_did",
+                                "probability_sum_per_race"])) if rows else ""
     if not supplement or supplement.get("kind") != "threshold_sweep":
         return ""
     part = (supplement.get("folds") or {}).get("final_test") or {}

@@ -6,8 +6,7 @@ does he **win**, finish on the **podium** (top three), finish in the
 
 What a row knows before the start:
 
-* **the starting grid** - the strongest pregame fact - and the driver's
-  qualifying gap to pole where lap times are on file;
+* **the starting grid** - the strongest pregame fact;
 * **driver form**: his recent and longer-run results relative to the field,
   his qualifying form, and how he qualifies against his team-mates (which
   separates the driver from the car);
@@ -90,12 +89,14 @@ FORM_FEATURES = ["drv_perf_ew", "drv_perf_long", "drv_q_ew", "mate_gap_ew", "drv
                  "con_perf_long", "con_q_ew", "drv_perf_rel", "con_perf_rel", "con_rank", "drv_circuit_delta",
                  "con_type_delta", "is_street"]
 DNF_FEATURES = ["drv_dnf_ew", "con_dnf_ew", "league_dnf_ew", "grid_rel", "is_street"]
-FULL_FEATURES = GRID_FEATURES + ["quali_gap_pct"] + FORM_FEATURES + ["drv_dnf_ew", "con_dnf_ew", "league_dnf_ew"]
+#: The qualifying gap to pole is on file for much of the history (``quali_gap_pct``) but is
+#: not an input: a grid read before a race carries slots, not lap times, and a model must be
+#: served the inputs it was validated with.  On development folds it added nothing measurable.
+FULL_FEATURES = GRID_FEATURES + FORM_FEATURES + ["drv_dnf_ew", "con_dnf_ew", "league_dnf_ew"]
 
 FEATURE_NOTES = {
     "log_grid": "starting grid position (log); a pit-lane start counts as last",
     "grid_rel": "starting grid position as a share of the field (0 = pole, 1 = last)",
-    "quali_gap_pct": "qualifying gap to pole, percent of the pole time (where lap times are on file)",
     "drv_perf_ew": "driver's recent results relative to the field (1 = win, 0 = last), exponentially weighted",
     "drv_perf_long": "the same over a longer run",
     "drv_q_ew": "driver's recent qualifying results relative to the field",
@@ -352,7 +353,8 @@ def build_finish_frame(store: Any, league: str, kind: str, *, now: Any = None,
             "The grid is the final one, with penalties, as recorded by the source; a change in the last two hours "
             "before the start (a pit-lane start decided late) is not point-in-time.",
             "Not in the data: weather and track conditions, tyres and strategy, upgrades, practice and sprint "
-            "results. Lap times in qualifying are on file for part of the history only.",
+            "results. Qualifying lap times are on file but not used: a grid read before a race carries slots, "
+            "not times, and on development folds the gap to pole added nothing measurable.",
             "Rule eras differ (points for the top six, eight, then ten; far fewer retirements now than in 2000). "
             "Ratings are relative to the field of each race, and retirement rates are tracked as they change, but "
             "older seasons are not the same sport in every respect.",
@@ -360,6 +362,8 @@ def build_finish_frame(store: Any, league: str, kind: str, *, now: Any = None,
         ],
         extra={"kind": kind, "stat": kind, "stat_label": None, "yes_label": yes, "no_label": no,
                "required_columns": ["grid_pos"], "selection_classes": ["yes"], "field_model": True,
+               # Anyone can read the grid: that, not the base rate, is the baseline to beat.
+               "skill_reference": "grid_logit",
                "burn_in_seasons": cfg.burn_in_seasons, "last_team": last_team,
                "config": {"first_season": cfg.first_season, "grid_lead_hours": cfg.grid_lead_hours}},
     )

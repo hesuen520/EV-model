@@ -224,6 +224,11 @@ def test_validation_compares_baselines_and_counts_races_not_drivers(world):
     assert dev["grid_logit"] < dev["base_rate"] and dev["full_logit"] < dev["form_logit"]
     gate = next(g for g in report["gates"] if g["gate"] == "independent_races")
     assert "races in the final-test seasons" in gate["detail"]
+    # The baseline to beat is the starting grid alone, not the base rate.
+    against_grid = next(g for g in report["gates"] if g["gate"] == "skill_over_grid_logit")
+    assert "improvement over grid_logit" in against_grid["detail"] or "itself" in against_grid["detail"]
+    if report["selected_model"] != "grid_logit":
+        assert report["final_test"]["skill_vs_reference"]["reference"] == "grid_logit"
     per_race = report["supplement"]["folds"]["final_test"]
     assert per_race["k"] == 1 and 0.0 <= per_race["model_hits_per_race"] <= 1.0
     assert abs(per_race["mean_probability_sum_per_race"] - 1.0) < 0.25         # one winner per race

@@ -236,6 +236,10 @@ class AvailabilityEffect:
     #: Published facts that rule a selection out altogether (the player a statistic
     #: market is about is listed out): the engine records PASS with these reasons.
     blockers: List[str] = field(default_factory=list)
+    #: Conditions stated in full by the plugin - what the probability was computed as if,
+    #: and what is listed instead - where no worst-case row can express them.  Each makes
+    #: the selection CONDITIONAL and is recorded word for word.
+    conditions: List[str] = field(default_factory=list)
 
 
 @dataclass

@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 
 from ...core.enums import OutcomeType
-from ...core.ids import person_key
+from ...core.ids import loose_person_key, person_key, surname_key
 from ...core.timeutil import DISPLAY_TZ_NAME, parse_ts, utcnow
 from ..base import FeatureFrame
 from .features import EXCLUDED_STAGES, _pregame_reports
@@ -229,7 +229,8 @@ def _cache_key(store: Any, league: str, ev: pd.DataFrame, now_ts: pd.Timestamp, 
     return (str(store.root), league, cfg, tuple(stamps), int(len(done)),
             str(done["start_time_utc"].max()) if len(done) else "", str(done["status"].count()),
             hash(tuple(ahead["event_id"])), str(pd.util.hash_pandas_object(
-                ev[["event_id", "status", "home_score", "away_score"]].astype(str), index=False).sum()), reports_cut)
+                ev[["event_id", "status", "home_score", "away_score", "start_time_utc", "home_id", "away_id",
+                    "neutral_site", "season"]].astype(str), index=False).sum()), reports_cut)
 
 
 def _base(store: Any, league: str, now_ts: pd.Timestamp, cfg: PropConfig) -> Dict[str, Any]:
@@ -273,6 +274,9 @@ def _base(store: Any, league: str, now_ts: pd.Timestamp, cfg: PropConfig) -> Dic
     box = store.read_table(league, "player_box", columns=["event_id", "team_id", "player_id", "player_name", *_RAW])
     box = box[box["event_id"].isin(set(ev.loc[ev["done"], "event_id"]))]
     box = box[pd.to_numeric(box["minutes"], errors="coerce") > 0].copy()
+    # A row with minutes but no statistics is not an observed outcome: it is neither an
+    # "under" nor a zero in anybody's average.
+    box = box[box[["pts", "reb", "ast", "fg3m"]].notna().all(axis=1)]
     box["player_id"] = box["player_id"].astype(str)
     box = box.drop_duplicates(["event_id", "player_id"], keep="last")
     for col in _RAW:
@@ -283,7 +287,14 @@ def _base(store: Any, league: str, now_ts: pd.Timestamp, cfg: PropConfig) -> Dic
     last = (played.sort_values(["start_time_utc", "event_id"]).groupby("player_id", sort=False).tail(1)
             [["player_id", "player_name", "team_id", "season"]])
     upcoming = tg.loc[~tg["done"], ["event_id", "team_id", "opp_id", "is_home", "start_time_utc", "season", "day"]]
-    cand = upcoming.merge(last, on=["team_id", "season"], how="inner")
+    # Candidates: players whose latest appearance was for this team this season - or, until
+    # the team has played this season, last season (opening night).  A player's first game
+    # for a new team has no candidate row: nothing on file says he is there.
+    started = set(zip(played["team_id"], played["season"]))
+    opened = np.array([(t, s) in started for t, s in zip(upcoming["team_id"], upcoming["season"])], dtype=bool)
+    upcoming = upcoming.assign(roster_season=np.where(opened, upcoming["season"], upcoming["season"] - 1))
+    cand = upcoming.merge(last.rename(columns={"season": "roster_season"}), on=["team_id", "roster_season"],
+                          how="inner").drop(columns="roster_season")
     cand["played"] = False
     pg = pd.concat([played, cand], ignore_index=True)
     pg = pg.sort_values(["start_time_utc", "event_id", "player_id"]).reset_index(drop=True)
@@ -322,16 +333,25 @@ def _base(store: Any, league: str, now_ts: pd.Timestamp, cfg: PropConfig) -> Dic
     allowed_cols = [f"allowed_{c}" for c in stat_cols]
     # What a row's inputs rest on: earlier games of the season that are not final yet, and
     # recent finished games whose box score is not on file (a result can arrive before it).
-    tg["has_box"] = tg[stat_cols[0]].notna()
+    # Each side's inputs use both box scores of a game (its own, and the opponent's as what
+    # it allowed), so half a box score is a missing one for both.
+    tg["has_box"] = tg[stat_cols[0]].notna() & tg[allowed_cols[0]].notna()
     not_final = (~tg["done"]).astype(float)
     team_season = tg["team_id"] + "|" + tg["season"].astype(str)
     tg["pending_before"] = _hold_within_day(
         tg, "team_id", not_final.groupby(team_season, sort=False).cumsum() - not_final)
     no_box = (tg["done"] & ~tg["has_box"]).astype(float)
-    recent = no_box.groupby(tg["team_id"], sort=False).rolling(cfg.box_check_games, min_periods=1).sum()
+    # Counted over the team's latest finished games only: every game still to come reports
+    # the same latest ones, however many scheduled games lie in between.
+    finished = tg[tg["done"]]
+    recent = no_box[finished.index].groupby(finished["team_id"], sort=False).rolling(
+        cfg.box_check_games, min_periods=1).sum()
     recent.index = recent.index.droplevel(0)
-    recent = recent.reindex(tg.index).groupby(tg["team_id"], sort=False).shift(1).fillna(0.0)
-    tg["box_missing_before"] = _hold_within_day(tg, "team_id", recent)
+    after = pd.Series(np.nan, index=tg.index)
+    after.loc[finished.index] = recent.reindex(finished.index)
+    after = after.groupby(tg["team_id"], sort=False).ffill()           # as it stands after the latest finished game
+    before = after.groupby(tg["team_id"], sort=False).shift(1).fillna(0.0)
+    tg["box_missing_before"] = _hold_within_day(tg, "team_id", before)
     opp_prior, _ = _ew(tg, "team_id", ["margin", *allowed_cols], cfg.opponent_halflife)
     tg["margin_ew"] = opp_prior["margin"]
     by_day = tg.groupby("day")[stat_cols].mean()                      # NaN on days with no finished game
@@ -505,12 +525,20 @@ def _absences(pg: pd.DataFrame, tg: pd.DataFrame, min_post: np.ndarray, stat_pos
     name_of = {pid: nm for pid, nm in zip(player, names)}
     rotation: Dict[str, Dict[str, Any]] = {}
     for team, st in state.items():
-        rotation[team] = {"season": int(st["season"]), "players": [
-            {"player_id": pid, "key": rec[3], "name": name_of.get(pid, pid), "min": float(rec[1]),
-             "stats": [float(v) for v in rec[2]], "missed": int(st["games"] - 1 - rec[0]),
-             "last_played_utc": rec[4]}
-            for pid, rec in st["players"].items()
-            if st["games"] - 1 - rec[0] <= cfg.rotation_window and rec[1] >= cfg.rotation_minutes]}
+        def in_rotation(rec: Tuple[Any, ...], games: int = st["games"]) -> bool:
+            return games - 1 - rec[0] <= cfg.rotation_window and rec[1] >= cfg.rotation_minutes
+
+        rotation[team] = {
+            "season": int(st["season"]),
+            "players": [
+                {"player_id": pid, "key": rec[3], "name": name_of.get(pid, pid), "min": float(rec[1]),
+                 "stats": [float(v) for v in rec[2]], "missed": int(st["games"] - 1 - rec[0]),
+                 "last_played_utc": rec[4]}
+                for pid, rec in st["players"].items() if in_rotation(rec)],
+            # Everyone else who has appeared for the team this season (bench, long-term absentees).
+            "others": [{"player_id": pid, "key": rec[3]} for pid, rec in st["players"].items()
+                       if not in_rotation(rec)],
+        }
     res["_rotation"] = rotation  # type: ignore[assignment]
     stat_cols = ["pts", "reb", "ast", "fg3m", "pra"]
     for tag in ("", "_rep"):
@@ -600,6 +628,9 @@ def build_prop_frame(store: Any, league: str, stat: str, *, now: Any = None,
         f"{cfg.min_expected_minutes:g} recent minutes per appearance.",
         "Announced minutes limits, role changes and confirmed starting line-ups are not in the data.",
         "A new prediction needs a threshold imported for that player and game; without one there is no selection.",
+        "A player's first game for a new team has no row before it is played (nothing on file places him "
+        "there), although such games are in the history. A team's first game of a season is served from last "
+        "season's rotation.",
     ]
     if has_reports:
         limitations.append(
@@ -675,36 +706,65 @@ def prop_candidates(stat: str, frame: FeatureFrame) -> List[Any]:
 # ---------------------------------------------------------------- availability
 _UNCERTAIN = ("questionable", "uncertain", "probable")
 _DOUBT = ("questionable", "uncertain")
+_PREV_INPUTS = tuple(_REPORT_SWAP)                 # absences taken from who missed the previous game
+_REP_INPUTS = tuple(_REPORT_SWAP.values())         # absences taken from the report
+
+
+def _match_statement(name: Any, player_id: Any, candidates: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The player a statement is about: by player id, then by name, then by
+    name with initials joined ("O.G. Anunoby" / "OG Anunoby").  ``None`` when
+    none of these identifies exactly one candidate."""
+    pid = None if player_id is None or player_id != player_id else str(player_id)
+    if pid:
+        hit = [c for c in candidates if str(c["player_id"]) == pid]
+        if len(hit) == 1:
+            return hit[0]
+    key = person_key(name)
+    hit = [c for c in candidates if c["key"] == key]
+    if len(hit) == 1:
+        return hit[0]
+    loose = loose_person_key(name)
+    hit = [c for c in candidates if loose_person_key(c["key"]) == loose]
+    return hit[0] if len(hit) == 1 else None
 
 
 def apply_prop_availability(row: pd.Series, frame: FeatureFrame, availability: pd.DataFrame, effect: Any) -> Any:
     """Fold published availability into one player's row.
 
-    * **The player himself.**  Listed out: no selection can be made (the
-      market would be void).  Doubtful, questionable or probable: any selection
-      is conditional on him playing, and limited minutes are not quantified.
-    * **Team-mates, when the model reads the report-based inputs and the
-      team's report has been read** (an injury-report check is on file for the
-      team): rotation team-mates listed out or doubtful replace those inputs -
-      the rule the history was built with, including "report read, nobody
-      listed".  Questionable team-mates are assumed to play; the worst-case
-      row assumes they sit.
-    * **Team-mates, otherwise** (the model takes absences from who missed the
-      previous game, or only stray statements are on file): nothing is
-      changed, and every listed team-mate the inputs do not already reflect is
-      a stated condition with an unquantified effect.  A statement never
-      silently counts as applied.
-    * A statement that matches nobody in the rotation is listed as such.
+    Every statement about the player's team ends in exactly one place: it
+    changes the inputs (``applied``), it rules the selection out
+    (``blockers``), it is a condition stated in full (``conditions``, or
+    ``uncertain_a`` with a worst-case row when the effect can be computed), or
+    it is listed as having no effect and why (``unmatched``).  Nothing is
+    dropped in silence and nothing is said to be applied that was not.
+
+    * **The player himself.**  Listed out: PASS (the market would be void).
+      Doubtful, questionable or probable: conditional on him playing.
+    * **Team-mates, when the trained model reads the report-based inputs and
+      the team's report has been read for this game:** rotation team-mates
+      listed out or doubtful replace those inputs - the rule the history was
+      built with, including "report read, nobody listed".  Questionable
+      team-mates are assumed to play; the worst-case row assumes they sit.
+    * **Team-mates, otherwise:** no input is changed.  Wherever the listing
+      differs from what the inputs assume - listed out but computed as
+      playing, listed to play (or not listed on a report that was read) but
+      computed as absent, or simply in doubt - that is a condition, worded
+      with its direction.
+    * A statement is matched to a player by id, then name, then name with
+      initials joined.  One that matches nobody but shares a surname with a
+      rotation player is a condition ("may be ..."), never an application.
+    * An out or doubtful statement older than the player's last game is out
+      of date - unless the team's report read for this game still carries it.
     * The opponent's absences are not an input of this model.
 
-    The engine supplies ``frame.extra["model_features"]`` (what the trained
-    model reads) and ``frame.extra["report_checked_teams"]`` (teams whose
-    injury report has been read).
+    The engine supplies in ``frame.extra``: ``model_features`` (what the
+    trained model reads), ``report_checked_teams`` and ``report_info_time``
+    (teams whose report is on file and fresh for this game, and its time).
     """
     effect.quantified = True
     team = row["side_a_id"]
-    checked = frame.extra.get("report_checked_teams")
-    report_read = checked is not None and team in checked
+    report_time = (frame.extra.get("report_info_time") or {}).get(team)
+    report_read = team in (frame.extra.get("report_checked_teams") or ())
     statements = availability if availability is not None else pd.DataFrame(columns=["team_id", "player_name", "status"])
     mine = statements[statements["team_id"] == team] if len(statements) else statements
     theirs = statements[statements["team_id"] == row["side_b_id"]] if len(statements) else statements
@@ -717,63 +777,103 @@ def apply_prop_availability(row: pd.Series, frame: FeatureFrame, availability: p
         return effect
 
     rot = (frame.extra.get("rotation") or {}).get(team)
-    players = list((rot or {}).get("players", []))
-    last_played = {p["key"]: p.get("last_played_utc") for p in players}
-    own_key, own_id, name = person_key(row["player_name"]), str(row["player_id"]), row["player_name"]
-    status_of: Dict[str, str] = {}
-    own: Optional[str] = None
-    for _, r in mine.iterrows():
-        key, status = person_key(r["player_name"]), str(r["status"])
-        is_own = key == own_key or str(r.get("player_id")) == own_id
-        stated = r.get("published_at_utc")
-        stated = stated if isinstance(stated, str) and stated else r.get("collected_at_utc")
-        played = last_played.get(own_key if is_own else key)
-        if status in ("out", "doubtful") and isinstance(stated, str) and played and stated < played:
-            # He has played since he was listed: the statement is out of date.
-            effect.unmatched.append(f"{r['player_name']} ({status}, stated {stated[:10]}): has played since "
-                                    f"(last on {played[:10]}); the statement is out of date and was not applied")
-            continue
-        if is_own:
-            own = status
-        else:
-            status_of[key] = status
-    if own == "out":
-        effect.blockers.append(f"{name} is listed out: a market on him would be void")
-    elif own in ("doubtful",) + _UNCERTAIN:
-        effect.uncertain_a.append(f"{name} ({own}) - the market is void if he does not play, and his minutes "
-                                  "may be limited if he does")
-
-    mates = [p for p in players if p["key"] != own_key and str(p["player_id"]) != own_id]
-    in_rotation = {p["key"] for p in mates}
-    for key, status in status_of.items():
-        if key not in in_rotation and status != "available":
-            effect.unmatched.append(f"{key} ({status}): not in the team's recent rotation, no effect on the model")
-
     block = row.get("block")
     wrong_season = rot is None or block != block or int(block) != int(rot["season"])
+    rotation = [] if wrong_season else list(rot.get("players", []))
+    others = [] if wrong_season else list(rot.get("others", []))
+    own_key, own_id, name = person_key(row["player_name"]), str(row["player_id"]), row["player_name"]
+    own_entry = next((p for p in rotation if str(p["player_id"]) == own_id), None)
+    own = {"player_id": own_id, "key": own_key, "name": name,
+           "last_played_utc": (own_entry or {}).get("last_played_utc")}
+    mates = [p for p in rotation if str(p["player_id"]) != own_id and p["key"] != own_key]
+    known = [own] + mates
+
+    # ---- every statement is resolved to a player, or accounted for
+    status_of: Dict[str, str] = {}
+    for _, r in mine.iterrows():
+        status, said = str(r["status"]), r["player_name"]
+        who = _match_statement(said, r.get("player_id"), known)
+        if who is not None:
+            stated = r.get("published_at_utc")
+            stated = stated if isinstance(stated, str) and stated else r.get("collected_at_utc")
+            played = who.get("last_played_utc")
+            still_listed = bool(report_time and played and report_time >= played)
+            if (status in ("out", "doubtful") and isinstance(stated, str) and played and stated < played
+                    and not still_listed):
+                effect.unmatched.append(f"{said} ({status}, stated {stated[:10]}): has played since (last on "
+                                        f"{played[:10]}); the statement is out of date and was not applied")
+                continue
+            status_of[str(who["player_id"])] = status
+            continue
+        if status == "available":
+            continue
+        if _match_statement(said, r.get("player_id"), others) is not None:
+            effect.unmatched.append(f"{said} ({status}): outside the team's recent rotation, no effect on the model")
+            continue
+        family = surname_key(said)
+        alike = [c for c in known if family and surname_key(c["key"]) == family]
+        if alike and status in ("out", "doubtful") + _DOUBT:
+            effect.conditions.append(
+                f"'{said}' is listed {status} for this team and matches no player exactly; it may be "
+                f"{' or '.join(c['name'] for c in alike)} (same surname). If it is, the selection does not stand "
+                "as computed.")
+        else:
+            effect.unmatched.append(f"{said} ({status}): matches nobody who has played for the team recently, "
+                                    "no effect on the model")
+
+    mine_status = status_of.get(own_id)
+    if mine_status == "out":
+        effect.blockers.append(f"{name} is listed out: a market on him would be void")
+    elif mine_status in ("doubtful",) + _UNCERTAIN:
+        effect.conditions.append(f"conditional on {name} ({mine_status}) playing - the market is void if he does "
+                                 "not, and his minutes may be limited if he does")
+
+    def describe(p: Dict[str, Any]) -> str:
+        return f"{p['name']} ({p['min']:.0f} minutes)"
+
+    if wrong_season:
+        for _, r in mine.iterrows():
+            if person_key(r["player_name"]) != own_key and str(r["status"]) in ("out", "doubtful") + _DOUBT:
+                effect.conditions.append(f"{r['player_name']} is listed {r['status']}; no rotation is on file for "
+                                         "this game, so the effect on this selection is not quantified")
+        return effect
+
     features = frame.extra.get("model_features")
     has_rep = "mates_out_min_rep" in row.index
-    reads_rep = has_rep and (features is None or any(c in features for c in _REPORT_SWAP.values()))
+    if features is None:                                   # an older caller: the frame's own default
+        mode = "rep" if has_rep else "prev"
+    elif has_rep and any(c in features for c in _REP_INPUTS):
+        mode = "rep"
+    elif any(c in features for c in _PREV_INPUTS):
+        mode = "prev"
+    else:
+        mode = "none"
 
-    def describe(p: Dict[str, Any], status: str) -> str:
-        return f"{p['name']} ({status}, {p['min']:.0f} minutes)"
-
-    if wrong_season or not reads_rep or not report_read:
-        # Nothing can be applied.  What the inputs do not already reflect stays a condition.
-        why = ("no rotation on file for this game" if wrong_season else
-               "this model takes team-mates' absences from who missed the previous game" if not reads_rep else
-               "no injury report has been read for this team, only single statements")
+    if not (mode == "rep" and report_read):
+        # No input can be changed.  Say where the listing differs from what the inputs assume.
+        why = {"rep": "no injury report has been read for this team for this game",
+               "prev": "this model takes team-mates' absences from who missed the previous game",
+               "none": "this model has no input for team-mates' absences"}[mode]
         for p in mates:
-            status = status_of.get(p["key"])
+            status = status_of.get(str(p["player_id"]))
+            counted_absent = mode != "none" and p["missed"] >= 1
             if status in ("out", "doubtful"):
-                if not wrong_season and not reads_rep and p["missed"] >= 1:
-                    effect.applied.append(f"{describe(p, status)}: already counted as absent (he missed the "
-                                          "previous game)")
+                if counted_absent:
+                    effect.applied.append(f"{describe(p)} listed {status}: already counted as absent (he missed "
+                                          "the previous game)")
                 else:
-                    effect.uncertain_a.append(f"team-mate {describe(p, status)} - not reflected in the model "
-                                              f"inputs ({why}); effect not quantified")
+                    effect.conditions.append(f"computed as if {describe(p)} plays, but he is listed {status}; "
+                                             f"{why}, so the effect is not quantified")
             elif status in _DOUBT:
-                effect.uncertain_a.append(f"team-mate {describe(p, status)} - effect not quantified ({why})")
+                effect.conditions.append(
+                    (f"computed as if {describe(p)} sits (he missed the previous game); he is listed {status} - "
+                     "the effect of him playing is not quantified") if counted_absent else
+                    (f"assumes {describe(p)}, listed {status}, plays; the effect of him sitting is not quantified "
+                     f"({why})"))
+            elif counted_absent and (status in ("available", "probable") or (status is None and report_read)):
+                listing = f"listed {status}" if status else "not on the team's report"
+                effect.conditions.append(f"computed as if {describe(p)} sits (he missed the previous game), but he "
+                                         f"is {listing}; the effect of him playing is not quantified")
         return effect
 
     j = int(frame.extra["stat_index"])
@@ -784,10 +884,10 @@ def apply_prop_availability(row: pd.Series, frame: FeatureFrame, availability: p
         minutes = new_minutes = stat = new_stat = 0.0
         who: List[str] = []
         for p in mates:
-            status = status_of.get(p["key"])
+            status = status_of.get(str(p["player_id"]))
             if status not in absent_statuses:
                 continue
-            who.append(describe(p, status))
+            who.append(f"{p['name']} ({status}, {p['min']:.0f} minutes)")
             minutes += p["min"]
             stat += p["stats"][j]
             if p["missed"] <= new_limit:
@@ -808,8 +908,11 @@ def apply_prop_availability(row: pd.Series, frame: FeatureFrame, availability: p
     else:
         effect.applied.append("the team's report lists no rotation team-mate as out or doubtful")
     if doubts:
-        effect.uncertain_a += [f"team-mate {d}" for d in doubts]
-        if own not in ("doubtful",) + _UNCERTAIN:       # his own doubt cannot be put into a row
+        if mine_status in ("doubtful",) + _UNCERTAIN:     # his own doubt cannot be put into a row
+            effect.conditions += [f"assumes team-mate {d} plays; with his own status in doubt as well, the effect "
+                                  "of the team-mate sitting is not quantified" for d in doubts]
+        else:
+            effect.uncertain_a += [f"team-mate {d}" for d in doubts]
             sat = row.copy()
             for col, value in worst.items():
                 sat[col] = value

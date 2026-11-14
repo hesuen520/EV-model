@@ -231,7 +231,12 @@ class BasketballPlugin(SportPlugin):
                 stated = rep.get("published_at_utc")
                 stated = stated if isinstance(stated, str) and stated else rep.get("collected_at_utc")
                 played = p.get("last_played_utc")
-                if status in ("out", "doubtful") and isinstance(stated, str) and played and stated < played:
+                # ... unless the team's report read for this game - newer than his last game -
+                # still carries it (a source may date an item before the game it is about).
+                listed_since = (frame.extra.get("report_info_time") or {}).get(team)
+                still_listed = bool(listed_since and played and listed_since >= played)
+                if (status in ("out", "doubtful") and isinstance(stated, str) and played and stated < played
+                        and not still_listed):
                     # He has played since he was listed: the statement is out of date.
                     effect.unmatched.append(
                         f"{p['name']} ({status}, stated {stated[:10]}): has played since (last on {played[:10]}); "

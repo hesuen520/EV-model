@@ -92,7 +92,7 @@ def evaluate_checks(
                 window += f" and re-checked within {float(recheck):g} hours of the start ({fmt_hst(start)})"
             entry: Dict[str, Any] = {
                 "key": spec.key, "label": spec.label, "subject": label, "checked_at_utc": None,
-                "published_at_utc": None, "source_id": None,
+                "published_at_utc": None, "source_id": None, "team_id": team_id,
             }
             if hit is None:
                 entry.update(state=CheckState.MISSING.value,

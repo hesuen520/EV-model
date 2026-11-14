@@ -7,7 +7,7 @@ import re
 import unicodedata
 from typing import Any
 
-__all__ = ["norm_text", "slug", "stable_id", "person_key"]
+__all__ = ["norm_text", "slug", "stable_id", "person_key", "loose_person_key", "surname_key"]
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
@@ -25,6 +25,29 @@ def person_key(value: Any) -> str:
     while len(words) > 2 and words[-1] in _GENERATION:
         words.pop()
     return " ".join(words)
+
+
+def loose_person_key(value: Any) -> str:
+    """:func:`person_key` with runs of single letters joined, so ``"O.G.
+    Anunoby"`` and ``"OG Anunoby"`` compare equal.  A second attempt after the
+    exact key has failed - never the first."""
+    out: list = []
+    run = False
+    for word in person_key(value).split():
+        single = len(word) == 1
+        if single and run:
+            out[-1] += word
+        else:
+            out.append(word)
+        run = single
+    return " ".join(out)
+
+
+def surname_key(value: Any) -> str:
+    """Last word of :func:`person_key` - enough to notice that a statement may
+    be about a known player, never enough to say that it is."""
+    words = person_key(value).split()
+    return words[-1] if len(words) > 1 else ""
 
 
 def norm_text(value: Any) -> str:

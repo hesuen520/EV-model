@@ -612,16 +612,20 @@ def _statements(rows):
 _REP = ("mates_out_min_rep", "mates_new_out_min_rep", "mates_out_share_rep", "mates_new_out_share_rep")
 
 
-def _availability_case(world, reads_rep=True, report_read=True, value=37.0):
+def _availability_case(world, reads="rep", report_read=True, value=37.0):
     """A row with report-based inputs (set to ``value``), a frame that says what the model
-    reads and whether the team's report has been read, the team, and its best other player."""
+    reads (``rep``: the report-based absence inputs, ``prev``: the previous-game ones,
+    ``none``: no absence input) and whether the team's report has been read for this game,
+    the team, and its best other player."""
     frame, up = _upcoming(world)
     row = up.iloc[0].copy()
     for col in _REP:
         row[col] = value
     team = row["side_a_id"]
-    frame.extra["model_features"] = ["min_ew", "mates_out_min_rep" if reads_rep else "mates_out_min"]
+    frame.extra["model_features"] = ["min_ew"] + {"rep": ["mates_out_min_rep"], "prev": ["mates_out_min"],
+                                                  "none": []}[reads]
     frame.extra["report_checked_teams"] = {team} if report_read else set()
+    frame.extra["report_info_time"] = {team: NOW} if report_read else {}
     mates = [p for p in frame.extra["rotation"][team]["players"] if p["player_id"] != row["player_id"]]
     return frame, row, team, max(mates, key=lambda p: p["min"])
 
@@ -630,29 +634,47 @@ def _apply(frame, row, statements):
     return apply_prop_availability(row, frame, statements, AvailabilityEffect(row=row.copy()))
 
 
+def _missed_last_game(frame, team, player):
+    frame.extra["rotation"][team]["players"] = [{**p, "missed": 1} if p["player_id"] == player["player_id"] else p
+                                                for p in frame.extra["rotation"][team]["players"]]
+
+
 def test_the_players_own_status(world):
     frame, row, team, _ = _availability_case(world)
     out = _apply(frame, row, _statements([(team, row["player_name"], "out")]))
     assert out.blockers and "void" in out.blockers[0]
-    # An "out" statement from before his last game is out of date: he has played since.
-    stale = _statements([(team, row["player_name"], "out")]).assign(collected_at_utc="2020-01-01T00:00:00Z")
-    old = _apply(frame, row, stale)
-    assert not old.blockers and any("out of date" in text for text in old.unmatched)
     doubt = _apply(frame, row, _statements([(team, row["player_name"], "questionable")]))
-    assert not doubt.blockers and doubt.uncertain_a and not doubt.worst_case_rows      # cannot be put into a row
+    assert not doubt.blockers and not doubt.worst_case_rows                  # cannot be put into a row
+    assert any("conditional on" in text and "playing" in text for text in doubt.conditions)
     # Matched by id when the statement carries one, whatever the spelling.
     by_id = _statements([(team, "A Different Spelling", "out")]).assign(player_id=row["player_id"])
     assert _apply(frame, row, by_id).blockers
     # A name that matches nobody is said to match nobody - never dropped in silence.
     typo = _apply(frame, row, _statements([(team, "Nobody Atall", "out")]))
-    assert not typo.blockers and any("not in the team's recent rotation" in text for text in typo.unmatched)
+    assert not typo.blockers and any("matches nobody" in text for text in typo.unmatched)
+
+
+def test_an_old_statement_is_out_of_date_unless_the_report_just_read_still_carries_it(world):
+    """Listed out before his last game and has played since: out of date.  But a source may
+    date an item before the game it is about - if the team's report read for this game,
+    newer than his last game, still lists him, he is listed."""
+    old = "2020-01-01T00:00:00Z"
+    frame, row, team, star = _availability_case(world, report_read=False)
+    stale = _statements([(team, row["player_name"], "out")]).assign(published_at_utc=old, collected_at_utc=old)
+    gone = _apply(frame, row, stale)
+    assert not gone.blockers and any("out of date" in text for text in gone.unmatched)
+    frame, row, team, star = _availability_case(world, report_read=True)
+    current = _statements([(team, row["player_name"], "out")]).assign(published_at_utc=old, collected_at_utc=NOW)
+    assert _apply(frame, row, current).blockers
+    mate = _statements([(team, star["name"], "out")]).assign(published_at_utc=old, collected_at_utc=NOW)
+    assert _apply(frame, row, mate).row["mates_out_min_rep"] == pytest.approx(star["min"])
 
 
 def test_team_mates_are_applied_only_when_the_model_reads_them_and_the_report_was_read(world):
     frame, row, team, star = _availability_case(world)
     listed = _apply(frame, row, _statements([(team, star["name"], "out")]))
     assert listed.row["mates_out_min_rep"] == pytest.approx(star["min"]) and listed.row["mates_out_share_rep"] > 0
-    assert any(star["name"] in text for text in listed.applied) and not listed.uncertain_a
+    assert any(star["name"] in text for text in listed.applied) and not listed.conditions
     maybe = _apply(frame, row, _statements([(team, star["name"], "questionable")]))
     assert maybe.row["mates_out_min_rep"] == 0.0                                        # assumed to play ...
     assert maybe.worst_case_rows["a"]["mates_out_min_rep"] == pytest.approx(star["min"])  # ... tested as if he sits
@@ -660,35 +682,127 @@ def test_team_mates_are_applied_only_when_the_model_reads_them_and_the_report_wa
     # Report read, nobody listed: that is information too - nobody is expected to be absent.
     nobody = _apply(frame, row, _statements([]))
     assert nobody.row["mates_out_min_rep"] == 0.0 and any("lists no rotation team-mate" in t for t in nobody.applied)
+    # His own doubt and a team-mate's together: nothing is tested as a worst case, both are stated.
+    both = _apply(frame, row, _statements([(team, row["player_name"], "questionable"), (team, star["name"], "questionable")]))
+    assert not both.worst_case_rows and len(both.conditions) == 2
+
+
+def test_a_team_mate_is_matched_by_id_then_name_then_joined_initials(world):
+    frame, row, team, star = _availability_case(world)
+    by_id = _statements([(team, "Another Spelling Entirely", "out")]).assign(player_id=star["player_id"])
+    assert _apply(frame, row, by_id).row["mates_out_min_rep"] == pytest.approx(star["min"])
+    # "O.G. Anunoby" on the report, "OG Anunoby" in the box score.
+    frame.extra["rotation"][team]["players"] = [
+        {**p, "key": "og anunoby", "name": "OG Anunoby"} if p["player_id"] == star["player_id"] else p
+        for p in frame.extra["rotation"][team]["players"]]
+    dotted = _apply(frame, row, _statements([(team, "O.G. Anunoby", "out")]))
+    assert dotted.row["mates_out_min_rep"] == pytest.approx(star["min"])
+    # Another first name, the same surname: it may be him - a condition, never an application.
+    nick = _apply(frame, row, _statements([(team, "Ogugua Anunoby", "out")]))
+    assert nick.row["mates_out_min_rep"] == 0.0
+    assert any("may be OG Anunoby" in text for text in nick.conditions)
+    # Someone from the end of the bench is recognised as such and changes nothing.
+    frame.extra["rotation"][team]["others"] = [{"player_id": "77", "key": "deep bench"}]
+    bench = _apply(frame, row, _statements([(team, "Deep Bench", "out")]))
+    assert not bench.conditions and any("outside the team's recent rotation" in text for text in bench.unmatched)
 
 
 def test_a_stray_statement_is_not_a_report(world):
-    """Without a report check for the team, single statements change no input: one
+    """Without a report on file for this game, single statements change no input: one
     'probable' line must not erase the absences the row already carries."""
     frame, row, team, star = _availability_case(world, report_read=False)
     other = next(p for p in frame.extra["rotation"][team]["players"]
                  if p["player_id"] not in (row["player_id"], star["player_id"]))
     probable = _apply(frame, row, _statements([(team, other["name"], "probable")]))
-    assert probable.row["mates_out_min_rep"] == 37.0 and not probable.applied
+    assert probable.row["mates_out_min_rep"] == 37.0 and not probable.applied and not probable.conditions
     listed = _apply(frame, row, _statements([(team, star["name"], "out")]))
-    assert listed.row["mates_out_min_rep"] == 37.0 and not listed.worst_case_rows
-    assert any("not reflected in the model inputs" in text for text in listed.uncertain_a)   # a stated condition
+    assert listed.row["mates_out_min_rep"] == 37.0 and not listed.worst_case_rows and not listed.applied
+    assert any("computed as if" in t and "plays, but he is listed out" in t for t in listed.conditions)
 
 
-def test_a_model_that_does_not_read_the_report_is_not_said_to_have_used_it(world):
-    frame, row, team, star = _availability_case(world, reads_rep=False)
+def test_conditions_say_which_way_the_inputs_differ_from_the_listing(world):
+    """A model that takes absences from the previous game cannot use the report.  Each
+    difference between what it assumed and what is listed is stated with its direction."""
+    frame, row, team, star = _availability_case(world, reads="prev")
     assert star["missed"] == 0
-    listed = _apply(frame, row, _statements([(team, star["name"], "out")]))
-    assert listed.row["mates_out_min_rep"] == 37.0 and not listed.applied and not listed.worst_case_rows
-    assert any("not reflected in the model inputs" in text for text in listed.uncertain_a)
+    out = _apply(frame, row, _statements([(team, star["name"], "out")]))
+    assert out.row["mates_out_min_rep"] == 37.0 and not out.applied and not out.worst_case_rows
+    assert any("computed as if" in t and "plays, but he is listed out" in t for t in out.conditions)
     maybe = _apply(frame, row, _statements([(team, star["name"], "questionable")]))
-    assert not maybe.worst_case_rows and any("effect not quantified" in text for text in maybe.uncertain_a)
-    # A team-mate who already missed the previous game is in the model's inputs: said so, no condition.
-    frame.extra["rotation"][team]["players"] = [
-        {**p, "missed": 1} if p["player_id"] == star["player_id"] else p
-        for p in frame.extra["rotation"][team]["players"]]
+    assert any("assumes" in t and "plays; the effect of him sitting" in t for t in maybe.conditions)
+
+    _missed_last_game(frame, team, star)                 # now the inputs count him absent
     counted = _apply(frame, row, _statements([(team, star["name"], "out")]))
-    assert not counted.uncertain_a and any("already counted as absent" in text for text in counted.applied)
+    assert not counted.conditions and any("already counted as absent" in text for text in counted.applied)
+    doubt = _apply(frame, row, _statements([(team, star["name"], "questionable")]))
+    assert any("computed as if" in t and "sits" in t and "effect of him playing" in t for t in doubt.conditions)
+    back = _apply(frame, row, _statements([(team, star["name"], "available")]))
+    assert any("sits" in t and "listed available" in t for t in back.conditions)
+    unlisted = _apply(frame, row, _statements([]))        # the report was read and does not list him
+    assert any("not on the team's report" in t for t in unlisted.conditions)
+
+
+def test_a_model_without_absence_inputs_never_claims_to_have_counted_one(world):
+    frame, row, team, star = _availability_case(world, reads="none")
+    _missed_last_game(frame, team, star)
+    listed = _apply(frame, row, _statements([(team, star["name"], "out")]))
+    assert not listed.applied
+    assert any("no input for team-mates' absences" in text for text in listed.conditions)
+
+
+def test_only_a_report_on_file_for_this_game_counts_as_read(world, tmp_path, monkeypatch):
+    """A check from another week, or one tied to another game, is not this game's report."""
+    store, settings = _clone(world, tmp_path)
+    _, up = _upcoming(world, store=store)
+    row = up[up["start_time_utc"] == up["start_time_utc"].min()].iloc[0]
+    team, start = row["side_a_id"], row["start_time_utc"]
+    import_prop_lines(store, LEAGUE, _lines_csv(tmp_path, [_line_row(world, row, 0.5)]), collected_at=NOW)
+    plugin = world["plugin"]
+    original = type(plugin).apply_availability
+    seen = []
+
+    def spy(self, league, market, r, frame, availability):
+        seen.append(set(frame.extra["report_checked_teams"]))
+        return original(self, league, market, r, frame, availability)
+
+    monkeypatch.setattr(type(plugin), "apply_availability", spy)
+    other_game = up[up["game_id"] != row["game_id"]].iloc[0]["game_id"]
+    store.log_check(LEAGUE, "injury_report", "nothing_listed", team_id=team,
+                    checked_at=(start - pd.Timedelta(days=12)).isoformat())
+    store.log_check(LEAGUE, "injury_report", "nothing_listed", team_id=team, event_id=other_game,
+                    checked_at=(start - pd.Timedelta(hours=2)).isoformat())
+    near = (start - pd.Timedelta(hours=1)).isoformat()
+    predict_league(store, LEAGUE, "player_prop:points", settings=settings, now=near, write=False)
+    assert seen and team not in seen[-1]
+    store.log_check(LEAGUE, "injury_report", "nothing_listed", team_id=team,
+                    checked_at=(start - pd.Timedelta(hours=2)).isoformat())
+    predict_league(store, LEAGUE, "player_prop:points", settings=settings, now=near, write=False)
+    assert team in seen[-1]
+
+
+def test_a_listed_team_mate_makes_a_complete_selection_conditional_in_plain_words(world, tmp_path):
+    """Every check complete: FINAL.  Then a rotation team-mate is listed questionable, and
+    this model cannot put a number on it: CONDITIONAL, with the condition recorded as written."""
+    store, settings = _clone(world, tmp_path)
+    frame, up = _upcoming(world, store=store)
+    row = up[up["start_time_utc"] == up["start_time_utc"].min()].iloc[0]
+    team, start = row["side_a_id"], row["start_time_utc"]
+    import_prop_lines(store, LEAGUE, _lines_csv(tmp_path, [_line_row(world, row, 0.5)]), collected_at=NOW)
+    for side in (row["side_a_id"], row["side_b_id"]):
+        store.log_check(LEAGUE, "injury_report", "reported", team_id=side,
+                        checked_at=(start - pd.Timedelta(hours=2)).isoformat())
+    near = (start - pd.Timedelta(hours=1)).isoformat()
+    clear = predict_league(store, LEAGUE, "player_prop:points", settings=settings, now=near, write=False)[0]
+    assert clear["rec_status"] == "FINAL", clear["reasons"]
+    mate = next(p for p in frame.extra["rotation"][team]["players"] if p["player_id"] != row["player_id"]
+                and p["missed"] == 0)
+    store.add_availability(pd.DataFrame([{"league": LEAGUE, "team_id": team, "player_name": mate["name"],
+                                          "status": "questionable",
+                                          "collected_at_utc": (start - pd.Timedelta(hours=2)).isoformat()}]))
+    doubt = predict_league(store, LEAGUE, "player_prop:points", settings=settings, now=near, write=False)[0]
+    assert doubt["rec_status"] == "CONDITIONAL"
+    assert any(mate["name"] in r and "effect of him sitting is not quantified" in r for r in doubt["reasons"])
+    assert not any("holds only if" in r for r in doubt["reasons"])
 
 
 def test_a_player_listed_out_gets_pass_not_a_selection(world, tmp_path):
@@ -767,3 +881,66 @@ def test_reports_published_within_the_hour_split_the_cache(world, tmp_path):
     assert after.loc[row["event_id"], "mates_out_min_rep"] >= mate["min"] - 1e-9       # the report is in force
     assert before.loc[row["event_id"], "mates_out_min_rep"] == before.loc[row["event_id"], "mates_out_min"]
     assert before.loc[row["event_id"], "report_on_file"] == 0.0 and after.loc[row["event_id"], "report_on_file"] == 1.0
+
+
+# ----------------------------------------------------- edge cases of the builder
+def test_every_game_to_come_reports_the_latest_missing_box_score(world, tmp_path):
+    """Scheduled games in between must not push a missing box score out of sight, and half
+    a box score is a missing one for both teams."""
+    store, _ = _clone(world, tmp_path)
+    frame = build_prop_frame(store, LEAGUE, "points", now=NOW)
+    last_game = frame.completed.sort_values("start_time_utc").iloc[-1]
+    team, opponent = last_game["side_a_id"], last_game["side_b_id"]
+    box = store.read_table(LEAGUE, "player_box")
+    half = box[~((box["event_id"] == last_game["game_id"]) & (box["team_id"] == team))]      # one side only
+    store.write_table(LEAGUE, "player_box", half, mode="replace")
+    up = build_prop_frame(store, LEAGUE, "points", now=NOW).upcoming
+    for side in (team, opponent):
+        mine = up[(up["side_a_id"] == side) | (up["side_b_id"] == side)]
+        assert mine["game_id"].nunique() >= 3 and (mine["n_box_missing"] >= 1).all(), side
+
+
+def test_a_played_row_without_its_statistics_is_not_an_outcome(world, tmp_path):
+    store, _ = _clone(world, tmp_path)
+    frame = build_prop_frame(store, LEAGUE, "points", now=NOW)
+    target = frame.completed.iloc[len(frame.completed) // 2]
+    assert target["y"] in (0.0, 1.0)
+    box = store.read_table(LEAGUE, "player_box")
+    hit = (box["event_id"] == target["game_id"]) & (box["player_id"] == target["player_id"])
+    box.loc[hit, "pts"] = np.nan
+    store.write_table(LEAGUE, "player_box", box, mode="replace")
+    again = build_prop_frame(store, LEAGUE, "points", now=NOW)
+    assert target["event_id"] not in set(again.df["event_id"])               # not an "under", not a zero
+    later = again.completed[(again.completed["player_id"] == target["player_id"])
+                            & (again.completed["start_time_utc"] > target["start_time_utc"])
+                            & (again.completed["block"] == target["block"])].iloc[0]
+    played = box[(box["player_id"] == target["player_id"]) & box["minutes"].notna() & box["pts"].notna()]
+    ev = store.events(LEAGUE, with_results=False)[["event_id", "start_time_utc", "season"]]
+    played = played.merge(ev, on="event_id")
+    before = played[(played["start_time_utc"] < later["start_time_utc"]) & (played["season"] == str(later["block"]))]
+    assert later["avg_season"] == pytest.approx(before["pts"].mean())
+
+
+def test_opening_night_is_served_from_last_seasons_rotation(world):
+    """A team's first game of a season is in the history; it must also be predictable."""
+    store = world["store"]
+    full = build_prop_frame(store, LEAGUE, "points", now=FAR).df
+    opener = full[full["block"] == 2024]["start_time_utc"].min()
+    asof = build_prop_frame(store, LEAGUE, "points", now=opener.isoformat())
+    first = asof.upcoming[asof.upcoming["start_time_utc"] == opener]
+    assert len(first) >= 20
+    result = asof_invariance(_Builder(), store, LEAGUE, "player_prop:points", cutoffs=[opener])
+    assert result["n_events"].min() >= 20 and result["max_abs_diff"].max() == 0.0
+
+
+def test_a_schedule_change_is_not_served_from_the_cache(world, tmp_path):
+    store, _ = _clone(world, tmp_path)
+    up = build_prop_frame(store, LEAGUE, "points", now=NOW).upcoming
+    starts = sorted(up["start_time_utc"].unique())
+    game = up[up["start_time_utc"] == starts[1]].iloc[0]
+    events = store.events(event_ids=[game["game_id"]], with_results=False)
+    moved = events.assign(start_time_utc=starts[1] + pd.Timedelta(hours=5), provider="synthetic")
+    store.upsert_events(moved[["league", "season", "start_time_utc", "status", "provider", "provider_event_id",
+                               "home_id", "away_id", "neutral_site"]], sport="basketball")
+    again = build_prop_frame(store, LEAGUE, "points", now=NOW).upcoming
+    assert again.loc[again["game_id"] == game["game_id"], "start_time_utc"].iloc[0] == starts[1] + pd.Timedelta(hours=5)

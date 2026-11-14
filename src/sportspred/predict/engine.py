@@ -358,13 +358,10 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
     prior_by_event = {(r["event_id"], r["market"]): r for _, r in prior.iterrows()}
     count_model = callable(getattr(model.candidate, "push_prob", None))
     projection_fn = getattr(model.candidate, "projection", None)
-    # What the plugin needs to fold availability in honestly: which inputs the trained model
-    # reads, and for which teams a team-level report (injury report, line-up ...) has been read.
-    frame.extra["model_features"] = list(feature_names)
-    team_checks = {c.key for c in specs if c.scope == "team"}
-    read = check_log[check_log["check_key"].isin(team_checks)
-                     & check_log["outcome"].isin(["reported", "nothing_listed"])] if len(check_log) else check_log
-    frame.extra["report_checked_teams"] = set(read["team_id"].dropna()) if len(read) else set()
+    # What a plugin needs to fold availability in honestly: which inputs the trained model
+    # reads (exactly what it declares - none is none), and, set per row below, for which
+    # teams a team-level report has been read for that game.
+    frame.extra["model_features"] = list(model.candidate.feature_names())
     subject_col = "player_name" if "player_name" in rows.columns else None
     unit = frame.extra.get("stat_label")
 
@@ -375,6 +372,18 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
         team_ids = [base_row["side_a_id"], base_row["side_b_id"]]
         avail = store.availability_as_of(league, now_dt, team_ids=team_ids, event_id=event_id,
                                          include_synthetic=True)
+        # Checks first: whether a team's report has been read *for this game* (on file for
+        # this event or for no event, and inside its freshness window) decides what its
+        # statements may be used for.  A check from another game or another week does not.
+        check_row = base_row
+        if base_row["event_id"] != event_id:            # checks are logged against the game, not the player row
+            check_row = base_row.copy()
+            check_row["event_id"] = event_id
+        checks = evaluate_checks(specs, check_row, check_log, now=now_ts, settings=settings, names=names)
+        report_time = {c["team_id"]: (c.get("published_at_utc") or c.get("checked_at_utc")) for c in checks
+                       if c.get("team_id") and c["state"] in (CheckState.COMPLETE.value, CheckState.RECHECK.value)}
+        frame.extra["report_checked_teams"] = set(report_time)
+        frame.extra["report_info_time"] = report_time
         effect = plugin.apply_availability(league, market, base_row, frame, avail)
         row = effect.row
         line = None
@@ -401,11 +410,6 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
         prob_decided, low_decided, high_decided = prob / decided, prob_low / decided, prob_high / decided
         given = "" if p_push == 0.0 else (f" given a decision ({prob:.3f} with a {p_push:.3f} chance of a push)")
 
-        check_row = row
-        if row["event_id"] != event_id:                 # checks are logged against the game, not the player row
-            check_row = row.copy()
-            check_row["event_id"] = event_id
-        checks = evaluate_checks(specs, check_row, check_log, now=now_ts, settings=settings, names=names)
         # Built in for every league: ratings are only current if every earlier
         # event of both sides has a result on file.
         behind = unresolved.get(row["side_a_id"], 0) + unresolved.get(row["side_b_id"], 0)
@@ -441,11 +445,12 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
         if model_mismatch:
             pass_reasons.append(model_mismatch)
         pass_reasons += list(effect.blockers)
+        interval_rule = (settings.selection.require_interval_above_even
+                         and frame.outcome in (OutcomeType.BINARY, OutcomeType.OVER_UNDER))
         if prob_decided < min_prob:
             pass_reasons.append(f"model probability {prob_decided:.3f}{given} is below the selection minimum "
                                 f"{min_prob:.2f}")
-        elif (settings.selection.require_interval_above_even
-              and frame.outcome in (OutcomeType.BINARY, OutcomeType.OVER_UNDER) and low_decided <= 0.5):
+        elif interval_rule and low_decided <= 0.5:
             pass_reasons.append(f"model-uncertainty interval {low_decided:.3f}-{high_decided:.3f}{given} reaches "
                                 "a coin flip")
         if pass_reasons:
@@ -475,9 +480,11 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
                     reasons.append(f"holds only if these {whose} players play (effect not quantified): "
                                    + "; ".join(doubts))
                     continue
-                Pw, _, _, push_w = _outcome_probabilities(model, worst, line, count_model)
+                # The same rules as the selection itself: the minimum and the interval test.
+                Pw, low_w, _, push_w = _outcome_probabilities(model, worst, line, count_model)
                 worst_decided = float(Pw[k]) / (1.0 - push_w)
-                if int(np.argmax(Pw)) != k or worst_decided < min_prob:
+                worst_low = float(low_w[k]) / (1.0 - push_w)
+                if int(np.argmax(Pw)) != k or worst_decided < min_prob or (interval_rule and worst_low <= 0.5):
                     status = RecStatus.CONDITIONAL
                     reasons.append(
                         f"condition: {'; '.join(doubts)} ({whose}) must play. If they sit, the model probability of "
@@ -485,6 +492,11 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
                 else:
                     reasons.append(f"selection holds even if {'; '.join(doubts)} ({whose}) sit "
                                    f"(probability would be {worst_decided:.3f}).")
+            # Conditions the plugin states in full: what the probability was computed as if,
+            # against what is listed.  Recorded word for word.
+            if effect.conditions:
+                status = RecStatus.CONDITIONAL
+                reasons.extend(effect.conditions)
             if status == RecStatus.FINAL:
                 reasons.insert(0, "all configured pregame checks are complete and fresh")
 
@@ -500,7 +512,7 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
             projection = {k: float(v) for k, v in projection_fn(pd.DataFrame([row])).iloc[0].items()}
             row_for_explain["_projection"] = projection
         explanation = plugin.explain(league, market, row_for_explain, frame, contributions)
-        explanation.availability_assumptions += effect.applied + effect.unmatched
+        explanation.availability_assumptions += effect.applied + effect.unmatched + effect.conditions
         for side_name, items in ((names.get(row["side_a_id"]), effect.uncertain_a),
                                  (names.get(row["side_b_id"]), effect.uncertain_b)):
             if items:

@@ -209,8 +209,9 @@ def field_table(store) -> str:
     from ..sports import get_league
 
     lines = ["| Series | Market | Status | Selected model | Final-test races | Driver starts | Log loss | Base rate | "
-             "Grid position alone | Calibration error | Model's top picks that did, per race | First on the grid "
-             "that did, per race |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "Grid position alone | Improvement over the grid (95% interval) | Possible 'yes' selections: won / "
+             "stated (n) | Their calibration error | Model's top picks that did, per race | First on the grid "
+             "that did, per race |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in sorted(validation_views(store), key=lambda r: (r["sport"], r["league"], r["market"])):
         if not r["market"].startswith("finish:"):
             continue
@@ -222,12 +223,17 @@ def field_table(store) -> str:
         except Exception:  # noqa: BLE001
             name = r["league"]
         k = per_race.get("k")
+        ref, off = f.get("skill_vs_reference") or {}, f.get("offered") or {}
+        against = (f"{ref['diff']:.3f} ({ref['low']:.3f} to {ref['high']:.3f})" if ref else "")
+        picks = (f"{100 * off['accuracy']:.1f}% / {100 * off['mean_predicted']:.1f}% ({off['n']})"
+                 if off.get("n") else "none")
         lines.append(
             f"| {name} | {_MARKET_LABELS.get(r['market'], r['market'])} | "
             f"{'validated' if r.get('gates_passed') else 'experimental'} | {r['selected_model']} | "
             f"{per_race.get('races', '')} | {s['n']:,} | {s['log_loss']:.3f} | "
             f"{(baselines.get('base_rate') or {}).get('log_loss', float('nan')):.3f} | "
-            f"{(baselines.get('grid_logit') or {}).get('log_loss', float('nan')):.3f} | {s['ece']:.3f} | "
+            f"{(baselines.get('grid_logit') or {}).get('log_loss', float('nan')):.3f} | {against} | {picks} | "
+            f"{off.get('ece', float('nan')):.3f} | "
             f"{per_race.get('model_hits_per_race', float('nan')):.2f} of {k} | "
             f"{per_race.get('grid_hits_per_race', float('nan')):.2f} of {k} |")
     return "\n".join(lines)

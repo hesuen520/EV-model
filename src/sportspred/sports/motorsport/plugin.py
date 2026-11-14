@@ -54,11 +54,15 @@ class MotorsportPlugin(SportPlugin):
             raise NotImplementedError(f"{league} market {market!r} has no feature builder")
         frame = build_finish_frame(store, league, kind, now=now, cfg=self._CONFIG)
         # Rows are drivers; the independent events are races.  Say how many the final test has.
+        from ...validation.splits import make_folds
+
         plan = self.split_plan(league, market, frame)
-        done = frame.completed
-        seasons = sorted(done["block"].unique())
-        final = done[done["block"].isin(seasons[-plan.n_final_blocks:])]
-        n_races = int(final["game_id"].nunique())
+        done = frame.completed.sort_values(["start_time_utc", "event_id"])
+        try:                                   # the final test as validation will cut it, partial season included
+            final_blocks = make_folds(done, plan).final.test_blocks
+        except ValueError:
+            final_blocks = sorted(done["block"].unique())[-plan.n_final_blocks:]
+        n_races = int(done[done["block"].isin(final_blocks)]["game_id"].nunique())
         frame.extra["gates"] = [{
             "gate": "independent_races", "passed": n_races >= MIN_FINAL_RACES,
             "detail": f"{n_races} races in the final-test seasons (minimum {MIN_FINAL_RACES}); the row count "
@@ -80,6 +84,7 @@ class MotorsportPlugin(SportPlugin):
             logit_candidate("full_logit", FULL_FEATURES, complexity=4,
                             description="grid and qualifying gap, driver and car form, track fit and reliability"),
             FieldRankCandidate("field_rank", FULL_FEATURES, DNF_FEATURES, top_k=KINDS[kind], complexity=5,
+                               context=frame.extra.get("field_context"),
                                description="a model of the whole race: Plackett-Luce strengths from finishing "
                                            "orders, a retirement model, and a simulated finish distribution"),
             gbm_candidate("full_gbm", FULL_FEATURES, complexity=6, min_samples_leaf=40,

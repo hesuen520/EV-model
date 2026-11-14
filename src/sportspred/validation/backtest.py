@@ -54,6 +54,10 @@ class ValidationConfig:
     #: Thresholds below 1 / (number of outcomes) select every event and are left
     #: out, so the two below 0.50 appear for three-way markets only.
     pass_grid: Tuple[float, ...] = (0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80)
+    #: Resamples behind a gate whose verdict is one end of an interval.  With a few
+    #: hundred, that end moves in the fourth decimal from seed to seed - enough to flip a
+    #: borderline verdict; with this many it does not.
+    n_boot_gate: int = 20000
     confidence_bin_width: float = 0.05
 
 
@@ -192,6 +196,21 @@ def _by_segment(frame: pd.DataFrame, classes: Sequence[str]) -> List[Dict[str, A
         rows.append({"segment": str(name), "share": float(len(part) / len(frame)),
                      "mean_top_probability": float(P.max(axis=1).mean()), **M.summary(P, y)})
     return rows
+
+
+def _offered(frame: pd.DataFrame, classes: Sequence[str], allowed: Optional[Sequence[str]]) -> pd.DataFrame:
+    """The rows on which a selection could be made.
+
+    Where only some outcomes are ever offered as selections ("to win", never
+    "not to win"), the tables that describe selections - hit rate by
+    probability band, the PASS rule, calibration - must describe those
+    outcomes only.  Twenty starters who plainly will not win are twenty
+    confident, correct "no" answers that say nothing about the "yes" picks.
+    """
+    if not allowed:
+        return frame
+    top = _P(frame, classes).argmax(axis=1)
+    return frame[np.isin(np.asarray(classes, dtype=object)[top], list(allowed))]
 
 
 def _pass_rule(frame: pd.DataFrame, classes: Sequence[str], grid: Sequence[float]) -> List[Dict[str, Any]]:
@@ -383,6 +402,8 @@ def run_validation(
     }
     sel_final = final_oos[selected]
     final_groups = slate_dates(sel_final["start_time_utc"])
+    allowed = frame.extra.get("selection_classes")
+    off_final = _offered(sel_final, classes, allowed)
     final_block: Dict[str, Any] = {
         "blocks": [str(b) for b in folds.final.test_blocks],
         "selected": _metrics_with_ci(sel_final, classes, cfg),
@@ -396,9 +417,18 @@ def run_validation(
         "by_block": _by_block(sel_final, classes),
         "by_segment": _by_segment(sel_final, classes),
         "reliability": M.reliability_table(_P(sel_final, classes), _y(sel_final)),
-        "reliability_selected_outcome": M.reliability_table(_P(sel_final, classes), _y(sel_final), top_label=True),
-        "pass_rule": _pass_rule(sel_final, classes, cfg.pass_grid),
+        "reliability_selected_outcome": M.reliability_table(_P(off_final, classes), _y(off_final), top_label=True)
+        if len(off_final) else [],
+        "pass_rule": _pass_rule(off_final, classes, cfg.pass_grid) if len(off_final) else [],
     }
+    if allowed:
+        # What the platform would actually select: how many, how often right, how well calibrated.
+        final_block["offered"] = {
+            "classes": list(allowed), "n": int(len(off_final)),
+            **({"accuracy": M.accuracy(_P(off_final, classes), _y(off_final)),
+                "mean_predicted": float(_P(off_final, classes).max(axis=1).mean()),
+                "ece": M.ece(_P(off_final, classes), _y(off_final))} if len(off_final) else {}),
+        }
     # Skill versus the simplest baseline, paired on the same events.
     baseline_names = [c.name for c in sorted(candidates, key=lambda c: c.complexity) if c.is_baseline]
     skill = None
@@ -410,13 +440,15 @@ def run_validation(
     final_block["skill_vs_baseline"] = skill
 
     sel_dev = dev_oos[selected]
+    off_dev = _offered(sel_dev, classes, allowed)
     dev_block = {
         "selected": _metrics_with_ci(sel_dev, classes, cfg),
         "by_block": _by_block(sel_dev, classes),
         "by_segment": _by_segment(sel_dev, classes),
         "reliability": M.reliability_table(_P(sel_dev, classes), _y(sel_dev)),
-        "reliability_selected_outcome": M.reliability_table(_P(sel_dev, classes), _y(sel_dev), top_label=True),
-        "pass_rule": _pass_rule(sel_dev, classes, cfg.pass_grid),
+        "reliability_selected_outcome": M.reliability_table(_P(off_dev, classes), _y(off_dev), top_label=True)
+        if len(off_dev) else [],
+        "pass_rule": _pass_rule(off_dev, classes, cfg.pass_grid) if len(off_dev) else [],
         "stability_vs_baselines": {
             c.name: _stability(sel_dev, dev_oos[c.name], classes)
             for c in candidates if c.is_baseline and c.name != selected
@@ -471,9 +503,23 @@ def run_validation(
          "detail": ("selected model is the baseline itself" if skill is None else
                     f"final-test log-loss improvement over {skill['reference']}: {skill['diff']:.5f} "
                     f"(95% interval {skill['low']:.5f} to {skill['high']:.5f})")},
-        {"gate": "calibration", "passed": bool(fm["ece"] <= cfg.max_ece),
-         "detail": f"final-test expected calibration error {fm['ece']:.4f} (maximum {cfg.max_ece})"},
     ]
+    if allowed:
+        off = final_block["offered"]
+        enough = off["n"] >= cfg.min_final_events
+        gates.append({
+            "gate": "calibration",
+            "passed": bool(enough and off["ece"] <= cfg.max_ece),
+            "detail": (f"only {off['n']} final-test rows on which a selection ({', '.join(allowed)}) could be made "
+                       f"(minimum {cfg.min_final_events}): too few to say the offered side is calibrated"
+                       if not enough else
+                       f"expected calibration error of the offered side ({', '.join(allowed)}) on {off['n']} "
+                       f"final-test selections: {off['ece']:.4f} (maximum {cfg.max_ece}); over all rows "
+                       f"{fm['ece']:.4f}"),
+        })
+    else:
+        gates.append({"gate": "calibration", "passed": bool(fm["ece"] <= cfg.max_ece),
+                      "detail": f"final-test expected calibration error {fm['ece']:.4f} (maximum {cfg.max_ece})"})
     # A plugin may name a stronger reference than the base rate - the baseline anyone would
     # use (the starting grid for a race).  The selected model must beat it on the final test,
     # paired on the same rows, with the interval (resampled by slate) excluding zero.
@@ -485,8 +531,9 @@ def run_validation(
         elif reference in final_oos:
             ref_rows = final_oos[reference]
             d = M.paired_bootstrap_diff(M.log_loss, _P(sel_final, classes), _P(ref_rows, classes), _y(sel_final),
-                                        final_groups, n_boot=cfg.n_boot, seed=cfg.seed)
-            final_block["skill_vs_reference"] = {"reference": reference, "metric": "log_loss", **d}
+                                        final_groups, n_boot=max(cfg.n_boot, cfg.n_boot_gate), seed=cfg.seed)
+            final_block["skill_vs_reference"] = {"reference": reference, "metric": "log_loss",
+                                                 "n_boot": max(cfg.n_boot, cfg.n_boot_gate), **d}
             gates.append({"gate": f"skill_over_{reference}",
                           "passed": bool(np.isfinite(d["low"]) and d["low"] > 0),
                           "detail": f"final-test log-loss improvement over {reference}: {d['diff']:.5f} "
@@ -529,7 +576,7 @@ def run_validation(
         "dev": dev_block,
         "final_test": final_block,
         "market_benchmark": bench_block,
-        "confidence_table": _confidence_table(all_sel, classes, cfg.confidence_bin_width),
+        "confidence_table": _confidence_table(_offered(all_sel, classes, allowed), classes, cfg.confidence_bin_width),
         "same_day_residual_correlation": same_day_residual_correlation(
             all_sel, classes, n_boot=cfg.n_boot, seed=cfg.seed),
         "gates": gates,

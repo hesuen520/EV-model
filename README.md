@@ -149,7 +149,7 @@ exactly on a threshold - not a projected average.
   player listed out gets PASS; one listed doubtful or questionable makes the
   selection conditional on him playing.
 
-### Formula 1: winner, podium and points finish
+### Formula 1: winner, podium and points finish (built, experimental)
 
 One row per driver and race, three yes-or-no questions about every starter.
 The inputs are the official starting grid, driver and car form (the car's
@@ -158,26 +158,35 @@ of that race, pace against team-mates, track fit and reliability. Data: the
 F1DB database (CC BY 4.0), every race since 2000 for the model.
 
 <!-- results:start field -->
-| Series | Market | Status | Selected model | Final-test races | Driver starts | Log loss | Base rate | Grid position alone | Calibration error | Model's top picks that did, per race | First on the grid that did, per race |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Formula 1 | podium finish (top three) | validated | full_logit | 112 | 2,258 | 0.215 | 0.421 | 0.235 | 0.012 | 1.98 of 3 | 1.99 of 3 |
-| Formula 1 | points finish (top ten) | validated | field_rank | 112 | 2,258 | 0.462 | 0.694 | 0.506 | 0.013 | 7.88 of 10 | 7.70 of 10 |
-| Formula 1 | race winner (each starter: yes or no) | validated | full_logit | 112 | 2,258 | 0.101 | 0.197 | 0.110 | 0.006 | 0.54 of 1 | 0.58 of 1 |
+| Series | Market | Status | Selected model | Final-test races | Driver starts | Log loss | Base rate | Grid position alone | Improvement over the grid (95% interval) | Possible 'yes' selections: won / stated (n) | Their calibration error | Model's top picks that did, per race | First on the grid that did, per race |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Formula 1 | podium finish (top three) | experimental | full_logit | 112 | 2,258 | 0.215 | 0.421 | 0.235 | 0.020 (0.009 to 0.031) | 73.2% / 70.4% (265) | 0.044 | 1.98 of 3 | 1.99 of 3 |
+| Formula 1 | points finish (top ten) | experimental | field_rank | 112 | 2,258 | 0.463 | 0.694 | 0.506 | 0.043 (0.026 to 0.061) | 82.2% / 81.9% (1000) | 0.031 | 7.86 of 10 | 7.70 of 10 |
+| Formula 1 | race winner (each starter: yes or no) | experimental | full_logit | 112 | 2,258 | 0.101 | 0.197 | 0.110 | 0.009 (-0.000 to 0.018) | 75.0% / 62.7% (44) | 0.169 | 0.54 of 1 | 0.58 of 1 |
 <!-- results:end -->
 
 *(Generated: `sportspred report summary --into README.md`.)*
 
-- **The baseline to beat is the grid, not the base rate.** All three models
-  give better probabilities than starting position alone on the final test
-  (2022-2026, 112 races), with the interval excluding zero - for the win
-  market only just.
+- **None of the three is validated.** The baseline to beat is the grid, not
+  the base rate. On the final test (2022-2026, 112 races) the podium and
+  points models give better probabilities than starting position alone, with
+  the interval excluding zero; for the win market the interval reaches zero,
+  so that is not shown. And calibration is judged on what would actually be
+  offered - the "yes" side: there are too few possible win and podium
+  selections in the final test to judge (44 and 265), and the points
+  selections miss the limit by a hair (0.031 against 0.03), being too
+  confident at the top: picks stated at 90-95% won 88%.
 - **Better probabilities, not better picks of the winner.** The driver the
   model rates most likely to win won 54% of those races; the pole-sitter won
   58%. For the podium the model's three and the first three on the grid do
-  equally well; for points the model's ten are slightly better. What the
-  model adds is a calibrated number for every starter.
+  equally well; for points the model's ten are slightly better.
 - Rows are drivers, but the events are races: the gate that counts
   independent events counts 112 races, not 2,258 driver starts.
+- An independent review of this code is why the labels are what they are: the
+  first runs called all three validated, on a gate whose verdict for the win
+  market changed with the random seed, and on calibration tables in which
+  thousands of obvious "no" answers hid the "yes" picks. Both were fixed; the
+  earlier runs remain in the run history.
 - **A prediction needs the starting grid**, which you import after
   qualifying (`sportspred import grid`). Before that there is none. Only the
   "yes" side is ever offered as a selection. Weather, tyres, strategy,

@@ -92,6 +92,30 @@ def normalize_f1db(z: zipfile.ZipFile, first_season: int = FIRST_SEASON) -> Dict
     return {"races": races, "entries": out, "drivers": drivers, "constructors": constructors}
 
 
+def _refuse_renumbering(store: Any, races: pd.DataFrame) -> None:
+    """Events are keyed by the source's race id.  If the source ever renumbers
+    its races (a cancelled round), the same id would name another Grand Prix
+    and its result would overwrite a different race.  Compare every race on
+    file with the incoming one of the same id and stop if they disagree."""
+    import json
+
+    stored = store.events(LEAGUE, with_results=False)
+    if stored.empty:
+        return
+    incoming = {str(int(r.id)): (str(int(r.year)), str(r.grandPrixId)) for r in races.itertuples()}
+    clashes = []
+    for ev in stored.itertuples():
+        fmt = json.loads(ev.format_json) if isinstance(ev.format_json, str) else {}
+        new = incoming.get(str(ev.provider_event_id))
+        if new is not None and fmt.get("grand_prix") and (str(ev.season), str(fmt["grand_prix"])) != new:
+            clashes.append(f"race id {ev.provider_event_id}: on file {ev.season} {fmt['grand_prix']}, "
+                           f"in the source {new[0]} {new[1]}")
+    if clashes:
+        raise DataUnavailable(
+            "the source has renumbered its races; ingesting would overwrite other Grands Prix. Nothing was "
+            "changed. " + "; ".join(clashes[:5]) + (" ..." if len(clashes) > 5 else ""))
+
+
 def ingest_f1(store: Any, *, seasons: Optional[Sequence[int]] = None, refresh: Optional[bool] = None,
               fetcher: Optional[Fetcher] = None) -> IngestReport:
     fetcher = fetcher or Fetcher()
@@ -106,9 +130,13 @@ def ingest_f1(store: Any, *, seasons: Optional[Sequence[int]] = None, refresh: O
         report.warnings.append(f"refresh failed; using the copy collected {got.collected_at_utc}")
     source = got.register(store, notes="F1DB release (CSV)")
     report.sources.append(source)
+    # The file always holds every season and the tables are rebuilt whole, so ``seasons`` can
+    # extend the history backwards but never narrow it: a partial rebuild would drop the rest.
+    first = min(FIRST_SEASON, min(seasons)) if seasons else FIRST_SEASON
     with zipfile.ZipFile(got.path) as z:
-        data = normalize_f1db(z, min(seasons) if seasons else FIRST_SEASON)
+        data = normalize_f1db(z, first)
     races, entries = data["races"], data["entries"]
+    _refuse_renumbering(store, races)
 
     # ---- participants: drivers and constructors, by the source's stable ids
     used = data["drivers"][data["drivers"]["id"].isin(set(entries["driver"]))]

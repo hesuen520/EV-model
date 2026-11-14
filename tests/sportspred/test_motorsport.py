@@ -175,12 +175,32 @@ def test_a_race_has_no_rows_until_its_grid_is_known(world):
     done = frame.completed
     race = done[done["game_id"] == done["game_id"].iloc[len(done) // 2]]
     start = race["start_time_utc"].iloc[0]
-    # A historical rebuild knows the official grid from two hours before the start, not a day before.
-    day_before = build_finish_frame(store, LEAGUE, "win", now=(start - pd.Timedelta(hours=24)).isoformat())
-    assert race["game_id"].iloc[0] not in set(day_before.df["game_id"])
-    hour_before = build_finish_frame(store, LEAGUE, "win", now=(start - pd.Timedelta(hours=1)).isoformat())
-    known = hour_before.upcoming[hour_before.upcoming["game_id"] == race["game_id"].iloc[0]]
+    # A historical rebuild knows the official grid from two hours before a timed start - not before.
+    def rows_at(hours_before):
+        frame_then = build_finish_frame(store, LEAGUE, "win", now=(start - pd.Timedelta(hours=hours_before)).isoformat())
+        return frame_then.df[frame_then.df["game_id"] == race["game_id"].iloc[0]]
+
+    assert rows_at(24).empty and rows_at(2.01).empty
+    known = rows_at(1.99)
     assert len(known) >= len(race) and known["y"].isna().all() and known["finish_position"].isna().all()
+
+
+def test_a_race_with_only_a_date_does_not_know_its_grid_before_its_stored_instant(world, tmp_path):
+    """A date-only race is stored at 00:00Z of its date, hours before it - or its qualifying -
+    took place.  The two-hour lead of a timed race must not be applied to that placeholder."""
+    store, _ = _clone(world, tmp_path)
+    events = store.events(LEAGUE, with_results=False)
+    race = events[events["status"] == "final"].sort_values("start_time_utc").iloc[150]
+    midnight = race["start_time_utc"].normalize()
+    moved = events[events["event_id"] == race["event_id"]].assign(start_time_utc=midnight, time_precision="date")
+    with store.conn() as con:
+        con.execute("UPDATE events SET start_time_utc=?, time_precision='date' WHERE event_id=?",
+                    (midnight.strftime("%Y-%m-%dT%H:%M:%SZ"), race["event_id"]))
+    assert len(moved) == 1
+    before = build_finish_frame(store, LEAGUE, "win", now=(midnight - pd.Timedelta(minutes=30)).isoformat())
+    assert race["event_id"] not in set(before.df["game_id"])                  # inside two hours, still unknown
+    at = build_finish_frame(store, LEAGUE, "win", now=midnight.isoformat())
+    assert race["event_id"] in set(at.upcoming["game_id"])
 
 
 def test_ratings_come_from_earlier_races_only(world, tmp_path):
@@ -194,7 +214,10 @@ def test_ratings_come_from_earlier_races_only(world, tmp_path):
     hit = table["event_id"] == target
     n = int(hit.sum())
     table.loc[hit, "order"] = n + 1 - table.loc[hit, "order"]
-    table.loc[hit, "position"] = np.where(table.loc[hit, "classified"], n + 1 - table.loc[hit, "position"], np.nan)
+    # ... and who retired: every classified starter retires, every retirement is classified.
+    flipped = ~table.loc[hit, "classified"].astype(bool) & table.loc[hit, "started"].astype(bool)
+    table.loc[hit, "classified"] = flipped
+    table.loc[hit, "position"] = np.where(flipped, table.loc[hit, "order"], np.nan)
     other.write_table(LEAGUE, "race_entries", table, mode="replace")
     again = build_finish_frame(other, LEAGUE, "win", now=NOW).df.set_index("event_id")
     cols = list(frame.feature_cols)
@@ -213,6 +236,19 @@ def test_a_driver_who_does_not_start_has_no_row_but_stays_in_the_field(world):
     race = frame.df[frame.df["game_id"] == absent["event_id"]]
     assert absent["driver_id"] not in set(race["player_id"])                  # his market is void
     assert (race["n_field"] == 2 * N_TEAMS).all()                             # the others were measured against him too
+    # The whole-race model simulates him with the others: they raced a field that had him in it.
+    context = frame.extra["field_context"]
+    mine = context[context["game_id"] == absent["event_id"]]
+    assert absent["driver_id"] in set(mine["player_id"]) and "y" not in context.columns
+    assert "finish_position" not in context.columns
+    done = frame.completed.sort_values(["start_time_utc", "event_id"])
+    cands = {c.name: c for c in world["plugin"].candidates(LEAGUE, "finish:points", build_finish_frame(
+        world["store"], LEAGUE, "points", now=NOW))}
+    with_him = cands["field_rank"].clone().fit(done.iloc[:3000], ("no", "yes"))
+    alone = cands["field_rank"].clone()
+    alone.context = None
+    alone.fit(done.iloc[:3000], ("no", "yes"))
+    assert with_him.predict_proba(race)[:, 1].sum() < alone.predict_proba(race)[:, 1].sum() - 0.05
 
 
 # ------------------------------------------------------------------ validation
@@ -226,9 +262,20 @@ def test_validation_compares_baselines_and_counts_races_not_drivers(world):
     assert "races in the final-test seasons" in gate["detail"]
     # The baseline to beat is the starting grid alone, not the base rate.
     against_grid = next(g for g in report["gates"] if g["gate"] == "skill_over_grid_logit")
-    assert "improvement over grid_logit" in against_grid["detail"] or "itself" in against_grid["detail"]
     if report["selected_model"] != "grid_logit":
-        assert report["final_test"]["skill_vs_reference"]["reference"] == "grid_logit"
+        ref = report["final_test"]["skill_vs_reference"]
+        assert ref["reference"] == "grid_logit" and ref["n_boot"] >= 20000    # not a verdict that moves with the seed
+        final = report["final_test"]
+        assert ref["diff"] == pytest.approx(final["baselines"]["grid_logit"]["log_loss"] - final["selected"]["log_loss"])
+        assert against_grid["passed"] == (ref["low"] > 0)
+    # What is offered is the "yes" side only: the tables and the calibration gate describe that side.
+    offered = report["final_test"]["offered"]
+    assert offered["classes"] == ["yes"] and offered["n"] < report["final_test"]["selected"]["n"] / 4
+    calibration = next(g for g in report["gates"] if g["gate"] == "calibration")
+    assert ("too few" in calibration["detail"]) == (offered["n"] < 300)
+    assert all(r["prob_low"] >= 0.5 for r in report["confidence_table"])
+    assert sum(r["n"] for r in report["confidence_table"]) < 0.3 * (
+        report["final_test"]["selected"]["n"] + report["dev"]["selected"]["n"])
     per_race = report["supplement"]["folds"]["final_test"]
     assert per_race["k"] == 1 and 0.0 <= per_race["model_hits_per_race"] <= 1.0
     assert abs(per_race["mean_probability_sum_per_race"] - 1.0) < 0.25         # one winner per race
@@ -245,11 +292,21 @@ def test_the_field_model_gives_coherent_probabilities(world):
     test = done.iloc[-800:]
     p = model.predict_proba(test)[:, 1]
     sums = pd.Series(p).groupby(test["game_id"].to_numpy()).sum()
-    assert sums.between(0.9, 1.0001).all()                                    # one winner, unless everyone retires
+    assert (sums <= 1.0001).all()                                             # never more than one winner
+    # One winner, unless everyone retires - or part of the chance belongs to a driver who was
+    # on the grid and did not start (simulated with the field, no row of his own).
+    with_absentee = set(frame.extra["field_context"]["game_id"])
+    assert sums[~sums.index.isin(with_absentee)].between(0.9, 1.0001).all()
+    assert (sums[sums.index.isin(with_absentee)] < 1.0).all()
     proj = model.projection(test)
     assert (proj["win"] <= proj["podium"] + 1e-9).all() and (proj["podium"] <= proj["points"] + 1e-9).all()
     assert np.allclose(model.predict_proba(test)[:, 1], p)                    # seeded by the race: repeatable
     assert isinstance(cand, FieldRankCandidate) and cand.predicts_field
+    # The order rows arrive in does not matter, and neither do the outcome columns.
+    shuffled = test.sample(frac=1.0, random_state=3)
+    assert np.allclose(model.predict_proba(shuffled)[:, 1], pd.Series(p, index=test.index).loc[shuffled.index])
+    from sportspred.validation.backtest import _blind
+    assert np.allclose(model.predict_proba(_blind(test, model, "block"))[:, 1], p)
 
 
 # ------------------------------------------------------------------ grid import, prediction, grading
@@ -333,6 +390,28 @@ def test_a_grid_is_priced_recorded_and_graded(world, tmp_path):
         assert grades[points[d]["prediction_id"]] == expected, (place, expected)
     assert coverage_status(store, LEAGUE, "finish:win").value in ("validated", "experimental")
 
+    # ---- the grader itself, on every kind of entry
+    from sportspred.ledger.grading import _finish
+
+    ev = {"league": LEAGUE, "event_id": race}
+    def grade(kind, driver, selection="yes"):
+        return _finish(store, {"market": f"finish:{kind}:{driver}", "selection": selection}, ev)[0]
+
+    assert grade("win", finish[0]) == "correct" and grade("win", finish[1]) == "incorrect"
+    assert grade("podium", finish[2]) == "correct" and grade("podium", finish[3]) == "incorrect"
+    assert grade("points", finish[9]) == "correct" and grade("points", finish[10]) == "incorrect"
+    assert grade("points", finish[11]) == "incorrect"                         # retired: started, not classified
+    assert grade("win", finish[15]) == "void" and grade("win", "p_nobody") == "void"
+    assert grade("win", finish[1], "no") == "correct"
+    # Disqualified from second place: he started and is not classified - a lost selection, not a void one.
+    table = store.read_table(LEAGUE, "race_entries")
+    dq = (table["event_id"] == race) & (table["driver_id"] == finish[1])
+    table.loc[dq, ["position", "classified", "position_text"]] = [np.nan, False, "DSQ"]
+    store.write_table(LEAGUE, "race_entries", table, mode="replace")
+    assert grade("podium", finish[1]) == "incorrect"
+    assert _finish(store, {"market": f"finish:win:{finish[0]}", "selection": "yes"},
+                   {"league": LEAGUE, "event_id": "evt_not_run"})[0] == "no_result"
+
 
 def test_a_later_grid_replaces_an_earlier_one_and_withdraws_a_driver_who_left_it(world, tmp_path):
     store, settings = _clone(world, tmp_path)
@@ -355,3 +434,186 @@ def test_a_later_grid_replaces_an_earlier_one_and_withdraws_a_driver_who_left_it
     assert any("starts 1 of 15" in t for t in by_driver[order[1]]["factors"]["supporting"])
     gone = [p for p in second if p.get("withdrawn")]
     assert len(gone) == 1 and gone[0]["market"] == f"finish:points:{order[0]}" and gone[0]["rec_status"] == "PASS"
+
+
+# ------------------------------------------------------------------ findings of the independent review
+def test_an_earlier_race_without_a_result_holds_the_next_one_back(world, tmp_path):
+    """A race that should have been run but has no result on file: the next race's ratings
+    are a race behind, and its selections cannot be FINAL."""
+    store, settings = _clone(world, tmp_path)
+    ahead = store.upcoming(LEAGUE, now=NOW).sort_values("start_time_utc")
+    first, second = ahead.iloc[0], ahead.iloc[1]
+    read_at = (second["start_time_utc"] - pd.Timedelta(hours=3)).isoformat()
+    import_grid(store, LEAGUE, _grid_csv(tmp_path, world), collected_at=read_at,
+                event_id=str(second["provider_event_id"]))
+    near = (second["start_time_utc"] - pd.Timedelta(hours=1)).isoformat()
+    frame = build_finish_frame(store, LEAGUE, "points", now=near)
+    assert (frame.upcoming["n_pending_prior"] == 1).all()                     # the first race is in the past, unresolved
+    preds = predict_league(store, LEAGUE, "finish:points", settings=settings, now=near, write=False)
+    assert preds and all(p["rec_status"] in ("PROVISIONAL", "PASS") for p in preds)
+    states = {c["key"]: c["state"] for c in preds[0]["checks"]}
+    assert states["prior_games_complete"] == "missing" and states["results_current"] == "missing"
+    assert first["event_id"] != second["event_id"]
+
+
+def test_an_old_reading_of_the_grid_builds_no_rows(world, tmp_path):
+    store, _ = _clone(world, tmp_path)
+    race = store.upcoming(LEAGUE, now=NOW).sort_values("start_time_utc").iloc[0]
+    start = race["start_time_utc"]
+    import_grid(store, LEAGUE, _grid_csv(tmp_path, world), collected_at=(start - pd.Timedelta(hours=40)).isoformat(),
+                event_id=str(race["provider_event_id"]))
+    fresh = build_finish_frame(store, LEAGUE, "win", now=(start - pd.Timedelta(hours=30)).isoformat())
+    assert len(fresh.upcoming) == 16
+    stale = build_finish_frame(store, LEAGUE, "win", now=(start - pd.Timedelta(hours=1)).isoformat())
+    assert stale.upcoming.empty                                               # 39 hours old: read it again
+
+
+def test_grid_import_guards(world, tmp_path):
+    store, _ = _clone(world, tmp_path)
+    ahead = store.upcoming(LEAGUE, now=NOW).sort_values("start_time_utc")
+    first, second = ahead.iloc[0], ahead.iloc[1]
+    grid = _grid_csv(tmp_path, world)
+    # Read half an hour after the first race started: it is not the next race's grid.
+    during = (first["start_time_utc"] + pd.Timedelta(minutes=30)).isoformat()
+    with pytest.raises(CsvImportError, match="a race started at"):
+        import_grid(store, LEAGUE, grid, collected_at=during)
+    # Before qualifying has been held there is no grid.
+    with store.conn() as con:
+        fmt = {"name": "Grand Prix", "circuit": "c11", "circuit_type": "RACE",
+               "qualifying_utc": (first["start_time_utc"] - pd.Timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        import json as _json
+        con.execute("UPDATE events SET format_json=? WHERE event_id=?", (_json.dumps(fmt), first["event_id"]))
+    with pytest.raises(CsvImportError, match="qualifying for this race"):
+        import_grid(store, LEAGUE, grid, collected_at=(first["start_time_utc"] - pd.Timedelta(hours=30)).isoformat())
+    near = (first["start_time_utc"] - pd.Timedelta(hours=3)).isoformat()
+    with pytest.raises(CsvImportError, match="beyond a field"):
+        import_grid(store, LEAGUE, _grid_csv(tmp_path, world, name="far.csv", **{"4": {"grid": "99"}}), collected_at=near)
+    everyone_pl = tmp_path / "pl.csv"
+    pd.DataFrame([{"driver": n, "grid": "PL"} for n in world["drivers"].values()]).to_csv(everyone_pl, index=False)
+    with pytest.raises(CsvImportError, match="nobody is on pole"):
+        import_grid(store, LEAGUE, everyone_pl, collected_at=near)
+    assert not store.has_table(LEAGUE, "imported_grid")
+    assert second["event_id"] != first["event_id"]
+
+
+def test_a_three_letter_code_is_matched_among_current_drivers_only(world, tmp_path):
+    """Codes are reused over the years.  One that fits a current driver and a retired one
+    means the current driver; a retired driver has to be named, with his team."""
+    store, _ = _clone(world, tmp_path)
+    ids = world["driver_ids"]
+    old = pd.DataFrame({"name": ["Retired Namesake"], "short": ["AA1"]})
+    store.resolve_participants(old, sport="motorsport", scope=LEAGUE, kind="person", short_name_col="short")
+    with store.conn() as con:
+        con.execute("UPDATE participants SET short_name='AA1' WHERE participant_id=?", (ids[0],))
+    race = store.upcoming(LEAGUE, now=NOW).sort_values("start_time_utc").iloc[0]
+    near = (race["start_time_utc"] - pd.Timedelta(hours=3)).isoformat()
+    import_grid(store, LEAGUE, _grid_csv(tmp_path, world, **{"0": {"driver": "aa1"}}), collected_at=near)
+    stored = store.read_table(LEAGUE, "imported_grid")
+    assert ids[0] in set(stored["driver_id"]) and len(stored) == 16           # the current driver, not the namesake
+    # The retired driver by name, without a team: he has no recent start to take one from.
+    path = _grid_csv(tmp_path, world, name="old.csv", **{"0": {"driver": "Retired Namesake"}})
+    with pytest.raises(CsvImportError, match="has no race on file|has not started a race"):
+        import_grid(store, LEAGUE, path, collected_at=(race["start_time_utc"] - pd.Timedelta(hours=2)).isoformat())
+
+
+# ------------------------------------------------------------------ the adapter
+def _f1db_zip(path, drop_round=None, n_years=2):
+    """A tiny file in the source's format: two seasons of three races, four drivers in two teams."""
+    import io, zipfile
+
+    races, results, quali = [], [], []
+    rid = 0
+    for year in range(2024, 2024 + n_years):
+        for rnd, gp in enumerate(("alpha", "beta", "gamma"), start=1):
+            if drop_round == (year, rnd):
+                continue
+            rid += 1
+            done = not (year == 2025 and rnd == 3)
+            races.append({"id": rid, "year": year, "round": rnd, "date": f"{year}-0{rnd + 2}-10",
+                          "time": "13:00" if year == 2025 else None, "grandPrixId": gp, "officialName": f"{gp} GP {year}",
+                          "circuitId": f"c-{gp}", "circuitType": "STREET" if gp == "beta" else "RACE",
+                          "qualifyingDate": f"{year}-0{rnd + 2}-09", "qualifyingTime": "14:00" if year == 2025 else None,
+                          "sprintRaceDate": None})
+            if not done:
+                continue
+            rows = [("d-a", "t-x", "1", 1, 1, "1"), ("d-b", "t-x", "2", 2, 2, "2"),
+                    ("d-c", "t-y", "DNF", None, 3, "PL"), ("d-d", "t-y", "DNS", None, 4, "4")]
+            for order, (drv, team, text, pos, qpos, grid) in enumerate(rows, start=1):
+                results.append({"raceId": rid, "year": year, "round": rnd, "positionDisplayOrder": order,
+                                "positionNumber": pos, "positionText": text, "driverId": drv, "constructorId": team,
+                                "gridPositionNumber": None if grid == "PL" else int(grid), "gridPositionText": grid,
+                                "qualificationPositionNumber": qpos, "laps": 50, "reasonRetired": None, "sharedCar": False})
+                quali.append({"raceId": rid, "year": year, "driverId": drv, "timeMillis": None,
+                              "q1Millis": 90000 + 300 * qpos, "q2Millis": None, "q3Millis": None})
+    tables = {
+        "f1db-races.csv": pd.DataFrame(races), "f1db-races-race-results.csv": pd.DataFrame(results),
+        "f1db-races-qualifying-results.csv": pd.DataFrame(quali),
+        "f1db-circuits.csv": pd.DataFrame({"id": ["c-alpha", "c-beta", "c-gamma"], "fullName": ["A", "B", "C"],
+                                           "placeName": ["Aa", "Bb", "Cc"]}),
+        "f1db-grands-prix.csv": pd.DataFrame({"id": ["alpha", "beta", "gamma"], "fullName": ["Alpha GP", "Beta GP", "Gamma GP"]}),
+        "f1db-drivers.csv": pd.DataFrame({"id": ["d-a", "d-b", "d-c", "d-d"], "name": ["Ann A", "Bob B", "Cy C", "Di D"],
+                                          "fullName": ["Ann Alpha A", "Bob Beta B", "Cy Gamma C", "Di Delta D"],
+                                          "abbreviation": ["ANA", "BOB", "CYC", "DID"]}),
+        "f1db-constructors.csv": pd.DataFrame({"id": ["t-x", "t-y"], "name": ["Team X", "Team Y"]}),
+    }
+    with zipfile.ZipFile(path, "w") as z:
+        for name, table in tables.items():
+            z.writestr(name, table.to_csv(index=False))
+    return path
+
+
+class _FileFetcher:
+    """Stands in for the downloader: hands back a local file."""
+
+    def __init__(self, path):
+        self.path = path
+
+    def fetch(self, url, **kwargs):
+        outer = self
+
+        class Got:
+            path, stale, collected_at_utc = outer.path, False, "2025-06-01T00:00:00Z"
+
+            def register(self, store, notes=""):
+                return store.add_source("f1db", "file://" + str(outer.path), sha256="0" * 64, n_bytes=1,
+                                        license="test", notes=notes)
+
+        return Got()
+
+
+def test_the_adapter_reads_the_source_as_it_is(tmp_path):
+    from sportspred.sports.motorsport.adapter import ingest_f1
+
+    store = Store(tmp_path / "store")
+    fetcher = _FileFetcher(_f1db_zip(tmp_path / "f1db.zip"))
+    report = ingest_f1(store, seasons=[2024, 2025], fetcher=fetcher)
+    assert report.n_events == 6 and report.n_results == 5 and report.tables["race_entries"] == 20
+    events = store.events(LEAGUE, with_results=True).sort_values("start_time_utc")
+    assert list(events["status"]) == ["final"] * 5 + ["scheduled"]
+    assert list(events["time_precision"]) == ["date"] * 3 + ["datetime"] * 3   # a time only where the source has one
+    assert events.iloc[3]["start_time_utc"] == pd.Timestamp("2025-03-10T13:00:00Z")
+    names = store.participant_names()
+    assert names[events.iloc[0]["winner_id"]] == "Ann A"                      # the name he races under
+    entries = store.read_table(LEAGUE, "race_entries")
+    one = entries[entries["event_id"] == events.iloc[0]["event_id"]].set_index("driver")
+    assert bool(one.loc["d-c", "pit_lane"]) and not bool(one.loc["d-c", "classified"]) and bool(one.loc["d-c", "started"])
+    assert not bool(one.loc["d-d", "started"])                                # did not start
+    assert one.loc["d-b", "quali_gap_pct"] == pytest.approx(100 * 300 / 90300)
+    # A partial season list never narrows what is stored, and a second ingest changes nothing.
+    again = ingest_f1(store, seasons=[2025], fetcher=fetcher)
+    assert again.n_events == 6 and len(store.read_table(LEAGUE, "race_entries")) == 20
+
+
+def test_a_renumbered_source_is_refused(tmp_path):
+    from sportspred.sports import DataUnavailable
+    from sportspred.sports.motorsport.adapter import ingest_f1
+
+    store = Store(tmp_path / "store")
+    ingest_f1(store, seasons=[2024, 2025], fetcher=_FileFetcher(_f1db_zip(tmp_path / "a.zip")))
+    before = store.events(LEAGUE, with_results=True)[["event_id", "winner_id", "season"]]
+    # The source drops a 2024 round: every later race id now names another Grand Prix.
+    renumbered = _FileFetcher(_f1db_zip(tmp_path / "b.zip", drop_round=(2024, 2)))
+    with pytest.raises(DataUnavailable, match="renumbered"):
+        ingest_f1(store, seasons=[2024, 2025], fetcher=renumbered)
+    after = store.events(LEAGUE, with_results=True)[["event_id", "winner_id", "season"]]
+    assert before.equals(after)                                               # nothing was changed

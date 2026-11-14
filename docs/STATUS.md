@@ -13,11 +13,11 @@ covered by the test suite but has not yet happened with real events.
 |---|---|---|
 | Shared foundations | UTC storage with Pacific/Honolulu display; stable IDs; entity matching by provider ID and normalised name; cross-provider event de-duplication; a source record behind every event and result (URL, collection time, content hash, and the publication time where the source states one); event change log; result corrections kept; append-only, hash-chained prediction ledger; synthetic data isolated under `demo_*` keys | real data |
 | Data adapters (public datasets, no key) | NBA, WNBA, NCAA men's and women's basketball; NFL; college football; NHL; MLB (through 2025); men's and women's international soccer; Premier League, La Liga, Bundesliga, Serie A, Ligue 1; tennis singles at eight levels (historical results to mid-2026, non-commercial licence); the official NBA injury report archive | real data |
-| Validation | 39 league-markets validated on real data with the walk-forward protocol and a reserved final test: 20 pass every gate (17 event markets and the three Formula 1 markets); 9 event markets are experimental (WNBA, NFL spread and total, ITF men, men's international soccer, Premier League, La Liga, Bundesliga, Serie A); the 10 player-statistic markets are experimental by construction. Runs were repeated after fixes; every run is listed in the validation report's run history | real data |
+| Validation | 39 league-markets validated on real data with the walk-forward protocol and a reserved final test: 17 pass every gate; 9 event markets and the three Formula 1 markets are experimental (WNBA, NFL spread and total, ITF men, men's international soccer, Premier League, La Liga, Bundesliga, Serie A); the 10 player-statistic markets are experimental by construction. Runs were repeated after fixes; every run is listed in the validation report's run history | real data |
 | Player statistics (NBA, WNBA) | points, rebounds, assists, three-pointers made and the combined statistic, over or under a threshold: point-in-time player-game inputs (minutes, per-minute production, opponent adjustment, absent team-mates), baselines and two-stage count models, validation against reference thresholds with a check at shifted and whole-number thresholds, trained models, a projection table | real data |
 | Point-in-time features | the as-of leakage test passes with zero difference for all 26 league-markets on the real store (`sportspred check-leakage`, and the opt-in test `tests/sportspred/test_real_store_leakage.py`) | real data |
 | NBA availability, point-in-time | the official injury report as published before each slate (archive since 2018-12-17) feeds the roster inputs; the report-aware model was selected on development folds and improves the final test (log loss 0.5959 against 0.5999) | real data |
-| Formula 1 | winner, podium and points finish for every starter: ingest from a public database (523 races since 2000), point-in-time inputs from the grid, driver and car form, track fit and reliability; six candidates including a model of the whole race; validated against the grid alone as well as the base rate; trained models; starting-grid import | real data |
+| Formula 1 | winner, podium and points finish for every starter: ingest from a public database (523 races since 2000), point-in-time inputs from the grid, driver and car form, track fit and reliability; six candidates including a model of the whole race; judged against the grid alone as well as the base rate, with calibration judged on the offered side - all three experimental; trained models; starting-grid import | real data |
 | Prediction engine | PROVISIONAL and PASS statuses with pregame checks, availability applied, bootstrap model-uncertainty intervals, validated confidence labels, explanations: 826 real pregame predictions in the ledger (470 current event-markets over seven slates: 354 PROVISIONAL, 116 PASS, none FINAL); the hash chain and the clock audit verify | real data |
 | FINAL and CONDITIONAL statuses | every check complete and fresh; a selection that depends on a doubtful player | tests |
 | Combos | the PASS message and the provisional preview on real slates; the per-league backtest of the selection rule | real data |
@@ -338,6 +338,50 @@ team-mates' outcomes in one game is not measured (same-game combinations are
 not offered); the winner model has no "box score missing" check, so its
 roster inputs can be a game behind without saying so.
 
+**7. Formula 1**, reviewed after it was built and first reported.
+
+*Confirmed correct:* all three final-test log losses and the grid-only
+figures recompute exactly from the stored out-of-sample tables; folds are
+chronological and no final season is in a development fold; the rank
+likelihood sums to one over all finishing orders; the simulation puts one
+car in each place; blinded and unblinded rows predict the same; ratings, the
+season fade, field means and ranks use earlier races only; keys, the
+"yes"-only rule and the grid check's windows behave as specified; grading
+is right for every kind of entry; a full re-ingest changes nothing.
+
+*Found and fixed* (each with a regression test):
+
+- **the labels.** The win market passed the gate against the grid alone on
+  one random seed and failed on others; the gate now uses 20,000 resamples and
+  the win market fails it. The tables behind confidence labels, the PASS rule
+  and the calibration gate were dominated by thousands of confident, correct
+  "no" answers, while only "yes" is ever offered; they are now built from the
+  offered side, on which no market passes. **Three markets first reported as
+  validated are experimental;**
+- an earlier race with no result on file did not hold the next race back from
+  FINAL;
+- `ingest --seasons` rebuilt the tables from the named seasons only, dropping
+  the rest of the history;
+- a three-letter code could be matched to a driver who last raced in 2007; a
+  grid read during a race was stored for the next one; a grid could be
+  imported before qualifying and used at any age; slot 99 and an all-pit-lane
+  file were accepted;
+- drivers who were on the grid but did not start were missing from the
+  simulated field, which flattered the others; a race stored with only a date
+  "knew" its grid two hours before that placeholder instant; the count of
+  independent races could differ from the final test actually cut; the
+  simulation's result depended on the order of the rows; the source
+  renumbering its races would have overwritten other Grands Prix (now
+  refused).
+
+*Found and not fixed:* a correction of a grid dated earlier than the wrong
+reading never takes effect (the newest reading wins); the intervals in the
+PASS-rule and confidence tables treat a race's drivers as independent (the
+bootstrap intervals elsewhere are by race); the points model is somewhat too
+confident at the top and no better calibration method was tried, since
+choosing one on these numbers would be tuning on the final test. The fixes of
+this round have tests but have not themselves been independently reviewed.
+
 **Not independently audited:** the results-only CSV model beyond its feature
 builder, the EV module's maths, the dashboard, and the adapters written for
 hosts that could not be reached (ESPN, The Odds API). Whether any rule,
@@ -346,9 +390,9 @@ be proved from the record; the run history shows what every run produced.
 
 ## Tests run
 
-`pytest` on 2026-11-14: **4,481 passed, 13 expected failures, 2 skipped** (the
+`pytest` on 2026-11-14: **4,500 passed, 13 expected failures, 2 skipped** (the
 expected failures are in the earlier `evmodel` suite; the two skipped are the
-opt-in real-data tests below). 242 of those are the `tests/sportspred` suite:
+opt-in real-data tests below). 261 of those are the `tests/sportspred` suite:
 time zones and HST display, stable IDs and de-duplication, ledger
 immutability, tamper detection, the clock rule and concurrent writers,
 synthetic isolation, point-in-time availability and report supersession,
@@ -360,8 +404,9 @@ combo dependencies and the three-leg rule, grading,
 reschedules and correction grades, EV maths and settlement rules, dashboard
 rendering, the player-statistic markets (the count distribution and pushes,
 point-in-time inputs including two games on one day and a missing box score,
-threshold import, pricing, availability, withdrawal and grading), a
-regression test for every defect the audits and verifiers found, and an
+threshold import, pricing, availability, withdrawal and grading), Formula 1
+(the field model, the grid rule, the grid import, the adapter on a file in
+the source's format, the gates), a regression test for every defect the audits and verifiers found, and an
 end-to-end smoke test.
 
 Opt-in tests on the real store (`SPORTSPRED_REAL_STORE=data/store python -m
@@ -370,7 +415,8 @@ the last change to any of their feature builders: **52 passed** - for each of
 the 26 event league-markets, features rebuilt as of past instants equal the
 full-history values, and every candidate predicts the same on blinded rows.
 The same two tests for the ten player-statistic markets were run on
-2026-11-14, after the last change to their builder: **20 passed**.
+2026-11-14, after the last change to their builder: **20 passed**; and for
+the three Formula 1 markets after the last change to theirs: **6 passed**.
 
 Also run on 2026-11-13, on real data: ingest for every league over 12-13
 November, validation and training for all 26 league-markets (logs under

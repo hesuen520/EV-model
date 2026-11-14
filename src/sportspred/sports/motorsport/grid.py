@@ -13,6 +13,7 @@ race).  The whole file is checked before anything is stored.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -32,6 +33,8 @@ GRID_TEMPLATE = (
     "Another Driver,2,\n"
     "Third Driver,PL,Example Team\n")
 _MIN_FIELD = 10
+_EMPTY_SLOTS = 4                 # slots left empty by cars that withdrew after qualifying
+_RECENT_START_HOURS = 12.0       # a race that started this recently is the one a reading is about
 
 
 def import_grid(store: Any, league: str, path: Any, *, tz: Optional[str] = None, collected_at: Any = None,
@@ -56,6 +59,12 @@ def import_grid(store: Any, league: str, path: Any, *, tz: Optional[str] = None,
     read_at = pd.Timestamp(collected)
     events = store.events(league, with_results=False)
     ahead = events[(events["status"] == "scheduled") & (events["start_time_utc"] > read_at)].sort_values("start_time_utc")
+    # A grid read while a race is on (or just after) is that race's grid, not the next one's.
+    under_way = events[~events["status"].isin(["canceled", "postponed"]) & (events["start_time_utc"] <= read_at)
+                       & (events["start_time_utc"] > read_at - pd.Timedelta(hours=_RECENT_START_HOURS))]
+    if event_id is None and len(under_way):
+        raise CsvImportError(path, [f"a race started at {iso_z(under_way['start_time_utc'].max())}, before this grid "
+                                    f"was read ({collected}); a grid for a later race needs its event id"])
     if event_id is not None:
         race = events[(events["provider_event_id"].astype(str) == str(event_id)) | (events["event_id"] == event_id)]
         if race.empty:
@@ -69,14 +78,34 @@ def import_grid(store: Any, league: str, path: Any, *, tz: Optional[str] = None,
             raise CsvImportError(path, [f"no scheduled race within {horizon_days:g} days of {collected}; give an "
                                         "event id"])
         race = soon.iloc[0]
+    # The grid exists only once qualifying has been held.
+    fmt = json.loads(race["format_json"]) if isinstance(race.get("format_json"), str) else {}
+    qualifying = fmt.get("qualifying_utc")
+    if isinstance(qualifying, str) and collected < qualifying:
+        raise CsvImportError(path, [f"qualifying for this race is scheduled for {qualifying}; a starting grid read "
+                                    f"at {collected} cannot be its grid"])
 
     names = store.participants(scope=league)
-    by_name = {str(n).casefold(): pid for n, pid in zip(names["name"], names["participant_id"])}
-    by_short = {str(n).casefold(): pid for n, pid in zip(names["short_name"], names["participant_id"])
-                if isinstance(n, str) and n}
+    by_name: Dict[str, List[str]] = {}
+    for n, pid in zip(names["name"], names["participant_id"]):
+        by_name.setdefault(str(n).casefold(), []).append(pid)
     teams = store.participants(scope=CONSTRUCTOR_SCOPE)
     team_by_name = {str(n).casefold(): pid for n, pid in zip(teams["name"], teams["participant_id"])}
     last_team = build_finish_frame(store, league, "win", now=collected, cfg=F1Config()).extra.get("last_team", {})
+    # Who is "current": a driver with a start this season or last.  Three-letter codes are
+    # reused over the years (ALB was Albers before it was Albon), so a code is matched among
+    # current drivers only, and a driver who is not current must be named with his team.
+    entries = store.read_table(league, "race_entries") if store.has_table(league, "race_entries") else None
+    current: set = set()
+    if entries is not None:
+        seasons = events.set_index("event_id")["season"].astype(int)
+        latest = int(seasons.loc[seasons.index.intersection(entries["event_id"].unique())].max())
+        recent = set(seasons[seasons >= latest - 1].index)
+        current = set(entries.loc[entries["event_id"].isin(recent) & entries["started"].astype(bool), "driver_id"])
+    by_short: Dict[str, List[str]] = {}
+    for n, pid in zip(names["short_name"], names["participant_id"]):
+        if isinstance(n, str) and n and pid in current:
+            by_short.setdefault(n.casefold(), []).append(pid)
 
     rows, seen_drivers, seen_slots = [], {}, {}
     for i, row in df.iterrows():
@@ -85,11 +114,15 @@ def import_grid(store: Any, league: str, path: Any, *, tz: Optional[str] = None,
         if not said:
             errors.append(f"line {line}: driver is required")
             continue
-        driver = by_name.get(said.casefold()) or by_short.get(said.casefold())
-        if driver is None:
+        found = by_name.get(said.casefold()) or by_short.get(said.casefold()) or []
+        if len(found) > 1:
+            errors.append(f"line {line}: {said!r} fits more than one driver on file; use his full name")
+            continue
+        if not found:
             errors.append(f"line {line}: driver {said!r} is not on file; use the name he races under (ingest first "
                           "if he is new to the series)")
             continue
+        driver = found[0]
         if driver in seen_drivers:
             errors.append(f"line {line}: {said!r} is already on line {seen_drivers[driver]}")
             continue
@@ -101,12 +134,18 @@ def import_grid(store: Any, league: str, path: Any, *, tz: Optional[str] = None,
                 errors.append(f"line {line}: grid {row['grid']!r} must be a whole number from 1, or PL")
                 continue
             slot = int(slot_text)
+            if slot > len(df) + _EMPTY_SLOTS:
+                errors.append(f"line {line}: grid slot {slot} is beyond a field of {len(df)} drivers")
+                continue
             if slot in seen_slots:
                 errors.append(f"line {line}: grid slot {slot} is already taken on line {seen_slots[slot]}")
                 continue
             seen_slots[slot] = line
         team_said = _cell(row, "constructor")
         team = team_by_name.get(team_said.casefold()) if team_said else last_team.get(driver)
+        if not team_said and team is not None and driver not in current:
+            errors.append(f"line {line}: {said!r} has not started a race this season or last; give his constructor")
+            continue
         if team is None:
             errors.append(f"line {line}: " + (f"constructor {team_said!r} is not on file" if team_said else
                                               f"{said!r} has no race on file; give his constructor"))
@@ -116,7 +155,7 @@ def import_grid(store: Any, league: str, path: Any, *, tz: Optional[str] = None,
                      "quali_gap_pct": float("nan"), "collected_at_utc": collected})
     if not errors and len(rows) < _MIN_FIELD:
         errors.append(f"only {len(rows)} drivers; a grid of fewer than {_MIN_FIELD} is not a starting grid")
-    if not errors and seen_slots and 1 not in seen_slots:
+    if not errors and 1 not in seen_slots:
         errors.append("nobody is on pole (slot 1); this is not a complete starting grid")
     if errors:
         raise CsvImportError(path, errors)

@@ -79,21 +79,27 @@ class FieldRankCandidate(Candidate):
     predicts_field = True
 
     def __init__(self, name: str, strength_features: Sequence[str], retire_features: Sequence[str], *,
-                 top_k: int, description: str = "", complexity: int = 5, n_sims: int = 4000, l2: float = 0.05,
+                 top_k: int, description: str = "", complexity: int = 5, n_sims: int = 20000, l2: float = 0.05,
                  position_col: str = "finish_position", calibration: str = "platt",
-                 uses_retrospective: bool = False, is_baseline: bool = False) -> None:
+                 uses_retrospective: bool = False, is_baseline: bool = False,
+                 context: Optional[pd.DataFrame] = None) -> None:
         self.name, self.description, self.complexity = name, description, complexity
         self.strength_features, self.retire_features = list(strength_features), list(retire_features)
         self.top_k, self.n_sims, self.l2 = int(top_k), int(n_sims), float(l2)
         self.position_col, self.calibration = position_col, calibration
         self.uses_retrospective, self.is_baseline = uses_retrospective, is_baseline
+        # Starters of past races who were on the grid but have no row of their own (they did
+        # not take the start): pregame inputs only.  They are simulated with their race and
+        # never scored - the others raced a field that had them in it.
+        self.context = context if context is not None and len(context) else None
         self.weights_: Optional[np.ndarray] = None
 
     def clone(self) -> "FieldRankCandidate":
         return FieldRankCandidate(self.name, self.strength_features, self.retire_features, top_k=self.top_k,
                                   description=self.description, complexity=self.complexity, n_sims=self.n_sims,
                                   l2=self.l2, position_col=self.position_col, calibration=self.calibration,
-                                  uses_retrospective=self.uses_retrospective, is_baseline=self.is_baseline)
+                                  uses_retrospective=self.uses_retrospective, is_baseline=self.is_baseline,
+                                  context=self.context)
 
     def feature_names(self) -> List[str]:
         return list(dict.fromkeys(self.strength_features + self.retire_features))
@@ -108,6 +114,8 @@ class FieldRankCandidate(Candidate):
         position = train[self.position_col].to_numpy(dtype=float)
         races = race_of(train["event_id"])
         classified = np.isfinite(position)
+        if not classified.any():
+            raise ValueError(f"candidate {self.name!r}: no classified finisher in the training rows")
         # Pad every race's classified finishers, in finishing order, into one array.
         frame = pd.DataFrame({"race": races[classified], "pos": position[classified], "row": np.flatnonzero(classified)})
         frame = frame.sort_values(["race", "pos"])
@@ -128,7 +136,7 @@ class FieldRankCandidate(Candidate):
         self.retire_kept_ = [c for c in self.retire_features if train[c].notna().any()]
         self.retire_ = Pipeline([("impute", SimpleImputer(strategy="median")), ("scale", StandardScaler()),
                                  ("model", LogisticRegression(C=1.0, max_iter=1000))])
-        if retired.min() == retired.max():                             # nobody (or everybody) retired: a constant
+        if retired.min() == retired.max() or not self.retire_kept_:   # nothing to learn from: a constant rate
             self.retire_ = None
             self.retire_rate_ = float(retired.mean())
         else:
@@ -147,20 +155,31 @@ class FieldRankCandidate(Candidate):
         return strength, np.clip(retire, 1e-4, 0.95)
 
     def _simulate(self, rows: pd.DataFrame) -> Dict[str, np.ndarray]:
-        strength, retire = self._parts(rows)
-        races = race_of(rows["event_id"])
         n = len(rows)
+        ids = rows["event_id"].astype(str).to_numpy()
+        full = rows
+        if self.context is not None:
+            extra = self.context[self.context["event_id"].map(lambda e: str(e).split("|", 1)[0]).isin(set(race_of(ids)))
+                                 & ~self.context["event_id"].astype(str).isin(set(ids))]
+            if len(extra):
+                cols = list(dict.fromkeys(["event_id"] + self.kept_ + self.retire_kept_))
+                full = pd.concat([rows[cols], extra[cols]], ignore_index=True)
+        strength, retire = self._parts(full)
+        all_ids = full["event_id"].astype(str).to_numpy()
+        races = race_of(all_ids)
         out = {"p_top": np.zeros(n), "p_win": np.zeros(n), "p_podium": np.zeros(n), "p_points": np.zeros(n),
-               "p_retire": retire, "median_finish": np.full(n, np.nan)}
+               "p_retire": retire[:n], "median_finish": np.full(n, np.nan)}
         for race in pd.unique(races):
             idx = np.flatnonzero(races == race)
+            idx = idx[np.argsort(all_ids[idx], kind="stable")]         # the order rows arrive in must not matter
             seed = int(hashlib.sha1(str(race).encode()).hexdigest()[:8], 16)
             pos = simulate_field(strength[idx], retire[idx], n_sims=self.n_sims, seed=seed)
             done = pos > 0
+            own = idx < n                                               # context drivers are simulated, not reported
             for key, k in (("p_top", self.top_k), ("p_win", 1), ("p_podium", 3), ("p_points", 10)):
-                out[key][idx] = (done & (pos <= k)).mean(axis=0)
+                out[key][idx[own]] = (done & (pos <= k)).mean(axis=0)[own]
             with np.errstate(invalid="ignore"):
-                out["median_finish"][idx] = np.nanmedian(np.where(done, pos, np.nan), axis=0)
+                out["median_finish"][idx[own]] = np.nanmedian(np.where(done, pos, np.nan), axis=0)[own]
         return out
 
     def predict_proba(self, rows: pd.DataFrame) -> np.ndarray:

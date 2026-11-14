@@ -126,6 +126,10 @@ def _unresolved_past_events(store: Any, league: str, now_ts: pd.Timestamp, windo
     for col in ("home_id", "away_id"):
         for team, n in past[col].dropna().value_counts().items():
             counts[team] = counts.get(team, 0) + int(n)
+    if "participants_json" in past.columns:              # a field event: everyone entered in it
+        for listed in past["participants_json"].dropna():
+            for member in json.loads(listed):
+                counts[member] = counts.get(member, 0) + 1
     done = ev[(ev["status"] == "final") & decided & (ev["start_time_utc"] <= now_ts)]
     if done.empty:
         return counts, "none", None, None

@@ -552,24 +552,26 @@ finishing orders, a retirement model, and a simulated finish distribution
 whose probabilities for one race add up as they must; and boosted trees.
 
 <!-- results:start field -->
-| Series | Market | Status | Selected model | Final-test races | Driver starts | Log loss | Base rate | Grid position alone | Calibration error | Model's top picks that did, per race | First on the grid that did, per race |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Formula 1 | podium finish (top three) | validated | full_logit | 112 | 2,258 | 0.215 | 0.421 | 0.235 | 0.012 | 1.98 of 3 | 1.99 of 3 |
-| Formula 1 | points finish (top ten) | validated | field_rank | 112 | 2,258 | 0.462 | 0.694 | 0.506 | 0.013 | 7.88 of 10 | 7.70 of 10 |
-| Formula 1 | race winner (each starter: yes or no) | validated | full_logit | 112 | 2,258 | 0.101 | 0.197 | 0.110 | 0.006 | 0.54 of 1 | 0.58 of 1 |
+| Series | Market | Status | Selected model | Final-test races | Driver starts | Log loss | Base rate | Grid position alone | Improvement over the grid (95% interval) | Possible 'yes' selections: won / stated (n) | Their calibration error | Model's top picks that did, per race | First on the grid that did, per race |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Formula 1 | podium finish (top three) | experimental | full_logit | 112 | 2,258 | 0.215 | 0.421 | 0.235 | 0.020 (0.009 to 0.031) | 73.2% / 70.4% (265) | 0.044 | 1.98 of 3 | 1.99 of 3 |
+| Formula 1 | points finish (top ten) | experimental | field_rank | 112 | 2,258 | 0.463 | 0.694 | 0.506 | 0.043 (0.026 to 0.061) | 82.2% / 81.9% (1000) | 0.031 | 7.86 of 10 | 7.70 of 10 |
+| Formula 1 | race winner (each starter: yes or no) | experimental | full_logit | 112 | 2,258 | 0.101 | 0.197 | 0.110 | 0.009 (-0.000 to 0.018) | 75.0% / 62.7% (44) | 0.169 | 0.54 of 1 | 0.58 of 1 |
 <!-- results:end -->
 
 **What the runs show.** Development folds are the seasons 2012 to 2021; the
-final test is 2022 to 2026 (112 races, 2,258 driver starts).
+final test is 2022 to 2026 (112 races, 2,258 driver starts). **All three
+markets are experimental.**
 
 - The grid alone is a strong baseline: for the win market it takes log loss
   from 0.193 (base rate) to 0.107 on development folds. Form without the
   grid reaches 0.120 - qualifying tells more than the season so far.
-- Adding form, track fit and reliability to the grid helps every market, in
-  9 or 10 of 10 development seasons. On the final test the improvement over
-  the grid alone is 0.009 for the win market (95% interval 0.001 to 0.018),
-  0.020 for the podium (0.009 to 0.031) and 0.044 for points (0.029 to
-  0.062). The selected model must clear that bar, not only the base rate.
+- Adding form, track fit and reliability to the grid helps every market on
+  development folds, in 9 or 10 of 10 seasons. On the final test the
+  improvement over the grid alone is 0.020 for the podium (95% interval 0.009
+  to 0.031) and 0.043 for points (0.026 to 0.061). For the win market it is
+  0.009 with an interval of -0.000 to 0.018: **not shown to be better than
+  reading the grid**, and worse than the grid in 2025 and 2026.
 - For win and podium the plain logistic model was selected: the whole-race
   model was fractionally better on development folds, within one standard
   error, and the simpler one wins a tie. For points the whole-race model was
@@ -577,27 +579,48 @@ final test is 2022 to 2026 (112 races, 2,258 driver starts).
 - **Better probabilities, not better picks.** On the final test the driver
   the model rates most likely to win won 54% of races; the pole-sitter won
   58%. The model's three for the podium included 1.98 podium finishers per
-  race, the first three on the grid 1.99; its ten for points 7.88 against
-  7.70. What the model adds over reading the grid is a calibrated probability
-  for every starter, not a better guess at the winner.
-- The headline "accuracy" of these markets is not a useful number: most
-  starters plainly do not win, so saying "no" is right 96% of the time.
+  race, the first three on the grid 1.99; its ten for points 7.86 against
+  7.70.
+- **Calibration is judged on what would be offered.** Only "yes" is ever a
+  selection, so the selection tables, the confidence bands and the
+  calibration gate are built from the rows where "yes" is the likelier
+  answer. In the final test that is 44 rows for the win market and 265 for
+  the podium - too few to call the offered side calibrated (the minimum is
+  300) - and 1,000 for points, whose calibration error is 0.031 against a
+  limit of 0.03. The points model is too confident at the top: over all
+  out-of-sample rows, picks stated at 90-95% won 88%, and those at 95% and
+  above won 92%. Over *all* rows the calibration error is under 0.013 for
+  every market, because most rows are confident, correct "no" answers - which
+  is exactly why that figure is not the one used.
+- The headline "accuracy" of these markets is not a useful number for the
+  same reason: saying "nobody wins" is right 96% of the time.
 
-**What "validated" rests on here.** Rows are drivers, but the independent
-events are races, and a gate counts them: 112 in the final test, against a
-minimum of 100. Intervals are resampled by race. Three runs are on record for
-each market: the first; a second after the gate against the grid was added;
-a third after the qualifying gap to pole was removed from the inputs - a dry
-run showed that a grid read before a race carries slots, not lap times, so
-the live inputs would have been incomplete. On development folds that input
-had been worth 0.002 log loss or less.
+**What the labels rest on.** Rows are drivers, but the independent events are
+races, and a gate counts them: 112 in the final test, against a minimum of
+100. Intervals are resampled by race. Four runs are on record for each market:
+
+1. the first, which passed every gate then defined;
+2. with a gate added that the model must beat the grid alone;
+3. with the qualifying gap to pole removed from the inputs - a dry run showed
+   that a grid read before a race carries slots, not lap times (on development
+   folds that input had been worth 0.002 log loss or less);
+4. after an independent review: the gate against the grid recomputed with
+   20,000 resamples instead of 500 (the win market's pass had depended on the
+   random seed), calibration judged on the offered side, and drivers who were
+   on the grid but did not start put back into the simulated field.
+
+Runs 1 to 3 called all three markets validated. Run 4 is the one reported.
+The final test was read four times, by models that differed slightly; the
+labels did not get easier as a result, they got stricter.
 
 **Live use.** `sportspred import grid` after qualifying, then
 `sportspred predict --league f1 --market finish:win` (or `finish:podium`,
 `finish:points`). Only the "yes" side is ever a selection. The grid check is
-complete only when the grid was read within four hours of the start; a later
-grid replaces an earlier one, and a driver no longer on it has his selection
-withdrawn. The two logistic models answer each driver separately, so their
+complete only when the grid was read within four hours of the start; a
+reading more than 36 hours old builds no prediction; a later grid replaces an
+earlier one, and a driver no longer on it has his selection withdrawn. A
+selection cannot be FINAL while an earlier race of the season has no result on
+file. The two logistic models answer each driver separately, so their
 probabilities for one race need not add up exactly (final-test average: 0.92
 for the win, 3.11 for the podium); the whole-race model's do.
 
@@ -680,9 +703,11 @@ FINAL-status filter, combos across leagues, or the dependency handling.
   feed. Tennis doubles, combat sports, cricket, rugby, volleyball, racket
   sports and esports have no validated model; golf, NASCAR, IndyCar and MotoGP
   have no model; NBA spreads and totals are not implemented in this platform.
-- Formula 1 predictions need a starting grid imported by hand, and the model
-  improves probabilities over the grid alone without picking winners better
-  than the grid does. Its final test is 112 races.
+- Formula 1 predictions need a starting grid imported by hand. All three
+  markets are experimental: the win model is not shown to beat the grid
+  alone, there are too few possible win and podium selections to judge their
+  calibration, and the points selections are slightly too confident. None
+  picks winners better than the grid does. The final test is 112 races.
 - Player-statistic markets have never been scored against a market
   threshold, only against reference thresholds built from each player's own
   earlier games. They are experimental by construction and carry no

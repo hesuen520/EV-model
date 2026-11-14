@@ -20,11 +20,12 @@ What a row knows before the start:
   have failed to be classified.
 
 Point-in-time rule: every rating of a race comes from races on earlier days.
-The official starting grid of a race is taken as known from
+The official starting grid of a timed race is taken as known from
 ``grid_lead_hours`` before its start (it is published after qualifying, with
-penalties, well before that); before then a race has rows only if a grid has
-been imported, read at or before ``now``.  Rows without a grid are not
-predicted: this model starts from the grid.
+penalties, well before that); for a race with only a date, from its stored
+instant.  Before then a race has rows only if a grid has been imported, read
+at or before ``now`` and not longer ago than ``grid_max_age_hours``.  Rows
+without a grid are not predicted: this model starts from the grid.
 
 Not in the data, so not in the model: weather and track conditions, tyre
 allocation and strategy, upgrades, practice pace, sprint results, penalties
@@ -80,7 +81,8 @@ class F1Config:
     driver_season_carry: float = 0.7    # weight kept by a driver's history at a season change
     car_season_carry: float = 0.3       # ... and by a car's: cars are new each year
     circuit_prior_visits: float = 2.0   # earlier visits a circuit record is shrunk towards "no difference" by
-    grid_lead_hours: float = 2.0        # the official grid counts as known this long before the start
+    grid_lead_hours: float = 2.0        # the official grid counts as known this long before a timed start
+    grid_max_age_hours: float = 36.0    # an imported grid read longer ago than this builds no rows
     horizon_days: float = 10.0          # upcoming races further ahead get no rows
 
 
@@ -169,6 +171,11 @@ def build_finish_frame(store: Any, league: str, kind: str, *, now: Any = None,
         raise ValueError(f"no race classifications on file for {league}; run `sportspred ingest --league {league}`")
     ev = store.events(league, with_results=True)
     ev = ev[pd.to_numeric(ev["season"], errors="coerce") >= cfg.first_season]
+    # Races that should have been run by ``now`` but have no result on file: every later race
+    # of that season rests on ratings that are a race behind.
+    overdue = ev[(ev["status"].isin(["scheduled", "live", "unknown"]) | ev["winner_id"].isna())
+                 & ~ev["status"].isin(["canceled", "postponed"]) & (ev["start_time_utc"] < now_ts)]
+    overdue_by_season = {season: sorted(part["start_time_utc"]) for season, part in overdue.groupby("season")}
     done_mask = (ev["status"] == "final") & ev["winner_id"].notna() & (ev["start_time_utc"] < now_ts)
     ahead_mask = (ev["status"].isin(["scheduled", "final"]) & (ev["start_time_utc"] >= now_ts)
                   & (ev["start_time_utc"] <= now_ts + pd.Timedelta(days=cfg.horizon_days)))
@@ -199,6 +206,7 @@ def build_finish_frame(store: Any, league: str, kind: str, *, now: Any = None,
     pending_before = 0
     limit = KINDS[kind]
     rows: List[Dict[str, Any]] = []
+    context: List[Dict[str, Any]] = []       # on the grid, did not take the start: part of the field, not scored
 
     def mean_of(table: Dict[Any, _Ew], key: Any) -> float:
         item = table.get(key)
@@ -218,15 +226,22 @@ def build_finish_frame(store: Any, league: str, kind: str, *, now: Any = None,
         # ---- who is on the grid, as far as it is known at ``now``
         source, read_at = None, None
         on_file = by_event.get(race.event_id)
+        # A timed race: the official grid is known from two hours before the start.  A race
+        # with only a date is stored at 00:00Z of that date, hours before it (or even its
+        # qualifying) took place: its grid is not known before that stored instant.
+        lead = cfg.grid_lead_hours if race.time_precision == "datetime" else 0.0
         official_known = race.done or (on_file is not None
-                                       and now_ts >= race.start_time_utc - pd.Timedelta(hours=cfg.grid_lead_hours))
+                                       and now_ts >= race.start_time_utc - pd.Timedelta(hours=lead))
         if official_known and on_file is not None:
             field, source = field_of(on_file), "official starting grid"
         elif race.event_id in imported:
             field, source = imported[race.event_id], "imported grid"
             read_at = str(field["collected_at_utc"].iloc[0])
+            if (now_ts - pd.Timestamp(read_at)).total_seconds() / 3600.0 > cfg.grid_max_age_hours:
+                field = None                               # too old to build on: read it again
         else:
             field = None
+        earlier_overdue = sum(1 for t in overdue_by_season.get(race.season, ()) if t < race.start_time_utc)
         if field is not None and len(field) >= 2:
             n = len(field)
             drivers = field["driver_id"].tolist()
@@ -246,12 +261,12 @@ def build_finish_frame(store: Any, league: str, kind: str, *, now: Any = None,
             position = field["position"].to_numpy(dtype=float) if (race.done and "position" in field.columns) \
                 else np.full(n, np.nan)
             for i, (d, t) in enumerate(zip(drivers, teams)):
-                if not started[i]:
-                    continue                                   # did not take the start: his markets are void
                 visits = circuit.get((d, circuit_id), [])
                 long_car = mean_of(con_long, t)
                 type_car = mean_of(con_type, (t, circuit_type))
-                rows.append({
+                # A driver on the grid who then did not take the start has no market of his
+                # own (void), but the others were racing a field that had him in it.
+                (rows if started[i] else context).append({
                     "event_id": f"{race.event_id}|{d}", "game_id": race.event_id,
                     "start_time_utc": race.start_time_utc, "block": int(race.season),
                     "y": (float(position[i] <= limit) if position[i] == position[i] else 0.0) if race.done else np.nan,
@@ -260,7 +275,8 @@ def build_finish_frame(store: Any, league: str, kind: str, *, now: Any = None,
                     "grid_pos": float(grid_pos[i]), "pit_lane": bool(pit[i]), "n_field": float(n),
                     "finish_position": position[i] if race.done else np.nan,
                     "classified": (1.0 if position[i] == position[i] else 0.0) if race.done else np.nan,
-                    "n_pending_prior": int(pending_before), "grid_source": source, "grid_read_at_utc": read_at,
+                    "n_pending_prior": int(pending_before + earlier_overdue), "grid_source": source,
+                    "grid_read_at_utc": read_at,
                     "event_name": fmt.get("name") or race.venue_name,
                     "segment": ("grid 1 to 4" if grid_pos[i] <= 4 else "grid 5 to 10" if grid_pos[i] <= 10
                                 else "grid 11 and back"),
@@ -337,6 +353,9 @@ def build_finish_frame(store: Any, league: str, kind: str, *, now: Any = None,
     df = pd.DataFrame(rows)
     if df.empty:
         raise ValueError(f"no race with a grid on file for {league}")
+    field_context = pd.DataFrame(context)
+    if len(field_context):
+        field_context = field_context.drop(columns=["y", "finish_position", "classified"])
     df["start_time_utc"] = pd.to_datetime(df["start_time_utc"], utc=True)
     df = df.sort_values(["start_time_utc", "event_id"]).reset_index(drop=True)
     yes, no = KIND_LABELS[kind]
@@ -364,6 +383,6 @@ def build_finish_frame(store: Any, league: str, kind: str, *, now: Any = None,
                "required_columns": ["grid_pos"], "selection_classes": ["yes"], "field_model": True,
                # Anyone can read the grid: that, not the base rate, is the baseline to beat.
                "skill_reference": "grid_logit",
-               "burn_in_seasons": cfg.burn_in_seasons, "last_team": last_team,
+               "burn_in_seasons": cfg.burn_in_seasons, "last_team": last_team, "field_context": field_context,
                "config": {"first_season": cfg.first_season, "grid_lead_hours": cfg.grid_lead_hours}},
     )

@@ -1,0 +1,113 @@
+"""Generic leakage tests that every sport plugin must pass.
+
+**As-of invariance.**  A plugin's ``feature_frame(store, league, market,
+now=T)`` must treat every event starting after ``T`` as upcoming and ignore
+anything the store knows about it.  If features are truly point-in-time, the
+features of the first slate after ``T`` computed "as of T" are identical to
+the features the full-history build gives those same events.  Any difference
+means a feature depends on information from the event's own slate or later.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List, Optional, Sequence
+
+import numpy as np
+import pandas as pd
+
+from ..core.timeutil import DISPLAY_TZ_NAME
+
+__all__ = ["asof_invariance", "assert_asof_invariance", "default_cutoffs", "assert_no_price_features"]
+
+#: Column names that can only mean a betting price or line.  Deliberately specific:
+#: "opening_day" or "market_value" are honest feature names.  A plugin that reads prices
+#: also lists its own columns in ``frame.extra["price_cols"]`` - that list, not this
+#: pattern, is the main defence.
+_PRICE_NAME = re.compile(
+    r"(^|_)(odds?|moneyline|money_line|prices?|implied_(prob\w*|odds|price)|vig|juice|overround|bookmaker|"
+    r"sportsbook|vegas|"
+    r"spread_line|total_line|(open|close|opening|closing)_(spread|total|line|odds|price)|"
+    r"(market|book|mkt|consensus|impl)_(prob|price|odds))(_|$)"
+    r"|odds|moneyline|^b365|^pinnacle|^psh$|^psd$|^psa$")
+
+
+def assert_no_price_features(frame: Any) -> None:
+    """Refuse a feature frame whose model inputs include a betting price.
+
+    Odds are kept out of the sports models by construction; this makes the
+    rule a hard stop instead of a convention.  A column is refused when its
+    name can only mean a price, or when the plugin lists it under
+    ``frame.extra["price_cols"]`` (the columns it reads for a benchmark).
+    Both selectable and retrospective inputs are checked.
+    """
+    declared = {str(c).lower() for c in (frame.extra or {}).get("price_cols", ())}
+    inputs = [str(c) for c in list(frame.feature_cols) + list(getattr(frame, "retrospective_cols", []) or [])]
+    bad = sorted({c for c in inputs if c.lower() in declared or _PRICE_NAME.search(c.lower())})
+    if bad:
+        raise ValueError(
+            f"{frame.league} {frame.market}: price columns may not be model inputs: {', '.join(bad)}. "
+            "Prices belong to the market benchmark and the separate EV module only.")
+
+
+def default_cutoffs(completed: pd.DataFrame, n: int = 4, seed: int = 0) -> List[pd.Timestamp]:
+    """Cut-off instants spread over the later 60% of the history, each the
+    start of the first event of a slate.  (An event starting exactly at the
+    cut-off is upcoming, so nothing of that slate is known at it - and for
+    sources dated by tournament week, the previous week is complete at it.)"""
+    starts = completed["start_time_utc"].sort_values().reset_index(drop=True)
+    days = starts.dt.tz_convert(DISPLAY_TZ_NAME).dt.strftime("%Y-%m-%d")
+    first_of_day = starts[~days.duplicated()].reset_index(drop=True)
+    lo = int(len(first_of_day) * 0.4)
+    rng = np.random.default_rng(seed)
+    picks = sorted(rng.choice(np.arange(lo, len(first_of_day)), size=min(n, len(first_of_day) - lo), replace=False))
+    return [first_of_day[i] for i in picks]
+
+
+def asof_invariance(plugin: Any, store: Any, league: str, market: str, *,
+                    cutoffs: Optional[Sequence[pd.Timestamp]] = None, n_cutoffs: int = 4,
+                    columns: Optional[Sequence[str]] = None, atol: float = 1e-9) -> pd.DataFrame:
+    """Compare as-of features with full-history features.
+
+    Returns one row per (cutoff, feature) with the number of compared events
+    and the largest absolute difference; all differences must be ~0.
+    """
+    full = plugin.feature_frame(store, league, market)
+    cols = list(columns) if columns is not None else list(full.feature_cols)
+    cutoffs = list(cutoffs) if cutoffs is not None else default_cutoffs(full.completed, n_cutoffs)
+    full_df = full.df.set_index("event_id")
+    rows: List[Dict[str, Any]] = []
+    for cutoff in cutoffs:
+        asof = plugin.feature_frame(store, league, market, now=cutoff.to_pydatetime())
+        # The first slate at or after the cut-off - not rows before it that merely have
+        # no outcome yet (a tournament week still in progress, an unplayed postponed game).
+        up = asof.upcoming
+        up = up[up["start_time_utc"] >= cutoff].sort_values("start_time_utc")
+        if up.empty:
+            continue
+        first_day = up["start_time_utc"].dt.tz_convert(DISPLAY_TZ_NAME).dt.strftime("%Y-%m-%d")
+        slate = up[first_day == first_day.iloc[0]].set_index("event_id")
+        common = slate.index.intersection(full_df.index)
+        if not len(common):
+            continue
+        for col in cols:
+            a = slate.loc[common, col].to_numpy(dtype=float)
+            b = full_df.loc[common, col].to_numpy(dtype=float)
+            both_nan = np.isnan(a) & np.isnan(b)
+            diff = np.where(both_nan, 0.0, np.abs(a - b))
+            diff = np.where(np.isnan(diff), np.inf, diff)   # NaN on one side only is a mismatch
+            rows.append({"cutoff": cutoff, "feature": col, "n_events": int(len(common)),
+                         "max_abs_diff": float(diff.max()), "ok": bool(diff.max() <= atol)})
+    return pd.DataFrame(rows)
+
+
+def assert_asof_invariance(plugin: Any, store: Any, league: str, market: str, **kwargs: Any) -> pd.DataFrame:
+    result = asof_invariance(plugin, store, league, market, **kwargs)
+    if result.empty:
+        raise AssertionError("as-of invariance could not be evaluated: no comparable events")
+    bad = result[~result["ok"]]
+    if len(bad):
+        raise AssertionError(
+            "features depend on information from their own slate or later:\n"
+            + bad.sort_values("max_abs_diff", ascending=False).head(10).to_string(index=False))
+    return result

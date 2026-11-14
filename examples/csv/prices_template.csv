@@ -1,0 +1,7 @@
+# One row per quoted outcome. quoted_at needs a zone. Sportsbook rows use 'price' (American or decimal);
+# prediction-market rows use 'ask' (and optionally 'bid'), in dollars between 0 and 1.
+# selection: a participant name, 'draw', 'over' or 'under'. rules_key and fee_key: see `sportspred ev rules`.
+league,event_id,home,away,date,market,selection,line,venue_kind,venue,price,ask,bid,quoted_at,rules_key,fee_key,is_executable
+nba,,Washington Wizards,Detroit Pistons,2026-11-12,winner,Detroit Pistons,,sportsbook,examplebook,-320,,,2026-11-12T22:00:00Z,moneyline_incl_ot,sportsbook,1
+nba,,Washington Wizards,Detroit Pistons,2026-11-12,winner,Washington Wizards,,sportsbook,examplebook,+260,,,2026-11-12T22:00:00Z,moneyline_incl_ot,sportsbook,1
+nba,,Washington Wizards,Detroit Pistons,2026-11-12,winner,Detroit Pistons,,prediction_market,kalshi,,0.78,0.76,2026-11-12T22:00:00Z,prediction_market_winner_incl_ot,kalshi_taker,1

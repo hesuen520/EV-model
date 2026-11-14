@@ -1,268 +1,332 @@
-# evmodel
+# sportspred
 
-Find +EV (positive expected value) player-prop bets.
+Pregame outcome probabilities for many sports, estimated from verified sports
+evidence - with strength of opposition and whole-team evaluation at the centre,
+chronological validation behind every number, and an honest label on
+everything that is not proven.
 
-A sportsbook price is +EV when it pays more than the bet's true probability
-justifies. `evmodel` estimates that true probability two independent ways and
-flags the prices that beat it:
+> Probabilities are estimates. A well calibrated 70% selection still loses
+> three times in ten. **Nothing here guarantees a winning pick or a profit.**
+> Prediction accuracy, probability calibration and betting value are three
+> different questions; this platform reports them separately. In its own
+> validation the models do **not** beat the market benchmarks that were
+> available (NFL, club soccer).
 
-1. **Market consensus.** Some books price props much better than others.
-   The vig is removed from the sharp books' prices, their views are pooled,
-   and every other book's price is compared with the result.
-2. **Projection model.** A statistical model turns each player's game logs
-   into a full probability distribution for the stat, fitted and tested on
-   real NBA, NHL and NFL results.
+The repository holds two packages:
 
-It then sizes each bet with capped fractional Kelly and gives you a ledger
-that measures closing-line value, so you can find out whether the edges are
-real before the bankroll does.
+- **`sportspred`** - the prediction platform described here. Its models never
+  see betting odds.
+- **`evmodel`** - the earlier price toolkit (odds conversion, vig removal, EV,
+  Kelly, a prop scanner). Kept intact; see [docs/EVMODEL.md](docs/EVMODEL.md).
+  `sportspred` reaches it only through its separate, optional EV module.
 
-> **Read this first.** Nothing here guarantees profit. Expected value is an
-> estimate that is only as good as its inputs; a real 3% edge still loses
-> over hundreds of bets a meaningful share of the time; sportsbooks limit
-> accounts that win. Sports betting is illegal in some places and age
-> restricted everywhere. Bet only money you can afford to lose. If gambling
-> stops being fun, the US helpline is 1-800-GAMBLER.
+## What is operational
+
+Statuses are **earned**, not typed in: the coverage table is computed from
+ingested data and recorded validation runs
+([docs/COVERAGE.md](docs/COVERAGE.md), `sportspred coverage`).
+
+Results below are from walk-forward validation on real data. In each run the
+final test period is read once, after the model has been selected on earlier
+seasons; leagues that were re-run after a data or defect fix are listed with
+every earlier run in the report's run history. Lower log loss is better. Full
+detail, intervals, calibration charts and limitations:
+[docs/validation/VALIDATION.md](docs/validation/VALIDATION.md).
+
+<!-- results:start -->
+| League | Market | Status | Final-test events | Accuracy | Log loss | Base rate | Rating baseline | Market benchmark |
+|---|---|---|---|---|---|---|---|---|
+| Major League Baseball | winner | validated | 4,949 | 56.5% | 0.680 | 0.691 | 0.680 |  |
+| NBA | winner | validated | 2,813 | 67.8% | 0.596 | 0.692 | 0.604 |  |
+| NCAA Division I men | winner | validated | 13,251 | 75.0% | 0.488 | 0.627 | 0.511 |  |
+| NCAA Division I women | winner | validated | 12,313 | 78.3% | 0.439 | 0.656 | 0.473 |  |
+| WNBA | winner | experimental | 664 | 65.4% | 0.626 | 0.688 | 0.644 |  |
+| NCAA Division I FBS | winner | validated | 2,168 | 70.8% | 0.546 | 0.675 | 0.578 |  |
+| NFL | spread (at the historical line) | experimental | 696 | 50.3% | 0.693 | (selected) | 0.695 | **0.694** |
+| NFL | total (at the historical line) | experimental | 704 | 47.3% | 0.694 | (selected) | 0.704 | **0.693** |
+| NFL | winner | validated | 705 | 65.4% | 0.627 | 0.693 | 0.631 | **0.603** |
+| NHL | winner (incl. overtime and shootout) | validated | 3,090 | 57.0% | 0.672 | 0.689 | 0.679 |  |
+| NHL | three-way after regulation | validated | 3,090 | 45.0% | 1.050 | 1.069 | 1.057 |  |
+| German Bundesliga | three-way (home / draw / away) | experimental | 648 | 51.7% | 1.000 | 1.080 | 0.994 | **0.969** |
+| English Premier League | three-way (home / draw / away) | experimental | 810 | 49.6% | 1.015 | 1.086 | 1.020 | **0.994** |
+| Spanish La Liga | three-way (home / draw / away) | experimental | 829 | 52.6% | 0.979 | 1.060 | (selected) | **0.956** |
+| French Ligue 1 | three-way (home / draw / away) | validated | 656 | 52.4% | 0.992 | 1.065 | 0.997 | **0.969** |
+| Italian Serie A | three-way (home / draw / away) | experimental | 810 | 52.6% | 0.980 | 1.093 | 0.991 | **0.962** |
+| Men's international football | three-way (home / draw / away) | experimental | 1,803 | 61.6% | 0.843 | 1.044 | 0.854 |  |
+| Women's international football | three-way (home / draw / away) | validated | 1,350 | 67.3% | 0.772 | 1.006 | 0.797 |  |
+| ATP Tour main draw singles | winner | validated | 3,898 | 66.0% | 0.610 | 0.694 | 0.621 |  |
+| ATP Challenger main draw singles | winner | validated | 9,950 | 63.5% | 0.638 | 0.693 | 0.640 |  |
+| ATP Tour qualifying singles | winner | validated | 1,799 | 65.0% | 0.618 | 0.693 | 0.636 |  |
+| ITF men's singles | winner | experimental | 43,092 | 71.1% | 0.561 | 0.693 | 0.583 |  |
+| ITF women's singles | winner | validated | 25,094 | 70.0% | 0.570 | 0.693 | 0.585 |  |
+| WTA Tour main draw singles | winner | validated | 3,673 | 66.7% | 0.604 | 0.693 | 0.612 |  |
+| WTA 125 main draw singles | winner | validated | 2,341 | 65.6% | 0.611 | 0.694 | 0.618 |  |
+| WTA Tour qualifying singles | winner | validated | 3,278 | 67.5% | 0.590 | 0.693 | 0.599 |  |
+<!-- results:end -->
+
+*(This table is generated: `sportspred report summary --into README.md`.)*
+
+How to read this honestly:
+
+- **"validated" means the probabilities held up out of sample** (enough
+  events, better than the naive baseline with the interval excluding zero,
+  calibration error under 3 points, point-in-time features). It does **not**
+  mean the model beats a market.
+- Where a market benchmark exists for a winner market (NFL and the five club
+  soccer leagues), **the market is better** than the model every time. The
+  benchmark prices are undated in their source (possibly closing numbers,
+  which contain later news), so the comparison is indicative only.
+- Against the **NFL spread and total**, no sports-only model beat a coin flip
+  (nor, at these lines, does the price itself), so the base rate was selected
+  and every such prediction is PASS.
+- **A model that failed a gate still makes selections by default.** Each
+  prediction carries its validation status, and "experimental" ones are
+  labelled as such. Set `allowed_coverage = ["validated"]` in the settings to
+  turn every experimental selection into PASS. Combos already use validated
+  legs only.
+- **MLB** gains almost nothing over a plain Elo rating; MLB and the NHL are
+  close to coin flips for most games, and the PASS rule passes on most of them.
+- **Tennis** is validated on a snapshot archive that ends in mid-2026 and
+  lists no upcoming matches, so it produces no live predictions until a
+  schedule is imported by CSV (fixtures are matched to the archive's
+  players). Matches are dated by tournament week, so a match never sees
+  results from its own tournament or week. The archive's licence is
+  **non-commercial** (CC BY-NC-SA 4.0). ITF men is experimental only because
+  its history allows two walk-forward folds where the gate asks for three.
+  An audit found that quarter-finals had been dropped at ingestion; the
+  numbers shown are from runs after that was fixed.
+- **College basketball** headline figures pool two kinds of game: about one
+  in fifteen is against an opponent with almost no history (mostly
+  lower-division teams) and is close to certain. The validation report shows
+  each kind separately; see the model card.
+- **Availability news is in one backtest only.** The NBA model uses the
+  league's official injury report exactly as it was published before each
+  day's games (archived since December 2018), and that improves it out of
+  sample. No other league has such a history here: their backtests contain no
+  injury reports, confirmed line-ups, starting goalies or pitchers as
+  announced. Features that need the actual starter are measured separately as
+  retrospective upper bounds and can never be selected.
+
+### Player statistics (NBA and WNBA): built, experimental by construction
+
+Points, rebounds, assists, three-pointers made and points + rebounds +
+assists, each over or under a threshold. Three things are modelled: playing
+time (expected minutes), production per minute (the player's own rates, what
+the opponent allows, what absent team-mates leave behind) and the outcome
+distribution, so the answer is a probability of finishing over, under or
+exactly on a threshold - not a projected average.
+
+<!-- results:start props -->
+| League | Statistic | Status | Selected model | Final-test player-games | Accuracy | Log loss | Base rate | Season average + Poisson | Calibration error | Worst calibration error at a shifted threshold |
+|---|---|---|---|---|---|---|---|---|---|---|
+| NBA | assists | experimental | report_gbm | 46,004 | 64.9% | 0.627 | 0.668 | 0.652 | 0.009 | 0.013 |
+| NBA | points | experimental | report_gbm | 46,004 | 60.9% | 0.654 | 0.690 | 0.678 | 0.006 | 0.016 |
+| NBA | pra | experimental | report_gbm | 46,004 | 61.9% | 0.647 | 0.690 | 0.675 | 0.008 | 0.022 |
+| NBA | rebounds | experimental | report_gbm | 46,004 | 63.0% | 0.641 | 0.677 | 0.662 | 0.007 | 0.013 |
+| NBA | threes | experimental | report_gbm | 46,004 | 68.8% | 0.573 | 0.637 | 0.596 | 0.006 | 0.014 |
+| WNBA | assists | experimental | two_stage_glm | 8,800 | 64.4% | 0.633 | 0.666 | 0.651 | 0.007 | 0.022 |
+| WNBA | points | experimental | two_stage_glm | 8,800 | 59.9% | 0.664 | 0.690 | 0.679 | 0.009 | 0.026 |
+| WNBA | pra | experimental | two_stage_gbm | 8,800 | 60.2% | 0.658 | 0.692 | 0.674 | 0.010 | 0.022 |
+| WNBA | rebounds | experimental | two_stage_glm | 8,800 | 63.1% | 0.640 | 0.674 | 0.660 | 0.005 | 0.014 |
+| WNBA | threes | experimental | two_stage_gbm | 8,800 | 71.0% | 0.560 | 0.625 | 0.584 | 0.020 | 0.018 |
+<!-- results:end -->
+
+*(Generated: `sportspred report summary --into README.md`.)*
+
+- **These numbers are against a reference threshold, not a bookmaker's
+  line.** No history of market thresholds is reachable, so each completed
+  player-game is scored against the half point just above the median of that
+  player's previous 15 games. Beating a naive threshold shows the
+  distribution is informative and calibrated; it says nothing about beating a
+  market line, which already contains most of what the model knows and news
+  it does not. A gate records this and keeps every such market
+  **experimental** until real thresholds have been collected and scored.
+- The last column is the worst calibration error when the same model is read
+  at thresholds moved away from the reference (for points, up to 6 either
+  way), including whole-number thresholds where a tie is a push.
+- A prediction needs a threshold you import
+  (`sportspred import prop-lines`); without one there is no selection. A
+  player listed out gets PASS; one listed doubtful or questionable makes the
+  selection conditional on him playing.
+
+Everything else:
+
+- **adapter-only** (a model and a documented CSV import exist; no real data
+  ingested and validated here): tennis doubles, UFC and boxing, cricket (T20,
+  ODI, Test), rugby union and league, volleyball, badminton, table tennis,
+  esports (CS2, Valorant, LoL, Dota 2) and international basketball run on a
+  results-only rating model that knows nothing sport-specific; MLS and NWSL
+  are declared under the soccer model with no data ingested.
+- **unavailable** (declared, no model): golf and motorsport (field events need
+  a finish-distribution model), NBA / WNBA / college spreads and totals, NHL
+  and MLB totals.
+- **demo-only**: two synthetic leagues used for the offline demo and tests.
 
 ## Install
 
 ```bash
 git clone https://github.com/hesuen520/EV-model && cd EV-model
-pip install -e .            # Python 3.11+
+pip install -e ".[dev]"          # Python 3.11+
+pytest                           # whole suite; no network needed
+sportspred demo                  # offline end-to-end run on SYNTHETIC data, clearly labelled
 ```
 
-## Five-minute tour
+## Daily use
 
 ```bash
-evmodel demo                          # full run on a simulated slate (no key, no network)
-evmodel devig -- -125 +105            # remove the vig from a two-way price
-evmodel ev --prob 0.56 --price -105   # EV and Kelly stake of one bet
-evmodel project --sport nba --market player_points --line 24.5
-                                      # real projections from current game logs
-evmodel backtest --sport nba          # how well calibrated the model is on held-out seasons
+sportspred ingest --league nba            # public dataset: schedule, results, box scores (no key)
+sportspred validate --league nba          # walk-forward validation; records the run
+sportspred train --league nba             # fits the model the validation run selected
+sportspred live nba-injury-report         # official injury report (public archive of every version)
+sportspred predict --league nba --detail  # records pregame predictions in the immutable ledger
+sportspred import prop-lines --league nba --csv lines.csv        # player thresholds you read (not prices)
+sportspred predict --league nba --market player_prop:points      # over / under / push at those thresholds
+sportspred slate                          # today's slate (Pacific/Honolulu), with statuses
+sportspred combos                         # strongest supported three-leg combo, or the PASS message
+sportspred dashboard                      # writes data/reports/dashboard.html (open it; no server)
+# after the games:
+sportspred ingest --league nba && sportspred grade && sportspred review
+sportspred monitor --league nba
 ```
 
-`evmodel project` and `evmodel backtest` download free public game logs the
-first time they run (about 1 MB per season) and cache them under `data/raw/`.
-
-## Finding bets
-
-You need prices. There are two ways to supply them.
-
-**Type them in.** No account needed:
+Leagues with a working public-data adapter: `nba`, `wnba`, `ncaam`, `ncaaw`,
+`nfl`, `ncaaf`, `nhl`, `mlb`, `soccer_intl_men`, `soccer_intl_women`, `epl`,
+`laliga`, `bundesliga`, `seriea`, `ligue1`, and tennis singles `atp`,
+`atp_qual`, `atp_challenger`, `itf_men`, `wta`, `wta_qual`, `wta_125`,
+`itf_women` (historical results only). For any other league - or when a
+feed is unreachable - use the CSV import ([docs/CSV_IMPORT.md](docs/CSV_IMPORT.md)):
 
 ```bash
-evmodel odds-template odds.csv        # writes an example file
-# edit odds.csv: one row per book and prop (player, market, line, book, over, under)
-evmodel scan --odds-csv odds.csv --sport nba --html board.html
+sportspred templates my_csv/
+sportspred import events --league ufc --csv my_csv/events.csv --create-participants
+sportspred import availability --league nhl --csv goalies.csv --check-key starting_goalie
 ```
 
-**Pull them live** from [The Odds API](https://the-odds-api.com) (free tier
-available; you need your own key):
+No data is ever invented or substituted from elsewhere. If a source cannot be
+reached the command says so and records nothing new; if an earlier download of
+the same file is in the local cache, that copy is reused with a warning that
+gives its collection time.
 
-```bash
-export ODDS_API_KEY=your_key
-evmodel fetch-odds --sport nba        # shows the credit cost and asks before spending
-evmodel scan --odds data/odds/latest.json --out picks.csv --html board.html
-```
+## What a prediction contains
 
-`scan` prints the bets that clear the thresholds, best first:
+Competition, participants, start time in HST, venue, market and exact line;
+the model probability; validation status; three separate kinds of uncertainty
+(event: the chance it loses even if the probability is right; model: a
+bootstrap interval; data quality); supporting factors, opponent strength and
+upset risks; availability assumptions; missing data; source links with
+collection and publication times; the last check time; and a status:
 
-```
-        player    market       bet        book price fair  win%    EV units refs    src flags
-  Jalen Example    Points over 24.5  draftkings  -105 -115 53.4% +4.2%  1.10    2  blend
-```
+| Status | Meaning |
+|---|---|
+| **FINAL** | every configured pregame check is complete and fresh. The result is still uncertain. |
+| **PROVISIONAL** | a probability exists, but a required check is missing, stale or due a re-check. The reasons name the check; no confirmation time is invented. |
+| **CONDITIONAL** | holds only if a stated condition is true, e.g. a named questionable player plays. |
+| **PASS** | evidence inadequate or a selection rule failed. |
 
-* `price` is what the book offers, `fair` is the vig-free price of that side.
-* `EV` is expected profit per unit staked. `units` is the suggested stake
-  (one unit = 1% of bankroll by default).
-* `refs` is how many reference books support the fair price; `src` says
-  whether it came from the market, the model, or a blend.
-* `flags` are cautions: the fair price was translated from a different line,
-  only one reference book, references disagree, and so on.
+How old is a report? Where the source states when the report was
+**published** - the official NBA injury report, `import checks` rows, and
+`import availability --published-at` - its age is measured from that time,
+not from the download. A live list with no publication time (the ESPN
+adapter, or a CSV imported without one) is as old as the moment it was read.
+Confidence labels come from the observed out-of-sample hit rate of the
+probability band a selection falls in, never from the raw probability.
 
-The HTML board (`--html`) shows the same bets with an *edge bar*: where the
-price breaks even, where the fair probability sits, and the gap between them.
+Tonight's real NBA slate, for example, is PROVISIONAL: the newest official
+injury report in the public archive was published the previous evening, and
+the rule needs one from within three hours of tip-off.
 
-**Then check before you bet.** Prices move within minutes. Confirm the line
-and price are still there, and skip anything that moved against you. A
-snapshot cannot see injury news that broke after it was taken.
+## The ledger
 
-## How it works
+Every prediction is appended to a ledger that cannot be edited: updates and
+deletes are refused by the database, a later prediction for the same event
+and market is a new row linked to the one it replaces, and each row carries a
+hash of its content and of the row before it (`sportspred ledger verify`).
+Three things make "pregame" mean something. The event must be scheduled and
+not yet started. For a real event the stated creation time must match the
+machine's clock, which is stored and hashed with the row, so a prediction
+cannot be written afterwards with an earlier time. And an event that has only
+a date is closed once that date has begun anywhere in the world.
 
-### Market consensus (`evmodel.market`)
+Combos are recorded under the same rules (after their legs, before any leg's
+event, at the machine's time) and `ledger verify` checks them as well. Writers
+are serialised, so two processes recording at once cannot break the chain.
 
-For every prop, each reference book's two-way price is de-vigged
-(`shin` by default; `multiplicative`, `additive`, `power`, `odds_ratio` and
-`probit` are available) and the books are pooled in log-odds space using the
-weights in the config (Pinnacle and Circa heaviest, recreational books light
-or zero).
+What it cannot prove: that the machine's clock was right, or that the newest
+rows were never removed - `ledger verify` prints the head hash and the count
+so you can keep them somewhere else.
 
-* **Leave-one-out.** A price is only ever called +EV on the strength of
-  *other* books. The book being judged can shrink its own edge (its quote is
-  evidence too, at its own weight) but can never create one.
-* **Sharper books overrule softer ones, never the reverse.** The references
-  must outweigh the book being judged by a factor of 1.5. When a sharp book
-  and the soft books disagree, the soft books are usually the stale ones, so
-  the scanner looks for value at the soft books and not against the sharp
-  one. If both sides of a prop clear the bar at different books, the bet is
-  flagged `books_split`: check for news before betting.
-* **Different lines.** When a reference book hangs 24.5 and the target book
-  hangs 23.5, the probability is moved across lines through the market's
-  fitted distribution, and the bet is flagged. Same-line references are
-  always preferred.
-* **Worst-case de-vig gate.** How the vig is removed is an assumption. A bet
-  must stay non-negative EV under whichever method is least favourable to
-  it, so no edge exists only because of that choice.
-* **Pick'em apps** (PrizePicks, Underdog) have no per-leg price, so a leg is
-  valued against the break-even probability of the entry type you play
-  (`evmodel dfs` lists them). The EV shown for a leg is that comparison, not
-  the EV of a finished entry, and legs from the same game are correlated.
-* **Yes/no props** (anytime touchdown, anytime goal) are usually posted as a
-  single "Yes" price. With no "No" side there is no vig to measure, so the
-  market engine only values them when a reference book quotes both sides.
+## Combos
 
-### Projection model (`evmodel.projection`)
+`sportspred combos` prioritises the strongest supported **three-leg** combo by
+the estimated probability that every leg wins, and also shows strong singles, a
+two-leg alternative, and larger combos only while they stay supported. Every
+pair of legs is classified: same-game legs, the same team or player in two
+events, and mutually exclusive outcomes are **rejected** (no joint model
+exists); legs from different games of one league use the validated same-slate
+residual correlation (independence when it is indistinguishable from zero, a
+Gaussian copula otherwise). With fewer than three qualifying legs the output is
+fewer picks and `PASS — insufficient support for a three-leg combo.`
+Only FINAL legs can form a recommendation; PROVISIONAL legs appear, if at all,
+in a preview labelled as not a recommendation. A leg is judged against its
+event as it stands now: it is dropped if the event has started, been
+cancelled or postponed, or moved since the prediction, and only the newest
+prediction of each event and market counts.
 
-For each player and stat: recent per-minute production (exponentially
-weighted, shrunk towards positional norms, carrying less weight across
-seasons) times expected minutes gives a mean. Around that mean sits a
-distribution whose shape was fitted per market: a negative binomial for
-counts, and a *scaled* negative binomial for stats that arrive in chunks
-(basketball points, football yardage), which reproduces the skew those stats
-really have.
+The core of the rule - take the most probable qualifying legs of one league's
+slate and multiply - is back-tested over historical slates
+(`sportspred combos validate --league nba`). That backtest does **not** cover
+the FINAL-status filter (no historical check states exist), combos across
+leagues, or the dependency handling. For NBA three-leg combos on the
+final-test slates the estimated all-win probability averaged 50.7% and 57.2%
+actually won (271 slates). It does not always hold up: on NHL development
+slates the three-leg estimate averaged 38.9% and 31.5% won (317 slates).
+Adding a leg can never raise the probability that every selection wins.
 
-The model is deliberately a **second opinion**, blended at 10% weight by
-default and never used alone unless you ask (`--model-only`). It does not
-know about injuries, lineup changes or matchups announced since a player's
-last game, and sportsbooks do. A model that ignores that news will "find"
-large edges that are simply the market knowing something it does not. In a
-side experiment during development, lines were set using just two same-day
-facts the model lacks (who starts, and which teammates are out): a game-log
-model then claimed edges of five points or more on 14% to 46% of NBA props,
-and less than one point of that was real.
+## Optional EV module
 
-### Staking (`evmodel.scanner`)
+Separate from the prediction engine, which cannot import it; paper tracking
+only. Given timestamped executable prices it reports raw implied probability,
+no-vig probability, fair odds, edge and expected value from actual payouts,
+fees and settlement rules; a missing price means "EV unavailable". Includes the
+editable 40%-70% raw-implied band for NBA / NHL / NFL team-win selections only.
+See [docs/EV_MODULE.md](docs/EV_MODULE.md).
 
-Quarter Kelly by default, halved for low-confidence bets, capped per bet,
-per player and per game (props on one player or game are correlated, so
-independent Kelly stakes would over-bet them).
+## Documentation
 
-## Does it work? What was tested
-
-**The math.** `tests/test_golden.py` checks odds conversion, all six de-vig
-methods, EV, Kelly with pushes and line translation against reference values
-computed independently with 50-digit arithmetic: 216 checks, agreement to
-1e-9.
-
-**The projection model, on real results.** Every game was projected using
-only earlier games; distribution shapes were fitted on early seasons, chosen
-on middle seasons, and scored on later seasons the fitting never saw. The
-score is calibration error: among props the model prices at 60%, how far
-from 60% do they actually land? Lines are placed where books place them (at
-the model's median and a little either side), because free historical prop
-lines do not exist.
-
-| Sport | Held-out seasons | Player-games | Calibration error (percentage points) |
-|-------|------------------|--------------|----------------------------------------|
-| NBA   | 2024-25 to Nov 2026 | 14,500 to 38,600 per market | 0.4 to 0.9 across 12 markets |
-| NHL   | 2025-26 to Nov 2026 | 3,500 to 31,200 per market | 0.4 to 1.5 across 7 markets |
-| NFL   | 2024 to week 9 of 2026 | 1,400 to 8,600 per market | 1.0 to 3.6 across 12 markets |
-
-Reproduce with `evmodel backtest --sport nba|nhl|nfl` (add `--detail` for
-the reliability tables). NFL numbers are noisier because there are far fewer
-games; passing touchdowns is the weakest market (3.6).
-
-What this does and does not show: the model's *probabilities are honest* on
-average. It does **not** show the model beats sportsbook lines, because
-there were no historical lines to test against.
-
-**The scanner, in a simulated market.** `evmodel simulate` builds fictional
-books with known true probabilities, runs the scanner, and compares claims
-with truth. On the default settings the predicted EV of recommended bets is
-within about half a point of their true EV and roughly nine in ten are truly
-+EV. That validates the arithmetic and selection logic. It says nothing
-about whether real books are as soft as the simulated ones.
-
-**Not tested here:** the live odds client was written against The Odds API's
-documentation and official samples but has not been run against the live
-service in this repository's development environment. Its parser is covered
-by fixture tests.
-
-## Keeping score
-
-Results are too noisy to judge an edge quickly: at typical prop prices you
-need thousands of bets to see a 3% edge in profit. Closing-line value shows
-up far sooner, so track both.
-
-```bash
-evmodel bets add-picks picks.csv --unit 10        # record the bets you placed
-evmodel bets close <bet_id> --over -130 --under +105   # prices just before the game
-evmodel bets settle <bet_id> --actual 27          # the stat's final value
-evmodel bets summary --by market
-```
-
-The summary puts results next to what the model expected, with a confidence
-interval, how lucky or unlucky the run was, and how many more bets you would
-need before the edge is statistically distinguishable from zero.
+| Document | Contents |
+|---|---|
+| [docs/MODEL_CARD.md](docs/MODEL_CARD.md) | what each model uses, how it is validated, what it cannot know, known limitations |
+| [docs/validation/VALIDATION.md](docs/validation/VALIDATION.md) | generated results: every league and market, intervals, calibration charts, PASS-rule tables |
+| [docs/COVERAGE.md](docs/COVERAGE.md) | generated coverage table and status definitions |
+| [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) | every source: access, cost, licence, coverage, what was reachable here |
+| [docs/CSV_IMPORT.md](docs/CSV_IMPORT.md) | the import path for any league |
+| [docs/EV_MODULE.md](docs/EV_MODULE.md) | prices, fees, settlement rules, paper tracking |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | design, the plugin contract, how to add a sport |
+| [docs/STATUS.md](docs/STATUS.md) | working features versus placeholders, tests run, next steps |
 
 ## Configuration
 
-Every threshold, book weight and staking rule lives in one TOML file; see
-[`examples/config.toml`](examples/config.toml).
-
-```bash
-evmodel scan --odds data/odds/latest.json --config examples/config.toml
-```
-
-The book weights and pick'em break-evens are judgment calls and change over
-time. Tune them to the books and markets you actually bet.
-
-## Data
-
-| What | Source | Key needed |
-|------|--------|------------|
-| Live prop odds | [The Odds API](https://the-odds-api.com) v4 | yes (yours) |
-| Odds you typed | CSV (`evmodel odds-template`) | no |
-| NBA and NHL game logs | [sportsdataverse](https://github.com/sportsdataverse/sportsdataverse-data) releases | no |
-| NFL weekly stats, schedules, snaps | [nflverse](https://github.com/nflverse/nflverse-data) releases | no |
-
-NHL logs are available from the 2023-24 season. MLB markets are defined for
-the market engine but have no projection model yet.
-
-## Using it from Python
-
-```python
-from evmodel import scan, Config
-from evmodel.providers.csv_odds import read_odds_csv
-
-picks = scan(read_odds_csv("odds.csv", sport="nba"), Config())
-```
-
-[`examples/quickstart.py`](examples/quickstart.py) walks through the pieces.
+Every selection and freshness rule is in one TOML file:
+[examples/sportspred.toml](examples/sportspred.toml)
+(`sportspred --config FILE ...` or `SPORTSPRED_CONFIG`). These are explicit
+rules, not model weights - model weights are learned in validation, and the
+validation report shows accuracy and coverage at each threshold. Credentials
+are read from environment variables only ([.env.example](.env.example)); the
+core platform needs none.
 
 ## Layout
 
 ```
-src/evmodel/
-  odds.py devig.py ev.py        prices, vig removal, expected value, Kelly
-  distributions.py              integer-valued predictive distributions
-  markets.py data/              market registry and fitted shapes
-  market.py                     sharp-book consensus and line translation
-  projection/                   walk-forward features, fitting, calibration
-  scanner.py                    valuation, filtering, staking
-  dfs.py                        pick'em entry maths
-  tracking.py                   bet ledger, closing-line value, statistics
-  simulation.py                 simulated-market check
-  providers/                    odds (API, CSV, simulated) and game logs
-  report.py cli.py              HTML board and command line
-tests/                          pytest suite
-```
-
-## Development
-
-```bash
-pip install -e ".[dev]"
-pytest
-evmodel calibrate --sport nba          # re-fit distribution shapes (add --write to keep them)
+src/sportspred/
+  core/ storage/        UTC storage + HST display, stable IDs, provenance, append-only ledger
+  adapters/             cached downloads, CSV import, official NBA injury report, ESPN (adapter-only), synthetic demo
+  features/ models/     opponent-adjusted ratings, schedule context, candidates, production models
+  validation/           chronological folds, metrics, calibration, backtests, leakage tests, charts
+  sports/               one plugin per sport (basketball, football, hockey, baseball, soccer, tennis, generic, demo)
+  predict/              pregame engine: checks, statuses, confidence labels
+  combos/ ledger/       dependency-aware combos; grading, reviews, lessons, drift monitoring
+  ev/                   optional price comparison (paper only)
+  dashboard/ cli/       static dashboard; the `sportspred` command
+src/evmodel/            the earlier price/EV toolkit
+tests/sportspred/       leakage, time zones, stale data, settlement, probability validity, combo dependencies, smoke test
 ```

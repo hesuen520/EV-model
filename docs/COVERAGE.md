@@ -14,14 +14,14 @@ Generated from the registry and this installation's store. A status is earned by
 |---|---|---|---|---|---|---|---|---|---|
 | baseball | Major League Baseball (`mlb`) | winner | **validated** | all validation gates passed | 4949 | 56.5% | 0.6798 | 2025-11-01 | Retrosheet game logs and day-by-day files (Chadwick Bureau GitHub mirror) |
 | baseball | Major League Baseball (`mlb`) | total | **unavailable** | no model implemented for this market |  |  |  | 2025-11-01 | Retrosheet game logs and day-by-day files (Chadwick Bureau GitHub mirror) |
-| basketball | NBA (`nba`) | winner | **validated** | all validation gates passed | 2813 | 67.8% | 0.5959 | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
-| basketball | NBA (`nba`) | spread | **unavailable** | no model implemented for this market |  |  |  | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
-| basketball | NBA (`nba`) | total | **unavailable** | no model implemented for this market |  |  |  | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
-| basketball | NBA (`nba`) | player_prop:points | **experimental** | gates not met: market_thresholds | 46004 | 60.9% | 0.6538 | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
-| basketball | NBA (`nba`) | player_prop:rebounds | **experimental** | gates not met: market_thresholds | 46004 | 63.0% | 0.6409 | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
-| basketball | NBA (`nba`) | player_prop:assists | **experimental** | gates not met: market_thresholds | 46004 | 64.9% | 0.6268 | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
-| basketball | NBA (`nba`) | player_prop:threes | **experimental** | gates not met: market_thresholds | 46004 | 68.8% | 0.5732 | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
-| basketball | NBA (`nba`) | player_prop:pra | **experimental** | gates not met: market_thresholds | 46004 | 61.9% | 0.6475 | 2026-11-12 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
+| basketball | NBA (`nba`) | winner | **validated** | all validation gates passed | 2813 | 67.8% | 0.5959 | 2026-11-13 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
+| basketball | NBA (`nba`) | spread | **unavailable** | no model implemented for this market |  |  |  | 2026-11-13 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
+| basketball | NBA (`nba`) | total | **unavailable** | no model implemented for this market |  |  |  | 2026-11-13 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
+| basketball | NBA (`nba`) | player_prop:points | **experimental** | gates not met: market_thresholds | 46004 | 60.9% | 0.6538 | 2026-11-13 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
+| basketball | NBA (`nba`) | player_prop:rebounds | **experimental** | gates not met: market_thresholds | 46004 | 63.0% | 0.6409 | 2026-11-13 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
+| basketball | NBA (`nba`) | player_prop:assists | **experimental** | gates not met: market_thresholds | 46004 | 64.9% | 0.6268 | 2026-11-13 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
+| basketball | NBA (`nba`) | player_prop:threes | **experimental** | gates not met: market_thresholds | 46004 | 68.8% | 0.5732 | 2026-11-13 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
+| basketball | NBA (`nba`) | player_prop:pra | **experimental** | gates not met: market_thresholds | 46004 | 61.9% | 0.6475 | 2026-11-13 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
 | basketball | WNBA (`wnba`) | winner | **experimental** | gates not met: calibration | 664 | 65.4% | 0.6261 | 2026-10-29 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
 | basketball | WNBA (`wnba`) | spread | **unavailable** | no model implemented for this market |  |  |  | 2026-10-29 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
 | basketball | WNBA (`wnba`) | total | **unavailable** | no model implemented for this market |  |  |  | 2026-10-29 | sportsdataverse-data release files (ESPN-derived schedules and box scores) |
@@ -73,8 +73,6 @@ Generated from the registry and this installation's store. A status is earned by
 | basketball | International women's basketball (`basketball_intl_women`) | winner | **adapter-only** | no real data ingested in this installation |  |  |  |  | CSV import only |
 | golf | PGA Tour (`pga_tour`) | win | **unavailable** | no model implemented for this market |  |  |  |  | CSV import only |
 | golf | PGA Tour (`pga_tour`) | top3 | **unavailable** | no model implemented for this market |  |  |  |  | CSV import only |
-| motorsport | Formula 1 (`f1`) | win | **unavailable** | no model implemented for this market |  |  |  |  | CSV import only |
-| motorsport | Formula 1 (`f1`) | top3 | **unavailable** | no model implemented for this market |  |  |  |  | CSV import only |
 | motorsport | NASCAR Cup Series (`nascar_cup`) | win | **unavailable** | no model implemented for this market |  |  |  |  | CSV import only |
 | motorsport | NASCAR Cup Series (`nascar_cup`) | top3 | **unavailable** | no model implemented for this market |  |  |  |  | CSV import only |
 | motorsport | IndyCar (`indycar`) | win | **unavailable** | no model implemented for this market |  |  |  |  | CSV import only |
@@ -84,6 +82,9 @@ Generated from the registry and this installation's store. A status is earned by
 | hockey | NHL (`nhl`) | winner | **validated** | all validation gates passed | 3090 | 57.0% | 0.6719 | 2026-11-13 | sportsdataverse-data release files (NHL schedules, goalie box scores, play-by-play shots) |
 | hockey | NHL (`nhl`) | winner_3way | **validated** | all validation gates passed | 3090 | 45.0% | 1.0499 | 2026-11-13 | sportsdataverse-data release files (NHL schedules, goalie box scores, play-by-play shots) |
 | hockey | NHL (`nhl`) | total | **unavailable** | no model implemented for this market |  |  |  | 2026-11-13 | sportsdataverse-data release files (NHL schedules, goalie box scores, play-by-play shots) |
+| motorsport | Formula 1 (`f1`) | finish:win | **validated** | all validation gates passed | 2258 |  | 0.1009 | 2026-11-08 | F1DB release files on GitHub (results, qualifying, starting grids; CC BY 4.0) |
+| motorsport | Formula 1 (`f1`) | finish:podium | **validated** | all validation gates passed | 2258 |  | 0.2154 | 2026-11-08 | F1DB release files on GitHub (results, qualifying, starting grids; CC BY 4.0) |
+| motorsport | Formula 1 (`f1`) | finish:points | **validated** | all validation gates passed | 2258 |  | 0.4622 | 2026-11-08 | F1DB release files on GitHub (results, qualifying, starting grids; CC BY 4.0) |
 | soccer | Men's international football (`soccer_intl_men`) | winner_3way | **experimental** | gates not met: calibration | 1803 | 61.6% | 0.8430 | 2026-10-06 | martj42/international_results results.csv + shootouts.csv (GitHub raw) |
 | soccer | Women's international football (`soccer_intl_women`) | winner_3way | **validated** | all validation gates passed | 1350 | 67.3% | 0.7719 | 2026-10-13 | martj42/womens-international-results results.csv + shootouts.csv (GitHub raw) |
 | soccer | English Premier League (`epl`) | winner_3way | **experimental** | gates not met: calibration | 810 | 49.6% | 1.0151 | 2026-09-20 | xgabora/Club-Football-Match-Data-2000-2025 Matches.csv (Football-Data.co.uk results) + openfootball/football.json current-season fixtures (GitHub raw) |

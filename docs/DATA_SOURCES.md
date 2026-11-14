@@ -34,6 +34,8 @@ StatsAPI, The Odds API, football-data.co.uk, TheSportsDB. Consequently:
 | [openfootball/football.json](https://github.com/openfootball/football.json) | 2026-27 club fixtures | current season | free, no key | CC0 public domain |
 | A mirror of Jeff Sackmann's tennis archive ([Aneeshers/tennis-sackmann-archive](https://github.com/Aneeshers/tennis-sackmann-archive)) | ATP and WTA main draw and qualifying, Challenger, WTA 125 and ITF singles: results, surface, round, serve and return counts | 2000 to about June 2026. A snapshot: no upcoming matches, order of play or withdrawals. Dates are tournament-week starts, not match days | free, no key. The original `tennis_atp` and `tennis_wta` repositories returned 404 from 2026-09-20 *(verified)* | **CC BY-NC-SA 4.0**: attribution, share-alike, **non-commercial only**, which the author enforces *(verified)* |
 
+| [F1DB](https://github.com/f1db/f1db) release files (CSV) | Formula 1: every Grand Prix with its classification, qualifying, starting grid, constructors and circuits | 1950 to the latest race (round 20 of 2026 on 2026-11-14); the remaining 2026 races are listed without results. Race start times are on file from about 2022; earlier races have a date only | free, no key | **CC BY 4.0** *(verified)*: commercial use allowed with attribution |
+
 ## Reachable but not yet used
 
 | Source | What it offers | Why it matters |
@@ -67,10 +69,10 @@ Fee formulas and settlement rules are stored as dated data in
 ## Sports with no reachable feed
 
 Cricket, rugby, volleyball, badminton, table tennis, boxing, UFC, esports,
-golf and motorsport: nothing was ingested. Sources that exist (terms
-unverified unless stated): Cricsheet (ball-by-ball, open licence for its
-registers), f1db (**CC BY 4.0**, *verified*) and Jolpica-F1 (non-commercial
-API terms), UFCStats-derived scrapes (site terms unverified), OpenDota,
+golf and motorsport other than Formula 1: nothing was ingested. Sources that
+exist (terms unverified unless stated): Cricsheet (ball-by-ball, open licence
+for its registers), Jolpica-F1 (non-commercial API terms), UFCStats-derived
+scrapes (site terms unverified), OpenDota,
 Oracle's Elixir, HLTV and vlr.gg (scraping restricted). Use the CSV import
 ([CSV_IMPORT.md](CSV_IMPORT.md)); those leagues stay adapter-only until a
 validation run on imported data is recorded.

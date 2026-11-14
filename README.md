@@ -149,6 +149,40 @@ exactly on a threshold - not a projected average.
   player listed out gets PASS; one listed doubtful or questionable makes the
   selection conditional on him playing.
 
+### Formula 1: winner, podium and points finish
+
+One row per driver and race, three yes-or-no questions about every starter.
+The inputs are the official starting grid, driver and car form (the car's
+with most weight dropped at each season change), each relative to the field
+of that race, pace against team-mates, track fit and reliability. Data: the
+F1DB database (CC BY 4.0), every race since 2000 for the model.
+
+<!-- results:start field -->
+| Series | Market | Status | Selected model | Final-test races | Driver starts | Log loss | Base rate | Grid position alone | Calibration error | Model's top picks that did, per race | First on the grid that did, per race |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Formula 1 | podium finish (top three) | validated | full_logit | 112 | 2,258 | 0.215 | 0.421 | 0.235 | 0.012 | 1.98 of 3 | 1.99 of 3 |
+| Formula 1 | points finish (top ten) | validated | field_rank | 112 | 2,258 | 0.462 | 0.694 | 0.506 | 0.013 | 7.88 of 10 | 7.70 of 10 |
+| Formula 1 | race winner (each starter: yes or no) | validated | full_logit | 112 | 2,258 | 0.101 | 0.197 | 0.110 | 0.006 | 0.54 of 1 | 0.58 of 1 |
+<!-- results:end -->
+
+*(Generated: `sportspred report summary --into README.md`.)*
+
+- **The baseline to beat is the grid, not the base rate.** All three models
+  give better probabilities than starting position alone on the final test
+  (2022-2026, 112 races), with the interval excluding zero - for the win
+  market only just.
+- **Better probabilities, not better picks of the winner.** The driver the
+  model rates most likely to win won 54% of those races; the pole-sitter won
+  58%. For the podium the model's three and the first three on the grid do
+  equally well; for points the model's ten are slightly better. What the
+  model adds is a calibrated number for every starter.
+- Rows are drivers, but the events are races: the gate that counts
+  independent events counts 112 races, not 2,258 driver starts.
+- **A prediction needs the starting grid**, which you import after
+  qualifying (`sportspred import grid`). Before that there is none. Only the
+  "yes" side is ever offered as a selection. Weather, tyres, strategy,
+  practice and sprint results are not in the data.
+
 Everything else:
 
 - **adapter-only** (a model and a documented CSV import exist; no real data
@@ -157,9 +191,9 @@ Everything else:
   esports (CS2, Valorant, LoL, Dota 2) and international basketball run on a
   results-only rating model that knows nothing sport-specific; MLS and NWSL
   are declared under the soccer model with no data ingested.
-- **unavailable** (declared, no model): golf and motorsport (field events need
-  a finish-distribution model), NBA / WNBA / college spreads and totals, NHL
-  and MLB totals.
+- **unavailable** (declared, no model): golf, NASCAR, IndyCar and MotoGP (no
+  reachable data), NBA / WNBA / college spreads and totals, NHL and MLB
+  totals.
 - **demo-only**: two synthetic leagues used for the offline demo and tests.
 
 ## Install
@@ -181,6 +215,8 @@ sportspred live nba-injury-report         # official injury report (public archi
 sportspred predict --league nba --detail  # records pregame predictions in the immutable ledger
 sportspred import prop-lines --league nba --csv lines.csv        # player thresholds you read (not prices)
 sportspred predict --league nba --market player_prop:points      # over / under / push at those thresholds
+sportspred import grid --league f1 --csv grid.csv                # the starting grid, after qualifying
+sportspred predict --league f1 --market finish:podium            # also finish:win, finish:points
 sportspred slate                          # today's slate (Pacific/Honolulu), with statuses
 sportspred combos                         # strongest supported three-leg combo, or the PASS message
 sportspred dashboard                      # writes data/reports/dashboard.html (open it; no server)

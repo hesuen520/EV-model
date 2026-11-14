@@ -512,6 +512,102 @@ What this does **not** establish:
   beating an Elo baseline says nothing about beating a price.
 - The archive's licence is CC BY-NC-SA 4.0: **non-commercial use only**.
 
+### Motorsport (Formula 1)
+
+**What is predicted.** For every starter of a Grand Prix, three yes-or-no
+questions, each its own market with its own validation: does he win, finish
+on the podium (top three), finish in the points (top ten). A driver who does
+not take the start has no row; his markets are void.
+
+**Data.** The F1DB database (CC BY 4.0): every race with its classification,
+qualifying and starting grid. The model uses 2000 onwards - 523 races, 10,905
+driver starts to 8 November 2026.
+
+**Inputs, all from races on earlier days.**
+
+- *The starting grid* - the strongest pregame fact; a pit-lane start counts
+  as last.
+- *Driver form*: recent and longer-run results on a 0-1 scale relative to the
+  field of each race, qualifying form, and how he qualifies against his
+  team-mates, which separates the driver from the car.
+- *Car form*: the constructor's recent and longer-run results and
+  qualifying. Most of that weight is dropped at a season change, when cars
+  are new.
+- *Field strength*: driver and car form relative to this race's field, and
+  the car's rank in it.
+- *Track fit*: how the driver has gone at this circuit before relative to
+  his form then, and how the car goes at this type of circuit.
+- *Reliability*: how often the driver, the car and the field as a whole have
+  recently failed to be classified.
+
+The official starting grid of a past race counts as known from two hours
+before its start; the as-of test rebuilds the frame at past instants under
+that rule and finds zero difference. For a race to come, the grid has to be
+imported, and a prediction uses the newest grid read by then.
+
+**Candidates, simplest first:** the base rate; the grid position alone; form
+without the grid (what is known before qualifying); a logistic model on
+everything; a model of the whole race - Plackett-Luce strengths fitted to
+finishing orders, a retirement model, and a simulated finish distribution
+whose probabilities for one race add up as they must; and boosted trees.
+
+<!-- results:start field -->
+| Series | Market | Status | Selected model | Final-test races | Driver starts | Log loss | Base rate | Grid position alone | Calibration error | Model's top picks that did, per race | First on the grid that did, per race |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Formula 1 | podium finish (top three) | validated | full_logit | 112 | 2,258 | 0.215 | 0.421 | 0.235 | 0.012 | 1.98 of 3 | 1.99 of 3 |
+| Formula 1 | points finish (top ten) | validated | field_rank | 112 | 2,258 | 0.462 | 0.694 | 0.506 | 0.013 | 7.88 of 10 | 7.70 of 10 |
+| Formula 1 | race winner (each starter: yes or no) | validated | full_logit | 112 | 2,258 | 0.101 | 0.197 | 0.110 | 0.006 | 0.54 of 1 | 0.58 of 1 |
+<!-- results:end -->
+
+**What the runs show.** Development folds are the seasons 2012 to 2021; the
+final test is 2022 to 2026 (112 races, 2,258 driver starts).
+
+- The grid alone is a strong baseline: for the win market it takes log loss
+  from 0.193 (base rate) to 0.107 on development folds. Form without the
+  grid reaches 0.120 - qualifying tells more than the season so far.
+- Adding form, track fit and reliability to the grid helps every market, in
+  9 or 10 of 10 development seasons. On the final test the improvement over
+  the grid alone is 0.009 for the win market (95% interval 0.001 to 0.018),
+  0.020 for the podium (0.009 to 0.031) and 0.044 for points (0.029 to
+  0.062). The selected model must clear that bar, not only the base rate.
+- For win and podium the plain logistic model was selected: the whole-race
+  model was fractionally better on development folds, within one standard
+  error, and the simpler one wins a tie. For points the whole-race model was
+  selected outright.
+- **Better probabilities, not better picks.** On the final test the driver
+  the model rates most likely to win won 54% of races; the pole-sitter won
+  58%. The model's three for the podium included 1.98 podium finishers per
+  race, the first three on the grid 1.99; its ten for points 7.88 against
+  7.70. What the model adds over reading the grid is a calibrated probability
+  for every starter, not a better guess at the winner.
+- The headline "accuracy" of these markets is not a useful number: most
+  starters plainly do not win, so saying "no" is right 96% of the time.
+
+**What "validated" rests on here.** Rows are drivers, but the independent
+events are races, and a gate counts them: 112 in the final test, against a
+minimum of 100. Intervals are resampled by race. Three runs are on record for
+each market: the first; a second after the gate against the grid was added;
+a third after the qualifying gap to pole was removed from the inputs - a dry
+run showed that a grid read before a race carries slots, not lap times, so
+the live inputs would have been incomplete. On development folds that input
+had been worth 0.002 log loss or less.
+
+**Live use.** `sportspred import grid` after qualifying, then
+`sportspred predict --league f1 --market finish:win` (or `finish:podium`,
+`finish:points`). Only the "yes" side is ever a selection. The grid check is
+complete only when the grid was read within four hours of the start; a later
+grid replaces an earlier one, and a driver no longer on it has his selection
+withdrawn. The two logistic models answer each driver separately, so their
+probabilities for one race need not add up exactly (final-test average: 0.92
+for the win, 3.11 for the podium); the whole-race model's do.
+
+*Not in the model:* weather and track conditions, tyres and strategy,
+upgrades, practice and sprint results, penalties announced after the grid
+was read, the start itself. Rule eras differ - points for the top six, then
+eight, then ten; far fewer retirements now than in 2000 - and inputs are
+relative to each race's field, but older seasons are not the same sport in
+every respect. The 2026 rule change falls inside the final test.
+
 ### Results-only leagues (CSV import)
 
 Tennis doubles, UFC and boxing, cricket, rugby, volleyball, badminton, table
@@ -582,8 +678,11 @@ FINAL-status filter, combos across leagues, or the dependency handling.
   result older than 1.5 typical off-seasons of that league).
 - Tennis is validated only on tournament-week dates and has no live schedule
   feed. Tennis doubles, combat sports, cricket, rugby, volleyball, racket
-  sports and esports have no validated model; golf and motorsport have no
-  model; NBA spreads and totals are not implemented in this platform.
+  sports and esports have no validated model; golf, NASCAR, IndyCar and MotoGP
+  have no model; NBA spreads and totals are not implemented in this platform.
+- Formula 1 predictions need a starting grid imported by hand, and the model
+  improves probabilities over the grid alone without picking winners better
+  than the grid does. Its final test is 112 races.
 - Player-statistic markets have never been scored against a market
   threshold, only against reference thresholds built from each player's own
   earlier games. They are experimental by construction and carry no

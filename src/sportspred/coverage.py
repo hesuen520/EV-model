@@ -79,9 +79,13 @@ def coverage_table(store: Any) -> pd.DataFrame:
             if run is not None:
                 report = json.loads(run["report_json"])
                 sel = report.get("final_test", {}).get("selected", {})
+                # A yes-or-no question about every starter of a race is mostly "no": its accuracy
+                # says nothing, so it is left out here (the report gives per-race figures).
+                per_entrant = decl.key.startswith("finish:")
                 row.update({
                     "model": report.get("selected_model") or "",
-                    "final_test_n": sel.get("n"), "final_test_accuracy": sel.get("accuracy"),
+                    "final_test_n": sel.get("n"),
+                    "final_test_accuracy": None if per_entrant else sel.get("accuracy"),
                     "final_test_log_loss": sel.get("log_loss"), "validated_at": run["created_at_utc"][:10],
                 })
             rows.append(row)

@@ -139,6 +139,17 @@ plugin can tell "applied" from "listed but not usable by this model". A
 selection about a subject whose row has left the frame is withdrawn by a
 superseding PASS record.
 
+**Field events.** A race is one event with many competitors. Its frame also
+has one row per subject (`game_id`, `ledger_market`, an `event_name` for
+display), with yes-or-no classes. `extra["required_columns"]` names pregame
+facts without which a row is not predicted (the starting grid);
+`extra["selection_classes"]` limits which side may ever be a selection
+("yes"); `extra["skill_reference"]` names the baseline the selected model
+must beat on the final test with its interval excluding zero (the grid
+alone), in addition to the base rate. A candidate that models the whole
+field sets `predicts_field`: the engine then hands it every row of an event
+at once, and it groups rows by the part of `event_id` before the first `|`.
+
 ### Shared primitives
 
 * `features.ratings.elo_pregame / tune_elo` - Elo with optional margin of
@@ -153,6 +164,9 @@ superseding PASS record.
   `SkCandidate` (any scikit-learn classifier; estimators must be picklable).
   Custom models subclass `sports.base.Candidate` (fit on a DataFrame, return
   an `(n, k)` probability matrix).
+* `models.field` - `FieldRankCandidate`: Plackett-Luce strengths fitted to
+  finishing orders, a retirement model and a seeded simulation that turns
+  both into each starter's finish distribution.
 * `models.counts` - count-distribution candidates for threshold markets on a
   count: a mean model (a column, exposure x rate, or the two-stage
   minutes-then-rate model) with a Poisson or negative-binomial spread, read at

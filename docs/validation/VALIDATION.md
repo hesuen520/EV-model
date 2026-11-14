@@ -31,6 +31,9 @@ A league that was validated again (after a data or defect fix) has had its final
 | football | `nfl` | winner | **validated** | qb_logit | 2024-09-06 to 2026-11-13 | 705 | 65.4% (62.0-68.6) | 0.6266 (0.6046-0.6499) | 0.6931 | 0.0261 | 0.6029 (model 0.6266 on the same 705 events) |
 | hockey | `nhl` | winner | **validated** | core_logit | 2024-10-04 to 2026-11-12 | 3090 | 57.0% (55.3-58.6) | 0.6719 (0.6643-0.6805) | 0.6893 | 0.0245 |  |
 | hockey | `nhl` | winner_3way | **validated** | full_logit | 2024-10-04 to 2026-11-12 | 3090 | 45.0% (43.4-46.6) | 1.0499 (1.0386-1.0620) | 1.0687 | 0.0246 |  |
+| motorsport | `f1` | finish:podium | **validated** | full_logit | 2022-03-20 to 2026-11-08 | 2258 | 90.6% (89.5-91.5) | 0.2154 (0.2017-0.2304) | 0.4208 | 0.0123 |  |
+| motorsport | `f1` | finish:points | **validated** | field_rank | 2022-03-20 to 2026-11-08 | 2258 | 79.3% (77.4-81.2) | 0.4622 (0.4353-0.4919) | 0.6941 | 0.0127 |  |
+| motorsport | `f1` | finish:win | **validated** | full_logit | 2022-03-20 to 2026-11-08 | 2258 | 96.0% (95.5-96.6) | 0.1009 (0.0906-0.1115) | 0.1974 | 0.0062 |  |
 | soccer | `bundesliga` | winner_3way | **experimental** | poisson_dc | 2024-08-23 to 2026-09-20 | 648 | 51.7% (47.4-55.9) | 1.0001 (0.9553-1.0470) | 1.0795 | 0.0392 | 0.9690 (model 0.9993 on the same 621 events) |
 | soccer | `epl` | winner_3way | **experimental** | poisson_dc | 2024-08-16 to 2026-09-20 | 810 | 49.6% (45.8-53.1) | 1.0151 (0.9821-1.0521) | 1.0858 | 0.0472 | 0.9941 (model 1.0126 on the same 780 events) |
 | soccer | `laliga` | winner_3way | **experimental** | elo_logit | 2024-08-15 to 2026-09-20 | 829 | 52.6% (49.5-55.8) | 0.9793 (0.9446-1.0141) | 1.0601 | 0.0412 | 0.9565 (model 0.9790 on the same 791 events) |
@@ -1598,6 +1601,231 @@ Limitations:
 - Travel is measured between home-arena cities; games away from a club's regular arena have no location.
 - Betting odds are not an input and no timestamped market benchmark is available from this source.
 
+## f1 - finish:podium
+
+10905 completed driver starts from 2000-03-12 to 2026-11-08; 10 walk-forward folds; final test blocks 2022, 2023, 2024, 2025, 2026. Selected: `full_logit` (one-standard-error rule: full_logit (log loss 0.21254) is simpler than field_rank (0.21227) and within one SE (0.00131) of it).
+
+![calibration](charts/f1_finish_podium_calibration.svg)
+![by season](charts/f1_finish_podium_by_season.svg)
+
+Season by season on development folds the selected model beat `grid_logit` in 10 of 10 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 4135 | 85.6% | 0.4129 | 0.1236 |
+| grid_logit | 4135 | 90.4% | 0.2397 | 0.0705 |
+| form_logit | 4135 | 88.9% | 0.2398 | 0.0748 |
+| full_logit (selected) | 4135 | 90.9% | 0.2125 | 0.0651 |
+| field_rank | 4135 | 90.9% | 0.2123 | 0.0651 |
+| full_gbm | 4135 | 90.4% | 0.2205 | 0.0671 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| full_logit (selected) | 2258 | 90.6% | 0.2154 | 0.0677 |
+| baseline base_rate | 2258 | 85.1% | 0.4208 | 0.1267 |
+| baseline grid_logit | 2258 | 90.4% | 0.2354 | 0.0696 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 2258 | 100.0% | 90.6% (89.3-91.7) | 89.4% |
+| 0.55 | 2165 | 95.9% | 91.8% (90.5-92.9) | 91.0% |
+| 0.60 | 2083 | 92.2% | 93.4% (92.3-94.4) | 92.3% |
+| 0.65 | 2004 | 88.8% | 94.3% (93.2-95.2) | 93.5% |
+| 0.70 | 1926 | 85.3% | 95.2% (94.2-96.1) | 94.5% |
+| 0.75 | 1824 | 80.8% | 96.3% (95.3-97.0) | 95.7% |
+| 0.80 | 1732 | 76.7% | 97.2% (96.3-97.9) | 96.7% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| grid 1 to 4 | 19.8% | 447 | 67.3% | 0.6203 | 68.8% |
+| grid 11 and back | 50.8% | 1147 | 98.7% | 0.0517 | 98.3% |
+| grid 5 to 10 | 29.4% | 664 | 92.2% | 0.2257 | 87.8% |
+
+Per race. Per race: the 3 starter(s) the model rates most likely to finish on the podium, against the first 3 on the grid. 'Hits' is how many of them did; for the win market it is whether the top-rated driver won.
+
+| Period | Races | Model's top picks that did | First on the grid that did | Sum of the model's probabilities per race |
+|---|---|---|---|---|
+| Last development fold (2021) | 22 | 2.09 of 3 | 2.14 of 3 | 3.04 (should be about 3) |
+| Final test (2022, 2023, 2024, 2025, 2026) | 112 | 1.98 of 3 | 1.99 of 3 | 3.11 (should be about 3) |
+
+Same-slate residual correlation (used by the combo builder): +0.0301 (95% interval +0.0116 to +0.0531, 62777 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 2258 final-test events (minimum 300)
+- passed - development folds: 10 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.20533 (95% interval 0.19056 to 0.21938)
+- passed - calibration: final-test expected calibration error 0.0123 (maximum 0.03)
+- passed - skill over grid logit: final-test log-loss improvement over grid_logit: 0.01994 (95% interval 0.00942 to 0.03074)
+- passed - independent races: 112 races in the final-test seasons (minimum 100); the row count counts drivers, and the drivers of one race are not independent
+
+Limitations:
+
+- One row per driver and race; the three markets (win, podium, points) are validated separately, as yes-or-no questions about each starter. The headline accuracy is dominated by the many drivers for whom the answer is plainly no - log loss against the base rate and the per-race figures are the ones to read.
+- The model starts from the official starting grid. Before a grid is on file there is no prediction.
+- The grid is the final one, with penalties, as recorded by the source; a change in the last two hours before the start (a pit-lane start decided late) is not point-in-time.
+- Not in the data: weather and track conditions, tyres and strategy, upgrades, practice and sprint results. Qualifying lap times are on file but not used: a grid read before a race carries slots, not times, and on development folds the gap to pole added nothing measurable.
+- Rule eras differ (points for the top six, eight, then ten; far fewer retirements now than in 2000). Ratings are relative to the field of each race, and retirement rates are tracked as they change, but older seasons are not the same sport in every respect.
+- A driver who does not take the start has no row: his markets are void.
+
+## f1 - finish:points
+
+10905 completed driver starts from 2000-03-12 to 2026-11-08; 10 walk-forward folds; final test blocks 2022, 2023, 2024, 2025, 2026. Selected: `field_rank` (lowest pooled development log loss (0.47193)).
+
+![calibration](charts/f1_finish_points_calibration.svg)
+![by season](charts/f1_finish_points_by_season.svg)
+
+Season by season on development folds the selected model beat `grid_logit` in 10 of 10 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 4135 | 51.9% | 0.6930 | 0.2499 |
+| grid_logit | 4135 | 75.7% | 0.5124 | 0.1677 |
+| form_logit | 4135 | 75.4% | 0.5023 | 0.1664 |
+| full_logit | 4135 | 77.3% | 0.4772 | 0.1560 |
+| field_rank (selected) | 4135 | 78.0% | 0.4719 | 0.1534 |
+| full_gbm | 4135 | 77.5% | 0.4777 | 0.1569 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| field_rank (selected) | 2258 | 79.3% | 0.4622 | 0.1483 |
+| baseline base_rate | 2258 | 50.4% | 0.6941 | 0.2505 |
+| baseline grid_logit | 2258 | 77.3% | 0.5062 | 0.1647 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 2258 | 100.0% | 79.3% (77.6-80.9) | 79.1% |
+| 0.55 | 2130 | 94.3% | 80.6% (78.9-82.2) | 80.7% |
+| 0.60 | 2010 | 89.0% | 82.1% (80.4-83.7) | 82.1% |
+| 0.65 | 1851 | 82.0% | 83.7% (82.0-85.3) | 83.8% |
+| 0.70 | 1688 | 74.8% | 86.0% (84.3-87.6) | 85.3% |
+| 0.75 | 1490 | 66.0% | 87.9% (86.2-89.5) | 87.0% |
+| 0.80 | 1248 | 55.3% | 89.0% (87.2-90.6) | 88.9% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| grid 1 to 4 | 19.8% | 447 | 89.5% | 0.3376 | 91.2% |
+| grid 11 and back | 50.8% | 1147 | 81.2% | 0.4467 | 78.3% |
+| grid 5 to 10 | 29.4% | 664 | 69.3% | 0.5727 | 72.5% |
+
+Per race. Per race: the 10 starter(s) the model rates most likely to finish in the points (top ten), against the first 10 on the grid. 'Hits' is how many of them did; for the win market it is whether the top-rated driver won.
+
+| Period | Races | Model's top picks that did | First on the grid that did | Sum of the model's probabilities per race |
+|---|---|---|---|---|
+| Last development fold (2021) | 22 | 8.18 of 10 | 7.86 of 10 | 10.00 (should be about 10) |
+| Final test (2022, 2023, 2024, 2025, 2026) | 112 | 7.88 of 10 | 7.70 of 10 | 9.95 (should be about 10) |
+
+Same-slate residual correlation (used by the combo builder): +0.0371 (95% interval +0.0230 to +0.0517, 62777 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 2258 final-test events (minimum 300)
+- passed - development folds: 10 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.23194 (95% interval 0.20238 to 0.25872)
+- passed - calibration: final-test expected calibration error 0.0127 (maximum 0.03)
+- passed - skill over grid logit: final-test log-loss improvement over grid_logit: 0.04401 (95% interval 0.02849 to 0.06187)
+- passed - independent races: 112 races in the final-test seasons (minimum 100); the row count counts drivers, and the drivers of one race are not independent
+
+Limitations:
+
+- One row per driver and race; the three markets (win, podium, points) are validated separately, as yes-or-no questions about each starter. The headline accuracy is dominated by the many drivers for whom the answer is plainly no - log loss against the base rate and the per-race figures are the ones to read.
+- The model starts from the official starting grid. Before a grid is on file there is no prediction.
+- The grid is the final one, with penalties, as recorded by the source; a change in the last two hours before the start (a pit-lane start decided late) is not point-in-time.
+- Not in the data: weather and track conditions, tyres and strategy, upgrades, practice and sprint results. Qualifying lap times are on file but not used: a grid read before a race carries slots, not times, and on development folds the gap to pole added nothing measurable.
+- Rule eras differ (points for the top six, eight, then ten; far fewer retirements now than in 2000). Ratings are relative to the field of each race, and retirement rates are tracked as they change, but older seasons are not the same sport in every respect.
+- A driver who does not take the start has no row: his markets are void.
+
+## f1 - finish:win
+
+10905 completed driver starts from 2000-03-12 to 2026-11-08; 10 walk-forward folds; final test blocks 2022, 2023, 2024, 2025, 2026. Selected: `full_logit` (one-standard-error rule: full_logit (log loss 0.09956) is simpler than field_rank (0.09945) and within one SE (0.00114) of it).
+
+![calibration](charts/f1_finish_win_calibration.svg)
+![by season](charts/f1_finish_win_by_season.svg)
+
+Season by season on development folds the selected model beat `grid_logit` in 9 of 10 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 4135 | 95.2% | 0.1930 | 0.0458 |
+| grid_logit | 4135 | 95.4% | 0.1070 | 0.0313 |
+| form_logit | 4135 | 95.0% | 0.1201 | 0.0352 |
+| full_logit (selected) | 4135 | 96.0% | 0.0996 | 0.0296 |
+| field_rank | 4135 | 95.9% | 0.0995 | 0.0297 |
+| full_gbm | 4135 | 95.4% | 0.1055 | 0.0313 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| full_logit (selected) | 2258 | 96.0% | 0.1009 | 0.0302 |
+| baseline base_rate | 2258 | 95.0% | 0.1974 | 0.0471 |
+| baseline grid_logit | 2258 | 95.8% | 0.1098 | 0.0306 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 2258 | 100.0% | 96.0% (95.1-96.7) | 95.9% |
+| 0.55 | 2237 | 99.1% | 96.3% (95.5-97.0) | 96.3% |
+| 0.60 | 2211 | 97.9% | 96.7% (95.9-97.4) | 96.8% |
+| 0.65 | 2188 | 96.9% | 97.0% (96.2-97.6) | 97.1% |
+| 0.70 | 2162 | 95.7% | 97.4% (96.7-98.0) | 97.5% |
+| 0.75 | 2124 | 94.1% | 98.1% (97.4-98.6) | 98.0% |
+| 0.80 | 2101 | 93.0% | 98.3% (97.7-98.8) | 98.2% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| grid 1 to 4 | 19.8% | 447 | 82.1% | 0.4097 | 82.7% |
+| grid 11 and back | 50.8% | 1147 | 99.7% | 0.0125 | 99.8% |
+| grid 5 to 10 | 29.4% | 664 | 98.9% | 0.0456 | 98.2% |
+
+Per race. Per race: the 1 starter(s) the model rates most likely to win, against the first 1 on the grid. 'Hits' is how many of them did; for the win market it is whether the top-rated driver won.
+
+| Period | Races | Model's top picks that did | First on the grid that did | Sum of the model's probabilities per race |
+|---|---|---|---|---|
+| Last development fold (2021) | 22 | 0.64 of 1 | 0.55 of 1 | 0.99 (should be about 1) |
+| Final test (2022, 2023, 2024, 2025, 2026) | 112 | 0.54 of 1 | 0.58 of 1 | 0.92 (should be about 1) |
+
+Same-slate residual correlation (used by the combo builder): -0.0097 (95% interval -0.0233 to +0.0054, 62777 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 2258 final-test events (minimum 300)
+- passed - development folds: 10 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.09652 (95% interval 0.08574 to 0.10714)
+- passed - calibration: final-test expected calibration error 0.0062 (maximum 0.03)
+- passed - skill over grid logit: final-test log-loss improvement over grid_logit: 0.00896 (95% interval 0.00056 to 0.01785)
+- passed - independent races: 112 races in the final-test seasons (minimum 100); the row count counts drivers, and the drivers of one race are not independent
+
+Limitations:
+
+- One row per driver and race; the three markets (win, podium, points) are validated separately, as yes-or-no questions about each starter. The headline accuracy is dominated by the many drivers for whom the answer is plainly no - log loss against the base rate and the per-race figures are the ones to read.
+- The model starts from the official starting grid. Before a grid is on file there is no prediction.
+- The grid is the final one, with penalties, as recorded by the source; a change in the last two hours before the start (a pit-lane start decided late) is not point-in-time.
+- Not in the data: weather and track conditions, tyres and strategy, upgrades, practice and sprint results. Qualifying lap times are on file but not used: a grid read before a race carries slots, not times, and on development folds the gap to pole added nothing measurable.
+- Rule eras differ (points for the top six, eight, then ten; far fewer retirements now than in 2000). Ratings are relative to the field of each race, and retirement rates are tracked as they change, but older seasons are not the same sport in every respect.
+- A driver who does not take the start has no row: his markets are void.
+
 ## bundesliga - winner_3way
 
 7864 completed events from 2000-08-11 to 2026-09-20; 14 walk-forward folds; final test blocks 2024, 2025, 2026. Selected: `poisson_dc` (one-standard-error rule: poisson_dc (log loss 1.00100) is simpler than full_logit (1.00070) and within one SE (0.00138) of it).
@@ -2502,6 +2730,15 @@ Every validation run recorded in the store, oldest first. A re-run replaces the 
 | `epl` | winner_3way | 2026-11-13 05:14 | poisson_dc | 810 | 49.6% | 1.0151 | no |
 | `epl` | winner_3way | 2026-11-13 11:37 | poisson_dc | 810 | 49.6% | 1.0151 | no |
 | `epl` | winner_3way | 2026-11-13 12:09 (reported above) | poisson_dc | 810 | 49.6% | 1.0151 | no |
+| `f1` | finish:podium | 2026-11-14 03:34 | full_logit | 2258 | 90.5% | 0.2157 | yes |
+| `f1` | finish:podium | 2026-11-14 03:38 | full_logit | 2258 | 90.5% | 0.2157 | yes |
+| `f1` | finish:podium | 2026-11-14 03:42 (reported above) | full_logit | 2258 | 90.6% | 0.2154 | yes |
+| `f1` | finish:points | 2026-11-14 03:34 | field_rank | 2258 | 79.5% | 0.4585 | yes |
+| `f1` | finish:points | 2026-11-14 03:38 | field_rank | 2258 | 79.5% | 0.4585 | yes |
+| `f1` | finish:points | 2026-11-14 03:43 (reported above) | field_rank | 2258 | 79.3% | 0.4622 | yes |
+| `f1` | finish:win | 2026-11-14 03:34 | full_logit | 2258 | 96.1% | 0.1004 | yes |
+| `f1` | finish:win | 2026-11-14 03:37 | full_logit | 2258 | 96.1% | 0.1004 | yes |
+| `f1` | finish:win | 2026-11-14 03:42 (reported above) | full_logit | 2258 | 96.0% | 0.1009 | yes |
 | `itf_men` | winner | 2026-11-12 23:36 | full_gbm | 37568 | 71.6% | 0.5568 | no |
 | `itf_men` | winner | 2026-11-13 00:11 | full_gbm | 37568 | 71.5% | 0.5573 | no |
 | `itf_men` | winner | 2026-11-13 11:04 | full_gbm | 43092 | 71.1% | 0.5613 | no |

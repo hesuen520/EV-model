@@ -13,15 +13,16 @@ covered by the test suite but has not yet happened with real events.
 |---|---|---|
 | Shared foundations | UTC storage with Pacific/Honolulu display; stable IDs; entity matching by provider ID and normalised name; cross-provider event de-duplication; a source record behind every event and result (URL, collection time, content hash, and the publication time where the source states one); event change log; result corrections kept; append-only, hash-chained prediction ledger; synthetic data isolated under `demo_*` keys | real data |
 | Data adapters (public datasets, no key) | NBA, WNBA, NCAA men's and women's basketball; NFL; college football; NHL; MLB (through 2025); men's and women's international soccer; Premier League, La Liga, Bundesliga, Serie A, Ligue 1; tennis singles at eight levels (historical results to mid-2026, non-commercial licence); the official NBA injury report archive | real data |
-| Validation | 36 league-markets validated on real data with the walk-forward protocol and a reserved final test: 17 pass every gate; 9 event markets are experimental (WNBA, NFL spread and total, ITF men, men's international soccer, Premier League, La Liga, Bundesliga, Serie A); the 10 player-statistic markets are experimental by construction. Runs were repeated after fixes; every run is listed in the validation report's run history | real data |
+| Validation | 39 league-markets validated on real data with the walk-forward protocol and a reserved final test: 20 pass every gate (17 event markets and the three Formula 1 markets); 9 event markets are experimental (WNBA, NFL spread and total, ITF men, men's international soccer, Premier League, La Liga, Bundesliga, Serie A); the 10 player-statistic markets are experimental by construction. Runs were repeated after fixes; every run is listed in the validation report's run history | real data |
 | Player statistics (NBA, WNBA) | points, rebounds, assists, three-pointers made and the combined statistic, over or under a threshold: point-in-time player-game inputs (minutes, per-minute production, opponent adjustment, absent team-mates), baselines and two-stage count models, validation against reference thresholds with a check at shifted and whole-number thresholds, trained models, a projection table | real data |
 | Point-in-time features | the as-of leakage test passes with zero difference for all 26 league-markets on the real store (`sportspred check-leakage`, and the opt-in test `tests/sportspred/test_real_store_leakage.py`) | real data |
 | NBA availability, point-in-time | the official injury report as published before each slate (archive since 2018-12-17) feeds the roster inputs; the report-aware model was selected on development folds and improves the final test (log loss 0.5959 against 0.5999) | real data |
-| Prediction engine | PROVISIONAL and PASS statuses with pregame checks, availability applied, bootstrap model-uncertainty intervals, validated confidence labels, explanations: 770 real pregame predictions in the ledger (446 current event-markets over seven slates: 338 PROVISIONAL, 108 PASS, none FINAL); the hash chain and the clock audit verify | real data |
+| Formula 1 | winner, podium and points finish for every starter: ingest from a public database (523 races since 2000), point-in-time inputs from the grid, driver and car form, track fit and reliability; six candidates including a model of the whole race; validated against the grid alone as well as the base rate; trained models; starting-grid import | real data |
+| Prediction engine | PROVISIONAL and PASS statuses with pregame checks, availability applied, bootstrap model-uncertainty intervals, validated confidence labels, explanations: 826 real pregame predictions in the ledger (470 current event-markets over seven slates: 354 PROVISIONAL, 116 PASS, none FINAL); the hash chain and the clock audit verify | real data |
 | FINAL and CONDITIONAL statuses | every check complete and fresh; a selection that depends on a doubtful player | tests |
 | Combos | the PASS message and the provisional preview on real slates; the per-league backtest of the selection rule | real data |
 | Combos that are recommended | a FINAL three-leg combo, alternatives, larger sizes, dependency handling | tests |
-| Ledger: grading and reviews | grading against results, linked correction grades, reviews (variance / model error / data issue / availability change): 59 real selections graded and reviewed on 2026-11-13 | real data (one day) |
+| Ledger: grading and reviews | grading against results, linked correction grades, reviews (variance / model error / data issue / availability change): 63 real selections graded and reviewed (13 and 14 November 2026) | real data (two runs) |
 | Ledger: lessons and drift monitor | lessons with a validation-run requirement; calibration and input drift | tests |
 | CSV import | events, results, availability, check records, thresholds of player-statistic markets; whole-file validation with line numbers | tests |
 | EV module | CSV price import, raw implied / no-vig / fair odds / edge / EV, fee schedules, settlement rules, eligibility presets, paper positions and resettlement | tests |
@@ -46,7 +47,15 @@ covered by the test suite but has not yet happened with real events.
   was fixed and the six grades withdrawn by linked correction grades. 52 of
   the 59 reviews are labelled "data issue" because those predictions were
   made with travel inputs missing - inputs since removed from the college
-  models.
+  models. A second run on 2026-11-14 added the four NBA games of 12 November
+  (the public sources were a day behind): 63 selections in all, 52 correct
+  and 11 incorrect - 82.5% against 83.8% stated.
+- **Formula 1 predictions on a real grid.** The next race is on 22 November
+  and its grid does not exist yet, so the real ledger holds no Formula 1
+  prediction. The path - grid import, pricing, the grid check, withdrawal,
+  grading from the classification - is covered by tests on a synthetic
+  series, and was dry-run on a scratch copy of the real store with the
+  previous race's grid standing in (nothing was written to the real store).
 - **EV evaluation with real prices.** Maths and rules are tested against hand
   calculations; no real quotes were available.
 - **Player-statistic predictions at real thresholds.** No source of market
@@ -75,8 +84,11 @@ covered by the test suite but has not yet happened with real events.
   combinations) and props for other sports are not built.
 - **NBA / WNBA / college spreads and totals, NHL and MLB totals.** No
   historical lines exist in the reachable sources; not implemented.
-- **Golf and motorsport.** Declared so the coverage table is complete; they
-  need a finish-distribution model for fields of competitors.
+- **Golf, NASCAR, IndyCar, MotoGP.** Declared so the coverage table is
+  complete; no data for them is reachable here. Formula 1 is built (above):
+  its plugin and field model are the pattern to follow. Not built for
+  Formula 1: a model for use before qualifying, sprint races, fastest lap,
+  head-to-head and constructor markets.
 - **Tennis doubles, and any live tennis feed.** Singles are validated on
   historical results; there is no schedule, order of play or withdrawal feed,
   so tennis produces predictions only for events imported by CSV, and those

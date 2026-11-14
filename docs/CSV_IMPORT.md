@@ -6,12 +6,13 @@ It works for every league key in `sportspred coverage --all`, including the
 ones that also have a public-dataset adapter.
 
 ```bash
-sportspred templates my_csv/                       # writes five example files
+sportspred templates my_csv/                       # writes six example files
 sportspred import events       --league cricket_t20_men --csv my_csv/events.csv --create-participants
 sportspred import results      --league cricket_t20_men --csv my_csv/results.csv
 sportspred import availability --league nba --csv injuries.csv --league-wide
 sportspred import checks       --league nhl --csv checks.csv
 sportspred import prop-lines   --league nba --csv lines.csv      # thresholds of player-statistic markets
+sportspred import grid         --league f1  --csv grid.csv       # the official starting grid of the next race
 ```
 
 After importing results: `sportspred validate --league <key>`, then `train`,
@@ -170,6 +171,36 @@ imported threshold there is no selection for that player.
   result can arrive before its box score.
 - A prediction also waits (PROVISIONAL) while the box score of either team's
   last two finished games is missing: the player inputs would be a game behind.
+
+## grid (the starting grid of a Formula 1 race)
+
+```bash
+sportspred import grid --league f1 --csv grid.csv
+sportspred predict --league f1 --market finish:win        # also finish:podium, finish:points
+```
+
+`driver` (the name he races under, or his three-letter code) and `grid` (his
+slot, 1 = pole; `PL` for a pit-lane start); optional `constructor` (needed
+only for a driver with no race on file, or one who has changed team since his
+last race). Options: `--event-id` (the race; default: the next scheduled race
+within seven days), `--collected-at`, `--tz`.
+
+The Formula 1 model starts from the official starting grid - with penalties,
+as the organiser publishes it after qualifying - and no reachable feed
+carries it before a race. Until a grid is imported there is no prediction.
+
+- The whole file is checked first: an unknown driver, a driver or a slot
+  listed twice, a slot that is not a whole number or `PL`, fewer than ten
+  drivers, nobody on pole, a race that has already started, or a collection
+  time in the future is an error, and nothing is stored.
+- A later reading replaces an earlier one for predictions made after it; a
+  driver who is no longer on the grid has his earlier selection withdrawn.
+- The import logs the `starting_grid` check for that race. The check is
+  complete only if the grid was read within four hours of the start (a grid
+  can change on race morning); until then a selection is PROVISIONAL.
+- A prediction is recorded per driver under `finish:<kind>:<driver id>`. Only
+  the "yes" side is ever a selection ("to win", never "not to win"). Grading
+  reads the classification: void if he did not take the start.
 
 ## Prices
 

@@ -286,7 +286,11 @@ The ten validations were run again after the first round of fixes (the first
 runs stay in the run history). The second round changed no validated row:
 the completed rows of all ten frames hash identically before and after it.
 
-VERIFIER_OUTCOME
+The feature builder and the availability handling were attacked again after
+the first round of fixes (that is where the second round came from). The
+prediction engine's and the import and grading code's fixes have each been
+reviewed once, before the fixes; a second, independent attempt to break them
+was still running when this was written.
 
 *Found and not fixed:* the report-based history matches names exactly, and
 thirteen player-seasons were found in which the official report and the box

@@ -333,7 +333,11 @@ application. A prediction waits (PROVISIONAL) while the box score of either
 team's last two finished games is missing, and a selection about a player who
 has since left the modelled rotation is withdrawn. A team's first game of a
 season is served from last season's rotation; a player's first game for a new
-team has no row until he has played it.
+team has no row until he has played it. Each prediction records its threshold,
+when it was read and where; one read more than 24 hours earlier is not priced
+as a selection. If validation ever selected the base rate for one of these
+markets, every prediction would be PASS: a base rate is about the thresholds
+it was measured at, not the one imported.
 
 *Not in the model:* confirmed starting line-ups, announced minutes limits,
 foul trouble, garbage time beyond the margin-gap input, the opponent's

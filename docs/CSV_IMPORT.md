@@ -147,8 +147,15 @@ imported threshold there is no selection for that player.
 - A later reading of the same market is a new row; the threshold in force for
   a prediction is the newest one collected by the prediction time, whichever
   `book` it came from - one threshold per player and statistic at a time.
-  Importing the same reading twice stores it once. A collection time in the
-  future is refused.
+  Importing the same reading twice stores it once; a different threshold for
+  the same collection time - in the same file or a later one - is refused. A
+  collection time in the future is refused, and `--collected-at` follows the
+  same zone rule as the file (`--tz`).
+- A threshold is written as a plain number (`24.5`, `7`); `2_5` or `1e1` is
+  an error, not 25 or 10.
+- A prediction records the threshold, when it was read and the `book`. A
+  threshold read more than 24 hours before the prediction is not priced as a
+  selection (PASS, with the reason): read it again.
 - A whole-number threshold can be tied. The prediction then records three
   probabilities - over, under and push - that sum to one. Over and under are
   read from the calibrated model at the half points either side, so "over 23"

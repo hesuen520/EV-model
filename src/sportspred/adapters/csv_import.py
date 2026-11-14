@@ -25,6 +25,7 @@ Rules enforced on every file:
 from __future__ import annotations
 
 import math
+import re
 
 import hashlib
 from pathlib import Path
@@ -449,6 +450,7 @@ def import_checks(store: Any, league: str, path: PathLike, *, tz: Optional[str] 
 
 #: A game that started within this many hours of a reading is the one the reading is about.
 _RECENT_START_HOURS = 6.0
+_PLAIN_NUMBER = re.compile(r"^\+?\d+(\.\d+)?$")
 
 
 def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[str] = None,
@@ -475,8 +477,16 @@ def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[s
         raise CsvImportError(path, [f"{league} has no modelled player-statistic market"])
     df = _read(path, ["team", "player", "stat", "line"])
     errors: List[str] = []
-    default_collected = iso_z(collected_at or utcnow())
+    if collected_at is None:
+        default_collected = iso_z(utcnow())
+    else:                                   # the same zone rule as the file's own timestamps
+        default_collected = _time(str(collected_at), tz, 0, "collection time", errors)
+        if default_collected is None:
+            raise CsvImportError(path, [e.replace("line 0: ", "") for e in errors])
     team_ids = _participants(store, league, list(df["team"]), create=False, kind="team", errors=errors)
+    on_file = store.query("SELECT event_id, player_id, stat, collected_at_utc, line FROM prop_lines WHERE league=?",
+                          [league])
+    stored = {(r.event_id, str(r.player_id), r.stat, r.collected_at_utc): float(r.line) for r in on_file.itertuples()}
     known = store.query("SELECT provider_event_id, event_id FROM events WHERE league=?", [league])
     with_id = known.dropna(subset=["provider_event_id"])
     by_native = dict(zip(with_id["provider_event_id"], with_id["event_id"]))
@@ -496,11 +506,18 @@ def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[s
         stat = (_cell(row, "stat") or "").lower()
         if stat not in stats:
             errors.append(f"line {line_no}: stat {row['stat']!r} is not one of {stats}")
-        value = _num(row, "line", line_no, errors)
-        if value is None and _cell(row, "line") is None:
+        text = _cell(row, "line")
+        value = None
+        if text is None:
             errors.append(f"line {line_no}: line is required")
-        elif value is not None and (value < 0.5 or (2.0 * value) != round(2.0 * value)):
-            errors.append(f"line {line_no}: line {row['line']!r} must be a whole or half number, one half or more")
+        elif not _PLAIN_NUMBER.match(text):
+            # float() would read "2_5" as 25 and "1e1" as 10: a slip must not become a threshold.
+            errors.append(f"line {line_no}: line {text!r} is not a plain number such as 24.5")
+        else:
+            value = float(text)
+            if value < 0.5 or (2.0 * value) != round(2.0 * value):
+                errors.append(f"line {line_no}: line {text!r} must be a whole or half number, one half or more")
+                value = None
         collected = _time(_cell(row, "collected_at"), tz, line_no, "collected_at", errors) or default_collected
         if clock_limit is not None and collected > clock_limit:
             errors.append(f"line {line_no}: collected_at {collected} is in the future; a threshold cannot have "
@@ -556,12 +573,18 @@ def import_prop_lines(store: Any, league: str, path: PathLike, *, tz: Optional[s
             errors.append(f"line {line_no}: {player!r} is outside the modelled rotation (too few games or minutes)")
             continue
         market_key = (event_id, str(match["player_id"].iloc[0]), stat, collected)
-        if value is not None and market_key in seen and seen[market_key][0] != value:
+        if value is None:
+            continue                                   # already reported; an invalid value is nobody's threshold
+        if market_key in seen and seen[market_key][0] != value:
             errors.append(f"line {line_no}: a different threshold ({seen[market_key][0]:g}) for the same player, "
                           f"statistic and collection time is on line {seen[market_key][1]}; only one can be in force")
             continue
-        if value is not None:
-            seen.setdefault(market_key, (value, line_no))
+        if market_key in stored and stored[market_key] != value:
+            errors.append(f"line {line_no}: a different threshold ({stored[market_key]:g}) is already on file for "
+                          "the same player, statistic and collection time; only one can be in force - give this "
+                          "reading its own collection time")
+            continue
+        seen.setdefault(market_key, (value, line_no))
         rows.append({"league": league, "event_id": event_id, "team_id": team_id,
                      "player_id": str(match["player_id"].iloc[0]), "player_name": str(match["player_name"].iloc[0]),
                      "stat": stat, "line": value, "book": _cell(row, "book"), "collected_at_utc": collected})

@@ -200,8 +200,9 @@ def _outcome_probabilities(model: FittedModel, row: pd.Series, line: Optional[fl
       ``L - 0.5`` - so both come from the calibrated model and the push is
       what remains.  "Over 23" and "over 23.5" are one event and get one
       probability.
-    * Any other model may carry a push probability in the row (``p_push``);
-      its class probabilities are conditional on a decision and are scaled.
+    * Any other model may state a push probability - in the row (``p_push``)
+      or through its own ``push_proba`` - and its class probabilities, which
+      are conditional on a decision, are scaled by what is left.
     """
     if count_model and line is not None and float(line) == math.floor(float(line)):
         upper, lower = row.copy(), row.copy()
@@ -217,8 +218,13 @@ def _outcome_probabilities(model: FittedModel, row: pd.Series, line: Optional[fl
     pred = model.predict(pd.DataFrame([row]))
     P, low, high = pred["P"][0].astype(float), pred["low"][0].astype(float), pred["high"][0].astype(float)
     push = 0.0
+    own_push = getattr(model.candidate, "push_proba", None)
     if not count_model and "p_push" in row.index and row["p_push"] == row["p_push"]:
         push = float(min(max(row["p_push"], 0.0), 0.5))
+    elif not count_model and callable(own_push) and line is not None:
+        # A score-distribution model knows the chance of landing exactly on the line.
+        value = float(own_push(pd.DataFrame([row]))[0])
+        push = min(max(value, 0.0), 0.5) if value == value else 0.0
     scale = 1.0 - push
     return P * scale, low * scale, high * scale, push
 
@@ -407,7 +413,8 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
         else:
             p_push = 0.0
         decided = 1.0 - p_push
-        prob_decided, low_decided, high_decided = prob / decided, prob_low / decided, prob_high / decided
+        prob_decided, low_decided = min(1.0, prob / decided), min(1.0, prob_low / decided)
+        high_decided = min(1.0, prob_high / decided)
         given = "" if p_push == 0.0 else (f" given a decision ({prob:.3f} with a {p_push:.3f} chance of a push)")
 
         # Built in for every league: ratings are only current if every earlier
@@ -445,6 +452,18 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
         if model_mismatch:
             pass_reasons.append(model_mismatch)
         pass_reasons += list(effect.blockers)
+        if frame.extra.get("requires_line"):
+            if not count_model:
+                # A base rate is a statement about the thresholds it was measured at, not this one.
+                pass_reasons.append(f"the model in use ({model.model_name}) does not read the threshold, so its "
+                                    "probability is not about this threshold")
+            read_at = row.get("line_collected_at_utc")
+            limit = frame.extra.get("line_max_age_hours")
+            if isinstance(read_at, str) and limit is not None:
+                age = (now_ts - pd.Timestamp(read_at)).total_seconds() / 3600.0
+                if age > float(limit):
+                    pass_reasons.append(f"the threshold on file was read {age:.0f} hours ago ({fmt_hst(read_at)}); "
+                                        f"one older than {float(limit):g} hours is not priced - read it again")
         interval_rule = (settings.selection.require_interval_above_even
                          and frame.outcome in (OutcomeType.BINARY, OutcomeType.OVER_UNDER))
         if prob_decided < min_prob:
@@ -562,6 +581,11 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
             **({"player": subject, "player_id": str(row["player_id"]), "stat": frame.extra.get("stat"),
                 "player_team": names.get(row["side_a_id"], row["side_a_id"]), "projection": projection}
                if subject else {}),
+            **({"threshold": {"line": line, "read_at_utc": row.get("line_collected_at_utc"),
+                              "read_at_hst": fmt_hst(row["line_collected_at_utc"])
+                              if isinstance(row.get("line_collected_at_utc"), str) else None,
+                              "book": row.get("line_book") if isinstance(row.get("line_book"), str) else None}}
+               if frame.extra.get("requires_line") else {}),
             "status_definition": REC_STATUS_DEFINITIONS[status],
             # When this prediction was made - not when any source was last read; each
             # check carries its own time.
@@ -570,7 +594,9 @@ def _predict_league(store: Any, league: str, market: str, *, settings: Settings,
             "date_only": bool(precision_date),
         }
         source_ids = [s for s in {ev["source_id"], *[c.get("source_id") for c in checks],
-                                  *avail.get("source_id", pd.Series(dtype=object)).tolist()} if s]
+                                  row.get("line_source_id") if "line_source_id" in row.index else None,
+                                  *avail.get("source_id", pd.Series(dtype=object)).tolist()}
+                      if isinstance(s, str) and s]
         src = store.sources(source_ids)
         sources = [{"source_id": r["source_id"], "provider": r["provider"], "url": r["url"],
                     "collected_at_utc": r["collected_at_utc"], "published_at_utc": r["published_at_utc"]}

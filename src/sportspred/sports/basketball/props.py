@@ -97,6 +97,7 @@ class PropConfig:
     new_absence_games: int = 2         # an absence is "new" while he has missed at most this many
     rate_prior_minutes: float = 3.0    # league-rate minutes added to every per-minute rate (keeps it positive)
     box_check_games: int = 2           # a box score missing from this many latest games holds a prediction back
+    max_line_age_hours: float = 24.0   # a threshold read longer ago than this is not priced
     horizon_days: float = 8.0          # upcoming games further ahead get no rows
     burn_in_seasons: int = 1
     starter_minutes: float = 28.0      # boundary of the two reported segments
@@ -610,10 +611,17 @@ def build_prop_frame(store: Any, league: str, stat: str, *, now: Any = None,
 
     # Upcoming rows are priced only at a threshold that has been imported for them.
     lines = store.prop_lines_as_of(league, now_ts, stat=stat) if hasattr(store, "prop_lines_as_of") else None
+    df["line_collected_at_utc"], df["line_book"], df["line_source_id"] = None, None, None
     if lines is not None and len(lines):
-        on_file = dict(zip(lines["event_id"] + "|" + lines["player_id"].astype(str), lines["line"].astype(float)))
+        key = lines["event_id"] + "|" + lines["player_id"].astype(str)
+        on_file = dict(zip(key, lines["line"].astype(float)))
         imported = df["event_id"].map(on_file)
-        df["line"] = np.where(df["y"].isna(), imported, df["line"])
+        ahead = df["y"].isna()
+        df["line"] = np.where(ahead, imported, df["line"])
+        # When and where the threshold was read travels with it into the record.
+        for col, src_col in (("line_collected_at_utc", "collected_at_utc"), ("line_book", "book"),
+                             ("line_source_id", "source_id")):
+            df[col] = df["event_id"].map(dict(zip(key, lines[src_col]))).where(ahead & imported.notna(), None)
     df = df.sort_values(["start_time_utc", "event_id"]).reset_index(drop=True)
 
     label = STAT_LABELS[stat]
@@ -642,6 +650,7 @@ def build_prop_frame(store: Any, league: str, stat: str, *, now: Any = None,
         df=df, feature_cols=feature_cols, feature_notes={k: v for k, v in FEATURE_NOTES.items() if k in feature_cols},
         limitations=limitations,
         extra={"stat": stat, "stat_label": label, "requires_line": True, "gates": [dict(LINES_GATE)],
+               "line_max_age_hours": cfg.max_line_age_hours,
                "confidence_caveat": "not rated: hit rates were measured against reference thresholds built from "
                                     "players' earlier games, not against market thresholds",
                "config": {"first_season": cfg.first_season, "min_prior_games": cfg.min_prior_games,

@@ -441,32 +441,60 @@ def test_threshold_sweep_does_not_need_a_count_model(world):
 # ---------------------------------------------------------------- import + run
 def test_import_rejects_what_it_cannot_place(world, tmp_path):
     _, up = _upcoming(world)
-    first = up.iloc[0]
+    first, second, third = up.iloc[0], up.iloc[1], up.iloc[2]
     team = world["names"][first["side_a_id"]]
     bench = world["players"][(first["side_a_id"], N_PLAYERS - 1)]["name"]          # 12 minutes: not modelled
-    bad = _lines_csv(tmp_path, [
-        {"team": team, "player": first["player_name"], "stat": "points", "line": 12.25},
-        {"team": team, "player": "Nobody Atall", "stat": "points", "line": 10.5},
-        {"team": team, "player": first["player_name"], "stat": "steals", "line": 1.5},
-        {"team": "Unknown Club", "player": first["player_name"], "stat": "points", "line": 10.5},
-        {"team": team, "player": bench, "stat": "points", "line": 4.5},
-        {"team": team, "player": first["player_name"], "stat": "points", "line": 0},
-        {"team": team, "player": first["player_name"], "stat": "points", "line": 14.5},
-        {"team": team, "player": first["player_name"], "stat": "points", "line": 17.5},
-    ])
+    rows = [
+        {"team": team, "player": first["player_name"], "stat": "points", "line": "12.25"},      # line 2
+        {"team": team, "player": "Nobody Atall", "stat": "points", "line": "10.5"},             # line 3
+        {"team": team, "player": first["player_name"], "stat": "steals", "line": "1.5"},        # line 4
+        {"team": "Unknown Club", "player": first["player_name"], "stat": "points", "line": "10.5"},
+        {"team": team, "player": bench, "stat": "points", "line": "4.5"},                       # line 6
+        _line_row(world, second, "0"),                                                          # line 7
+        _line_row(world, third, "14.5"),                                                        # line 8
+        _line_row(world, third, "17.5"),                                                        # line 9
+        _line_row(world, second, "2_5", stat="rebounds"),                                       # line 10
+        _line_row(world, second, "1e1", stat="assists"),                                        # line 11
+    ]
     with pytest.raises(CsvImportError) as err:
-        import_prop_lines(world["store"], LEAGUE, bad, collected_at=NOW)
-    text = str(err.value)
-    assert "whole or half number" in text and "has not played for" in text and "'steals' is not one of" in text
-    assert "unknown participant" in text and "outside the modelled rotation" in text
-    assert "line 7" in text and "one half or more" in text                              # a threshold of zero
-    assert "line 9" in text and "only one can be in force" in text                      # two thresholds, one market
-    assert world["store"].prop_lines_as_of(LEAGUE, FAR).empty                           # nothing was stored
+        import_prop_lines(world["store"], LEAGUE, _lines_csv(tmp_path, rows), collected_at=NOW)
+    problems = {int(e.split(":")[0].split()[1]): e for e in err.value.errors if e.startswith("line ")}
+    assert "whole or half number" in problems[2] and "has not played for" in problems[3]
+    assert "'steals' is not one of" in problems[4] and "outside the modelled rotation" in problems[6]
+    assert "one half or more" in problems[7]                                 # a threshold of zero, on its own line
+    assert "only one can be in force" in problems[9] and 8 not in problems   # two thresholds, one market
+    assert "not a plain number" in problems[10] and "not a plain number" in problems[11]
+    assert any("unknown participant" in e for e in err.value.errors)
+    assert world["store"].prop_lines_as_of(LEAGUE, FAR).empty                # nothing was stored
     for bad_line in (3.3, 0.0):
         with pytest.raises(StoreError):
             world["store"].add_prop_lines([{"league": LEAGUE, "event_id": first["game_id"], "player_id": "1",
                                             "player_name": "x", "stat": "points", "line": bad_line,
                                             "collected_at_utc": NOW}])
+
+
+def test_a_second_file_cannot_bring_another_threshold_for_the_same_instant(world, tmp_path):
+    store, _ = _clone(world, tmp_path)
+    _, up = _upcoming(world, store=store)
+    row = up.iloc[0]
+    import_prop_lines(store, LEAGUE, _lines_csv(tmp_path, [_line_row(world, row, 9.5, book="A")]), collected_at=NOW)
+    other = _lines_csv(tmp_path, [_line_row(world, row, 30.5, book="B")], "other.csv")
+    with pytest.raises(CsvImportError, match="already on file"):
+        import_prop_lines(store, LEAGUE, other, collected_at=NOW)
+    assert list(store.prop_lines_as_of(LEAGUE, FAR)["line"]) == [9.5]
+    # A later reading is a new reading.
+    assert import_prop_lines(store, LEAGUE, other, collected_at="2027-11-20T00:05:00Z")["thresholds"] == 1
+    assert list(store.prop_lines_as_of(LEAGUE, FAR)["line"]) == [30.5]
+
+
+def test_the_collection_time_follows_the_same_zone_rule_as_the_file(world, tmp_path):
+    store, _ = _clone(world, tmp_path)
+    _, up = _upcoming(world, store=store)
+    path = _lines_csv(tmp_path, [_line_row(world, up.iloc[0], 9.5)])
+    with pytest.raises(CsvImportError, match="no time zone"):
+        import_prop_lines(store, LEAGUE, path, collected_at="2027-11-19 14:00:00")
+    import_prop_lines(store, LEAGUE, path, collected_at="2027-11-19 14:00:00", tz="Pacific/Honolulu")
+    assert list(store.prop_lines_as_of(LEAGUE, FAR)["collected_at_utc"]) == ["2027-11-20T00:00:00Z"]
 
 
 def test_a_threshold_read_after_tip_off_is_not_moved_to_the_next_game(world, tmp_path):
@@ -787,7 +815,8 @@ def test_a_listed_team_mate_makes_a_complete_selection_conditional_in_plain_word
     frame, up = _upcoming(world, store=store)
     row = up[up["start_time_utc"] == up["start_time_utc"].min()].iloc[0]
     team, start = row["side_a_id"], row["start_time_utc"]
-    import_prop_lines(store, LEAGUE, _lines_csv(tmp_path, [_line_row(world, row, 0.5)]), collected_at=NOW)
+    import_prop_lines(store, LEAGUE, _lines_csv(tmp_path, [_line_row(world, row, 0.5)]),
+                      collected_at=(start - pd.Timedelta(hours=3)).isoformat())
     for side in (row["side_a_id"], row["side_b_id"]):
         store.log_check(LEAGUE, "injury_report", "reported", team_id=side,
                         checked_at=(start - pd.Timedelta(hours=2)).isoformat())
@@ -944,3 +973,131 @@ def test_a_schedule_change_is_not_served_from_the_cache(world, tmp_path):
                                "home_id", "away_id", "neutral_site"]], sport="basketball")
     again = build_prop_frame(store, LEAGUE, "points", now=NOW).upcoming
     assert again.loc[again["game_id"] == game["game_id"], "start_time_utc"].iloc[0] == starts[1] + pd.Timedelta(hours=5)
+
+
+# ------------------------------------------------- what a record says about its threshold
+def test_a_prediction_records_when_and_where_its_threshold_was_read_and_refuses_an_old_one(world, tmp_path):
+    store, settings = _clone(world, tmp_path)
+    _, up = _upcoming(world, store=store)
+    row = up[up["start_time_utc"] == up["start_time_utc"].min()].iloc[0]
+    import_prop_lines(store, LEAGUE, _lines_csv(tmp_path, [_line_row(world, row, 0.5, book="Example Book")]),
+                      collected_at=NOW)
+    fresh = predict_league(store, LEAGUE, "player_prop:points", settings=settings, now="2027-11-20T05:00:00Z",
+                           write=False)[0]
+    assert fresh["display"]["threshold"] == {"line": 0.5, "read_at_utc": "2027-11-20T00:00:00Z",
+                                             "read_at_hst": fresh["display"]["threshold"]["read_at_hst"],
+                                             "book": "Example Book"}
+    assert any(s["provider"] == "csv" for s in fresh["sources"]) and fresh["rec_status"] == "PROVISIONAL"
+    # More than a day later the same reading is no longer priced as a selection.
+    old = predict_league(store, LEAGUE, "player_prop:points", settings=settings, now="2027-11-21T02:30:00Z",
+                         write=False)[0]
+    assert old["rec_status"] == "PASS" and any("read 26 hours ago" in r or "hours ago" in r for r in old["reasons"])
+
+
+def test_a_model_that_does_not_read_the_threshold_cannot_select_at_one(world, tmp_path, monkeypatch):
+    """If validation ever selected the base rate, its number would be about the reference
+    thresholds it was measured at - the same for every imported threshold."""
+    from sportspred.models.fitted import train_production
+    from sportspred.predict import engine
+
+    store, settings = _clone(world, tmp_path)
+    frame, up = _upcoming(world, store=store)
+    row = up[up["start_time_utc"] == up["start_time_utc"].min()].iloc[0]
+    plan = world["plugin"].split_plan(LEAGUE, "player_prop:points", frame)
+    baseline = train_production(frame, PriorCandidate("base_rate"), plan, n_replicas=2)
+    monkeypatch.setattr(engine, "load_promoted", lambda *a, **k: baseline)
+    import_prop_lines(store, LEAGUE, _lines_csv(tmp_path, [_line_row(world, row, 60.5)]), collected_at=NOW)
+    pred = predict_league(store, LEAGUE, "player_prop:points", settings=settings, now=NOW, write=False)[0]
+    assert pred["rec_status"] == "PASS" and any("does not read the threshold" in r for r in pred["reasons"])
+
+
+def test_a_score_model_that_knows_its_push_has_it_recorded():
+    """Football spread and total models compute the chance of landing on a whole-number
+    line; the engine now asks for it instead of recording a two-outcome distribution."""
+    class Candidate:
+        def push_proba(self, rows):
+            return np.array([0.04])
+
+    class Model:
+        candidate = Candidate()
+
+        def predict(self, rows):
+            P = np.array([[0.45, 0.55]])
+            return {"P": P, "low": P - 0.02, "high": P + 0.02}
+
+    row = pd.Series({"line": -3.0})
+    P, low, high, push = _outcome_probabilities(Model(), row, -3.0, False)
+    assert push == pytest.approx(0.04) and P.sum() + push == pytest.approx(1.0)
+    assert P[1] == pytest.approx(0.55 * 0.96) and low[1] < P[1] < high[1]
+
+
+# ------------------------------------------------------------------ grading edges
+def test_half_a_box_score_grades_nothing_and_minutes_decide_who_played(world, tmp_path):
+    store, settings = _clone(world, tmp_path)
+    _, up = _upcoming(world, store=store)
+    slate = up[up["start_time_utc"] == up["start_time_utc"].min()]
+    pick = slate.iloc[0]
+    import_prop_lines(store, LEAGUE, _lines_csv(tmp_path, [_line_row(world, pick, 0.5)]), collected_at=NOW)
+    made = predict_league(store, LEAGUE, "player_prop:points", settings=settings, now=NOW)[0]
+    _play(store, world, pick["game_id"], {pick["player_id"]: (30.0, 12.0)})
+    full = store.read_table(LEAGUE, "player_box")
+    game = full["event_id"] == pick["game_id"]
+
+    def graded(table):
+        store.write_table(LEAGUE, "player_box", table, mode="replace")
+        grade_predictions(store, now="2027-12-30T00:00:00Z")
+        grades = store.grades()
+        mine = grades[grades["prediction_id"] == made["prediction_id"]]
+        return None if mine.empty else mine.iloc[-1]["outcome"]
+
+    # Only the opponents' rows, then only his own team's: not a box score yet.
+    assert graded(full[~(game & (full["team_id"] == pick["side_a_id"]))]) is None
+    assert graded(full[~(game & (full["team_id"] == pick["side_b_id"]))]) is None
+    # Listed twice, the empty row first: the row with minutes is the game he played.
+    his = game & (full["player_id"] == pick["player_id"])
+    empty = full[his].assign(minutes=np.nan, pts=np.nan)
+    doubled = pd.concat([full[~his], empty, full[his]], ignore_index=True)
+    assert graded(doubled) == "correct"
+    # Statistics without minutes: it cannot be said that he did not play.
+    odd = full.copy()
+    odd.loc[his, "minutes"] = np.nan
+    assert graded(odd) == "no_result"
+
+
+def test_the_box_score_cache_notices_a_rewrite_with_the_same_timestamp(world, tmp_path):
+    import os
+
+    from sportspred.ledger.grading import _box_score
+
+    store, _ = _clone(world, tmp_path)
+    game_id = store.read_table(LEAGUE, "player_box")["event_id"].iloc[0]
+    before = _box_score(store, LEAGUE, game_id)
+    path = store._table_path(LEAGUE, "player_box")
+    stamp = path.stat()
+    table = store.read_table(LEAGUE, "player_box")
+    table.loc[table["event_id"] == game_id, "pts"] = 99.0
+    store.write_table(LEAGUE, "player_box", table, mode="replace")
+    os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))             # a restore that keeps the old time
+    after = _box_score(store, LEAGUE, game_id)
+    assert (after["pts"].dropna() == 99.0).all() and not (before["pts"].dropna() == 99.0).all()
+
+
+def test_the_projection_table_says_when_its_inputs_are_a_game_behind(world, tmp_path, monkeypatch):
+    from sportspred.cli.cmd_props import projection_table
+    from sportspred.models.fitted import train_production
+    from sportspred.predict import PredictionError, engine
+
+    store, settings = _clone(world, tmp_path)
+    frame, up = _upcoming(world, store=store)
+    from sportspred.core.timeutil import fmt_hst
+
+    table = projection_table(store, LEAGUE, "points", settings=settings, now=NOW)
+    first = fmt_hst(up["start_time_utc"].min())                      # the next slate: nothing in between
+    assert (table["start (HST)"] == first).any()
+    assert (table.loc[table["start (HST)"] == first, "inputs behind"] == "").all()
+    assert table.loc[table["start (HST)"] != first, "inputs behind"].str.contains("earlier game not final").all()
+    plan = world["plugin"].split_plan(LEAGUE, "player_prop:points", frame)
+    baseline = train_production(frame, PriorCandidate("base_rate"), plan, n_replicas=2)
+    monkeypatch.setattr(engine, "load_promoted", lambda *a, **k: baseline)
+    with pytest.raises(PredictionError, match="no projection"):
+        projection_table(store, LEAGUE, "points", settings=settings, now=NOW)

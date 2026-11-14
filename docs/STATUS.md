@@ -55,8 +55,8 @@ covered by the test suite but has not yet happened with real events.
   availability, the ledger record, withdrawal, grading from the box score - is
   covered by tests on a synthetic league, and was dry-run on a scratch copy of
   the real store with each player's reference threshold standing in for a
-  line (16 players in 8 games on 13 and 14 November; nothing was written to
-  the real store).
+  line (16 players in 8 games on 13 and 14 November, repeated on the final
+  code; nothing was written to the real store).
 
 ## Written but not run against the live service
 
@@ -280,17 +280,41 @@ library to 1e-14 on 20,000 thresholds.
   serve a build from before a report version or a schedule change; the frame's
   columns depended on when it was built; a played row without statistics
   counted as an "under"; opening night had no rows; a selection about a
-  player who had left the frame stayed current.
+  player who had left the frame stayed current;
+- a threshold never went out of date and the record did not say when or where
+  it was read (it now does, and one read more than 24 hours earlier is not
+  priced); a second file could bring a different threshold for the same
+  instant; "2_5" was read as 25; a base rate, had validation ever selected
+  it, would have "priced" any threshold with one number (now PASS);
+- grading read only the first of a player's rows and called statistics
+  without minutes "did not play"; its box-score cache trusted the file time
+  alone; the projection table did not say when its inputs were a game old.
+
+One older defect surfaced on the way and was fixed: football spread and total
+models compute the chance of landing exactly on a whole-number line, but the
+engine never asked for it, so such a prediction recorded two outcomes and no
+push. No such model is in use (the base rate is selected for both NFL
+markets), so no recorded prediction is affected.
 
 The ten validations were run again after the first round of fixes (the first
 runs stay in the run history). The second round changed no validated row:
 the completed rows of all ten frames hash identically before and after it.
 
-The feature builder and the availability handling were attacked again after
-the first round of fixes (that is where the second round came from). The
-prediction engine's and the import and grading code's fixes have each been
-reviewed once, before the fixes; a second, independent attempt to break them
-was still running when this was written.
+Every area was attacked again after the first round of fixes: the feature
+builder and the availability handling (the second round came from there), then
+the prediction engine and the import and grading code (the third). *Held
+under attack in the last pass:* forty-two thresholds on one slate - whole and
+half numbers six either side of the reference - gave probabilities that sum
+to one, a push exactly at whole numbers, and PASS exactly where the rules say;
+unchanged predictions were not rewritten on later runs; a blocker always
+gives PASS, an incomplete check PROVISIONAL before any condition is looked at;
+withdrawal touched only the model market being predicted and wrote nothing in
+a dry run; the ledger's chain verified after every step; monitoring grouped
+by model market and compared hits with the probability given a decision; the
+import guards for tip-off, zero, future times and name collisions; half a
+box score graded nothing; a corrected box score re-graded by a linked grade.
+The fixes of the third round have tests but have not themselves been
+attacked by a further reviewer.
 
 *Found and not fixed:* the report-based history matches names exactly, and
 thirteen player-seasons were found in which the official report and the box
@@ -310,9 +334,9 @@ be proved from the record; the run history shows what every run produced.
 
 ## Tests run
 
-`pytest` on 2026-11-14: **4,473 passed, 13 expected failures, 2 skipped** (the
+`pytest` on 2026-11-14: **4,481 passed, 13 expected failures, 2 skipped** (the
 expected failures are in the earlier `evmodel` suite; the two skipped are the
-opt-in real-data tests below). 234 of those are the `tests/sportspred` suite:
+opt-in real-data tests below). 242 of those are the `tests/sportspred` suite:
 time zones and HST display, stable IDs and de-duplication, ledger
 immutability, tamper detection, the clock rule and concurrent writers,
 synthetic isolation, point-in-time availability and report supersession,

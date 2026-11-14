@@ -104,20 +104,24 @@ def _total(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> Tuple[
     return ("correct" if (pred["selection"] == "over") == (total > line) else "incorrect"), detail
 
 
-_BOX_CACHE: Dict[Tuple[str, str], Tuple[int, Any]] = {}
+_BOX_CACHE: Dict[Tuple[str, str], Tuple[Any, Any]] = {}
 
 
 def _box_score(store: Any, league: str, event_id: str) -> pd.DataFrame:
     """Box-score rows of one game.  The league's table is read once per file
     version and grouped by game, not once per graded prediction."""
     path = store._table_path(league, "player_box")
-    stamp = path.stat().st_mtime_ns
-    cached = _BOX_CACHE.get((str(store.root), league))
+    info = path.stat()
+    # A rewrite replaces the file, so the inode changes even if the time and size do not.
+    stamp = (info.st_mtime_ns, info.st_size, info.st_ino)
+    key = (str(store.root), league)
+    cached = _BOX_CACHE.get(key)
     if cached is None or cached[0] != stamp:
         box = store.read_table(league, "player_box")
         cached = (stamp, {k: g for k, g in box.groupby("event_id", sort=False)})
-        _BOX_CACHE.clear()
-        _BOX_CACHE[(str(store.root), league)] = cached
+        while len(_BOX_CACHE) >= 4 and key not in _BOX_CACHE:        # a few leagues, never unbounded
+            _BOX_CACHE.pop(next(iter(_BOX_CACHE)))
+        _BOX_CACHE[key] = cached
     game = cached[1].get(event_id)
     return game if game is not None else pd.DataFrame(columns=["team_id", "player_id", "minutes"])
 
@@ -138,9 +142,14 @@ def _player_prop(store: Any, pred: Mapping[str, Any], ev: Mapping[str, Any]) -> 
     if appeared["team_id"].nunique() < 2:
         return "no_result", {"note": "the box score of this game is not on file yet"}
     row = game[game["player_id"].astype(str) == str(player_id)]
-    minutes = row.iloc[0]["minutes"] if len(row) else None
-    if row.empty or minutes is None or minutes != minutes or float(minutes) <= 0:
+    # If he is listed more than once, the row with minutes is the game he played.
+    with_minutes = row[pd.to_numeric(row["minutes"], errors="coerce") > 0]
+    if with_minutes.empty:
+        has_stats = len(row) and row[list(cols)].notna().any().any()
+        if has_stats:
+            return "no_result", {"note": "statistics on file without minutes; cannot tell whether he played"}
         return "void", {"note": "player did not play"}
+    row = with_minutes.iloc[[-1]]
     stats = [row.iloc[0][c] for c in cols]
     if any(v is None or v != v for v in stats) or pred.get("line") is None or pred["line"] != pred["line"]:
         return "no_result", {"note": f"statistic {stat!r} or the line is missing; not graded"}

@@ -117,6 +117,18 @@ distribution, so the answer is a probability of finishing over, under or
 exactly on a threshold - not a projected average.
 
 <!-- results:start props -->
+| League | Statistic | Status | Selected model | Final-test player-games | Accuracy | Log loss | Base rate | Season average + Poisson | Calibration error | Worst calibration error at a shifted threshold |
+|---|---|---|---|---|---|---|---|---|---|---|
+| NBA | assists | experimental | report_gbm | 46,004 | 64.9% | 0.627 | 0.668 | 0.652 | 0.009 | 0.013 |
+| NBA | points | experimental | report_gbm | 46,004 | 60.9% | 0.654 | 0.690 | 0.678 | 0.006 | 0.016 |
+| NBA | pra | experimental | report_gbm | 46,004 | 61.9% | 0.647 | 0.690 | 0.675 | 0.008 | 0.022 |
+| NBA | rebounds | experimental | report_gbm | 46,004 | 63.0% | 0.641 | 0.677 | 0.662 | 0.007 | 0.013 |
+| NBA | threes | experimental | report_gbm | 46,004 | 68.8% | 0.573 | 0.637 | 0.596 | 0.006 | 0.014 |
+| WNBA | assists | experimental | two_stage_glm | 8,800 | 64.4% | 0.633 | 0.666 | 0.651 | 0.007 | 0.022 |
+| WNBA | points | experimental | two_stage_glm | 8,800 | 59.9% | 0.664 | 0.690 | 0.679 | 0.009 | 0.026 |
+| WNBA | pra | experimental | two_stage_gbm | 8,800 | 60.2% | 0.658 | 0.692 | 0.674 | 0.010 | 0.022 |
+| WNBA | rebounds | experimental | two_stage_glm | 8,800 | 63.1% | 0.640 | 0.674 | 0.660 | 0.005 | 0.014 |
+| WNBA | threes | experimental | two_stage_gbm | 8,800 | 71.0% | 0.560 | 0.625 | 0.584 | 0.020 | 0.018 |
 <!-- results:end -->
 
 *(Generated: `sportspred report summary --into README.md`.)*

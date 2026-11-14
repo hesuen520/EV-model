@@ -11,9 +11,19 @@ A league that was validated again (after a data or defect fix) has had its final
 | Sport | League | Market | Status | Selected model | Final-test period | n | Accuracy (95% interval) | Log loss (95% interval) | Base-rate log loss | Calibration error | Market benchmark log loss |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | baseball | `mlb` | winner | **validated** | core_logit | 2024-03-20 to 2025-11-01 | 4949 | 56.5% (55.3-57.8) | 0.6798 (0.6761-0.6839) | 0.6912 | 0.0073 |  |
+| basketball | `nba` | player_prop:assists | **experimental** | report_gbm | 2024-10-22 to 2026-11-12 | 46004 | 64.9% (64.5-65.4) | 0.6268 (0.6234-0.6298) | 0.6679 | 0.0090 |  |
+| basketball | `nba` | player_prop:points | **experimental** | report_gbm | 2024-10-22 to 2026-11-12 | 46004 | 60.9% (60.4-61.4) | 0.6538 (0.6508-0.6564) | 0.6897 | 0.0059 |  |
+| basketball | `nba` | player_prop:pra | **experimental** | report_gbm | 2024-10-22 to 2026-11-12 | 46004 | 61.9% (61.5-62.4) | 0.6475 (0.6448-0.6503) | 0.6903 | 0.0076 |  |
+| basketball | `nba` | player_prop:rebounds | **experimental** | report_gbm | 2024-10-22 to 2026-11-12 | 46004 | 63.0% (62.6-63.4) | 0.6409 (0.6381-0.6438) | 0.6769 | 0.0068 |  |
+| basketball | `nba` | player_prop:threes | **experimental** | report_gbm | 2024-10-22 to 2026-11-12 | 46004 | 68.8% (68.4-69.3) | 0.5732 (0.5698-0.5767) | 0.6366 | 0.0059 |  |
 | basketball | `nba` | winner | **validated** | report_logit | 2024-10-22 to 2026-11-12 | 2813 | 67.8% (66.0-69.6) | 0.5959 (0.5795-0.6101) | 0.6920 | 0.0083 |  |
 | basketball | `ncaam` | winner | **validated** | full_gbm | 2024-11-04 to 2026-11-12 | 13251 | 75.0% (73.7-76.3) | 0.4876 (0.4685-0.5061) | 0.6267 | 0.0052 |  |
 | basketball | `ncaaw` | winner | **validated** | full_gbm | 2024-11-04 to 2026-11-12 | 12313 | 78.3% (77.2-79.3) | 0.4386 (0.4247-0.4525) | 0.6556 | 0.0101 |  |
+| basketball | `wnba` | player_prop:assists | **experimental** | two_stage_glm | 2025-05-16 to 2026-10-29 | 8800 | 64.4% (63.6-65.2) | 0.6325 (0.6261-0.6389) | 0.6665 | 0.0065 |  |
+| basketball | `wnba` | player_prop:points | **experimental** | two_stage_glm | 2025-05-16 to 2026-10-29 | 8800 | 59.9% (58.9-60.9) | 0.6636 (0.6582-0.6692) | 0.6903 | 0.0091 |  |
+| basketball | `wnba` | player_prop:pra | **experimental** | two_stage_gbm | 2025-05-16 to 2026-10-29 | 8800 | 60.2% (59.3-61.1) | 0.6585 (0.6520-0.6644) | 0.6918 | 0.0101 |  |
+| basketball | `wnba` | player_prop:rebounds | **experimental** | two_stage_glm | 2025-05-16 to 2026-10-29 | 8800 | 63.1% (62.1-64.0) | 0.6404 (0.6343-0.6469) | 0.6744 | 0.0050 |  |
+| basketball | `wnba` | player_prop:threes | **experimental** | two_stage_gbm | 2025-05-16 to 2026-10-29 | 8800 | 71.0% (70.0-71.8) | 0.5599 (0.5512-0.5702) | 0.6251 | 0.0201 |  |
 | basketball | `wnba` | winner | **experimental** | full_logit | 2025-05-16 to 2026-10-29 | 664 | 65.4% (61.9-68.7) | 0.6261 (0.5965-0.6609) | 0.6880 | 0.0310 |  |
 | football | `ncaaf` | winner | **validated** | full_logit | 2024-08-24 to 2026-11-08 | 2168 | 70.8% (68.7-72.7) | 0.5464 (0.5268-0.5683) | 0.6745 | 0.0135 |  |
 | football | `nfl` | spread | **experimental** | base_rate | 2024-09-06 to 2026-11-13 | 696 | 50.3% (46.5-53.6) | 0.6935 (0.6913-0.6959) | nan | 0.0130 | 0.6936 (model 0.6935 on the same 696 events) |
@@ -95,6 +105,472 @@ Limitations:
 - No weather, announced lineups, injuries or betting odds exist in the source; there is no market benchmark.
 - Travel distance is city-level and missing for a club's first game of a season.
 - Results on file end on 2025-11-01; ratings know nothing later.
+
+## nba - player_prop:assists
+
+397808 completed player-games from 2007-11-15 to 2026-11-12; 8 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `report_gbm` (lowest pooled development log loss (0.62962)).
+
+![calibration](charts/nba_player_prop_assists_calibration.svg)
+![by season](charts/nba_player_prop_assists_by_season.svg)
+
+Season by season on development folds the selected model beat `season_average_poisson` in 8 of 8 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 168646 | 61.7% | 0.6655 | 0.2363 |
+| season_average_poisson | 168646 | 62.8% | 0.6489 | 0.2279 |
+| recent_form_nb | 168646 | 63.7% | 0.6390 | 0.2240 |
+| two_stage_glm | 168646 | 64.2% | 0.6320 | 0.2209 |
+| two_stage_gbm | 168646 | 64.4% | 0.6309 | 0.2204 |
+| report_glm | 168646 | 64.4% | 0.6307 | 0.2203 |
+| report_gbm (selected) | 168646 | 64.5% | 0.6296 | 0.2198 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| report_gbm (selected) | 46004 | 64.9% | 0.6268 | 0.2186 |
+| baseline base_rate | 46004 | 61.2% | 0.6679 | 0.2375 |
+| baseline season_average_poisson | 46004 | 62.6% | 0.6520 | 0.2287 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 46004 | 100.0% | 64.9% (64.5-65.3) | 64.0% |
+| 0.55 | 36686 | 79.7% | 67.8% (67.4-68.3) | 66.9% |
+| 0.60 | 27624 | 60.0% | 71.2% (70.7-71.7) | 70.0% |
+| 0.65 | 19320 | 42.0% | 74.8% (74.2-75.4) | 73.3% |
+| 0.70 | 12241 | 26.6% | 78.0% (77.3-78.7) | 76.6% |
+| 0.75 | 6594 | 14.3% | 81.3% (80.4-82.3) | 80.3% |
+| 0.80 | 2786 | 6.1% | 85.3% (84.0-86.6) | 84.4% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| expected 15 to 28 minutes | 58.5% | 26910 | 66.0% | 0.6171 | 65.1% |
+| expected 28 minutes or more | 41.5% | 19094 | 63.3% | 0.6404 | 62.5% |
+
+Thresholds away from the reference. The selected model scored at thresholds shifted from the reference threshold. A shift of half a point gives a whole-number threshold, where an exact tie is a push: over and under are then read from the calibrated probabilities at the half points either side, the tie is what remains, ties are left out of the over/under score, and the predicted and observed tie rates are compared.
+
+Last development fold (seasons 2024):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -2 | 13641 | 75.6% | 75.4% | 0.0086 | 0.5177 | 0.0% | 0.0% |
+| reference -1 | 20083 | 60.2% | 60.5% | 0.0033 | 0.6332 | 0.0% | 0.0% |
+| reference -0.5 | 15607 | 48.8% | 48.8% | 0.0019 | 0.6420 | 22.3% | 22.8% |
+| reference | 21140 | 39.0% | 38.6% | 0.0050 | 0.6330 | 0.0% | 0.0% |
+| reference +0.5 | 17610 | 26.7% | 26.1% | 0.0098 | 0.5360 | 16.7% | 17.1% |
+| reference +1 | 21140 | 22.3% | 21.6% | 0.0085 | 0.4985 | 0.0% | 0.0% |
+| reference +2 | 21140 | 11.9% | 11.5% | 0.0076 | 0.3378 | 0.0% | 0.0% |
+
+Final test (seasons 2025, 2026, 2027):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -2 | 30555 | 75.0% | 76.4% | 0.0126 | 0.5212 | 0.0% | 0.0% |
+| reference -1 | 43859 | 59.8% | 61.3% | 0.0095 | 0.6286 | 0.0% | 0.0% |
+| reference -0.5 | 34263 | 48.5% | 50.1% | 0.0073 | 0.6323 | 21.9% | 22.5% |
+| reference | 46004 | 38.8% | 39.7% | 0.0090 | 0.6268 | 0.0% | 0.0% |
+| reference +0.5 | 38213 | 26.3% | 27.2% | 0.0091 | 0.5273 | 16.9% | 17.1% |
+| reference +1 | 46004 | 21.8% | 22.6% | 0.0085 | 0.4907 | 0.0% | 0.0% |
+| reference +2 | 46004 | 11.5% | 12.2% | 0.0070 | 0.3282 | 0.0% | 0.0% |
+
+
+Same-slate residual correlation (used by the combo builder): +0.0001 (95% interval -0.0004 to +0.0006, 14267602 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 46004 final-test events (minimum 300)
+- passed - development folds: 8 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.04109 (95% interval 0.03855 to 0.04386)
+- passed - calibration: final-test expected calibration error 0.0090 (maximum 0.03)
+- NOT met - market thresholds: scored against reference thresholds built from each player's earlier games; no history of bookmakers' thresholds is on file, so performance against a real market line is untested
+
+Limitations:
+
+- No history of bookmakers' thresholds is on file. Completed games are scored against a reference threshold: the half point just above the median assists of the player's previous 15 appearances. Skill and calibration against it show the distribution is informative; they do not show an edge against a market threshold, which reflects information this model lacks.
+- The model is conditional on the player appearing (a statistic market is void when he does not play). A player who leaves a game early still counts, as he does when the market settles.
+- Only rotation players are modelled: at least 8 earlier appearances and 15 recent minutes per appearance.
+- Announced minutes limits, role changes and confirmed starting line-ups are not in the data.
+- A new prediction needs a threshold imported for that player and game; without one there is no selection.
+- Team-mates' absences come in two versions: who missed the team's previous game (all seasons) and the official injury report as it stood an hour before the day's first game (from 2018-12-17). Development folds decide which one the model uses.
+
+## nba - player_prop:points
+
+397808 completed player-games from 2007-11-15 to 2026-11-12; 8 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `report_gbm` (lowest pooled development log loss (0.66077)).
+
+![calibration](charts/nba_player_prop_points_calibration.svg)
+![by season](charts/nba_player_prop_points_by_season.svg)
+
+Season by season on development folds the selected model beat `season_average_poisson` in 8 of 8 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 168646 | 54.2% | 0.6897 | 0.2483 |
+| season_average_poisson | 168646 | 57.5% | 0.6777 | 0.2418 |
+| recent_form_nb | 168646 | 58.5% | 0.6707 | 0.2390 |
+| two_stage_glm | 168646 | 59.6% | 0.6636 | 0.2357 |
+| two_stage_gbm | 168646 | 59.9% | 0.6622 | 0.2350 |
+| report_glm | 168646 | 59.9% | 0.6622 | 0.2350 |
+| report_gbm (selected) | 168646 | 60.1% | 0.6608 | 0.2344 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| report_gbm (selected) | 46004 | 60.9% | 0.6538 | 0.2311 |
+| baseline base_rate | 46004 | 54.2% | 0.6897 | 0.2483 |
+| baseline season_average_poisson | 46004 | 57.7% | 0.6781 | 0.2418 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 46004 | 100.0% | 60.9% (60.5-61.3) | 60.8% |
+| 0.55 | 32892 | 71.5% | 64.5% (64.0-65.0) | 64.1% |
+| 0.60 | 21387 | 46.5% | 68.4% (67.8-69.1) | 67.8% |
+| 0.65 | 12318 | 26.8% | 72.1% (71.3-72.9) | 71.8% |
+| 0.70 | 6370 | 13.8% | 75.9% (74.8-76.9) | 76.0% |
+| 0.75 | 2861 | 6.2% | 80.3% (78.8-81.7) | 80.5% |
+| 0.80 | 1187 | 2.6% | 84.2% (82.1-86.2) | 85.3% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| expected 15 to 28 minutes | 58.5% | 26910 | 62.2% | 0.6457 | 61.6% |
+| expected 28 minutes or more | 41.5% | 19094 | 59.1% | 0.6651 | 59.7% |
+
+Thresholds away from the reference. The selected model scored at thresholds shifted from the reference threshold. A shift of half a point gives a whole-number threshold, where an exact tie is a push: over and under are then read from the calibrated probabilities at the half points either side, the tie is what remains, ties are left out of the over/under score, and the predicted and observed tie rates are compared.
+
+Last development fold (seasons 2024):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -6 | 18265 | 79.9% | 81.1% | 0.0161 | 0.4744 | 0.0% | 0.0% |
+| reference -3 | 20850 | 65.2% | 65.1% | 0.0095 | 0.6172 | 0.0% | 0.0% |
+| reference -0.5 | 19686 | 48.7% | 48.8% | 0.0020 | 0.6575 | 6.8% | 6.3% |
+| reference | 21140 | 45.4% | 45.8% | 0.0050 | 0.6588 | 0.0% | 0.0% |
+| reference +0.5 | 19892 | 42.0% | 42.4% | 0.0074 | 0.6468 | 5.9% | 5.9% |
+| reference +3 | 21140 | 28.7% | 29.6% | 0.0121 | 0.5720 | 0.0% | 0.0% |
+| reference +6 | 21140 | 16.1% | 18.1% | 0.0200 | 0.4209 | 0.0% | 0.0% |
+
+Final test (seasons 2025, 2026, 2027):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -6 | 40021 | 79.6% | 80.4% | 0.0144 | 0.4733 | 0.0% | 0.0% |
+| reference -3 | 45412 | 64.8% | 64.4% | 0.0061 | 0.6107 | 0.0% | 0.0% |
+| reference -0.5 | 42974 | 49.0% | 48.4% | 0.0043 | 0.6503 | 6.5% | 6.2% |
+| reference | 46004 | 45.8% | 45.4% | 0.0059 | 0.6538 | 0.0% | 0.0% |
+| reference +0.5 | 43271 | 42.4% | 42.1% | 0.0035 | 0.6427 | 5.9% | 5.8% |
+| reference +3 | 46004 | 29.1% | 29.6% | 0.0068 | 0.5736 | 0.0% | 0.0% |
+| reference +6 | 46004 | 16.7% | 18.2% | 0.0158 | 0.4280 | 0.0% | 0.0% |
+
+
+Same-slate residual correlation (used by the combo builder): -0.0003 (95% interval -0.0008 to +0.0002, 14267602 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 46004 final-test events (minimum 300)
+- passed - development folds: 8 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.03592 (95% interval 0.03321 to 0.03877)
+- passed - calibration: final-test expected calibration error 0.0059 (maximum 0.03)
+- NOT met - market thresholds: scored against reference thresholds built from each player's earlier games; no history of bookmakers' thresholds is on file, so performance against a real market line is untested
+
+Limitations:
+
+- No history of bookmakers' thresholds is on file. Completed games are scored against a reference threshold: the half point just above the median points of the player's previous 15 appearances. Skill and calibration against it show the distribution is informative; they do not show an edge against a market threshold, which reflects information this model lacks.
+- The model is conditional on the player appearing (a statistic market is void when he does not play). A player who leaves a game early still counts, as he does when the market settles.
+- Only rotation players are modelled: at least 8 earlier appearances and 15 recent minutes per appearance.
+- Announced minutes limits, role changes and confirmed starting line-ups are not in the data.
+- A new prediction needs a threshold imported for that player and game; without one there is no selection.
+- Team-mates' absences come in two versions: who missed the team's previous game (all seasons) and the official injury report as it stood an hour before the day's first game (from 2018-12-17). Development folds decide which one the model uses.
+
+## nba - player_prop:pra
+
+397808 completed player-games from 2007-11-15 to 2026-11-12; 8 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `report_gbm` (lowest pooled development log loss (0.65777)).
+
+![calibration](charts/nba_player_prop_pra_calibration.svg)
+![by season](charts/nba_player_prop_pra_by_season.svg)
+
+Season by season on development folds the selected model beat `season_average_poisson` in 8 of 8 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 168646 | 53.5% | 0.6908 | 0.2488 |
+| season_average_poisson | 168646 | 57.1% | 0.6778 | 0.2422 |
+| recent_form_nb | 168646 | 58.5% | 0.6702 | 0.2388 |
+| two_stage_glm | 168646 | 60.0% | 0.6614 | 0.2347 |
+| two_stage_gbm | 168646 | 60.1% | 0.6596 | 0.2339 |
+| report_glm | 168646 | 60.2% | 0.6594 | 0.2337 |
+| report_gbm (selected) | 168646 | 60.4% | 0.6578 | 0.2330 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| report_gbm (selected) | 46004 | 61.9% | 0.6475 | 0.2282 |
+| baseline base_rate | 46004 | 53.8% | 0.6903 | 0.2486 |
+| baseline season_average_poisson | 46004 | 58.0% | 0.6749 | 0.2408 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 46004 | 100.0% | 61.9% (61.5-62.4) | 61.2% |
+| 0.55 | 33181 | 72.1% | 65.6% (65.0-66.1) | 64.6% |
+| 0.60 | 21716 | 47.2% | 69.2% (68.6-69.8) | 68.3% |
+| 0.65 | 12882 | 28.0% | 73.4% (72.6-74.1) | 72.4% |
+| 0.70 | 7032 | 15.3% | 77.4% (76.5-78.4) | 76.7% |
+| 0.75 | 3459 | 7.5% | 82.0% (80.7-83.2) | 81.3% |
+| 0.80 | 1632 | 3.5% | 86.2% (84.5-87.8) | 85.9% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| expected 15 to 28 minutes | 58.5% | 26910 | 63.4% | 0.6369 | 62.2% |
+| expected 28 minutes or more | 41.5% | 19094 | 60.0% | 0.6623 | 59.8% |
+
+Thresholds away from the reference. The selected model scored at thresholds shifted from the reference threshold. A shift of half a point gives a whole-number threshold, where an exact tie is a push: over and under are then read from the calibrated probabilities at the half points either side, the tie is what remains, ties are left out of the over/under score, and the predicted and observed tie rates are compared.
+
+Last development fold (seasons 2024):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -8 | 20253 | 82.4% | 82.5% | 0.0082 | 0.4279 | 0.0% | 0.0% |
+| reference -4 | 21118 | 66.0% | 65.6% | 0.0087 | 0.6047 | 0.0% | 0.0% |
+| reference -0.5 | 20069 | 49.0% | 48.3% | 0.0051 | 0.6549 | 5.1% | 4.8% |
+| reference | 21140 | 46.5% | 46.0% | 0.0061 | 0.6560 | 0.0% | 0.0% |
+| reference +0.5 | 20196 | 44.0% | 43.4% | 0.0061 | 0.6490 | 4.5% | 4.6% |
+| reference +4 | 21140 | 28.9% | 29.2% | 0.0058 | 0.5721 | 0.0% | 0.0% |
+| reference +8 | 21140 | 16.1% | 17.1% | 0.0104 | 0.4185 | 0.0% | 0.0% |
+
+Final test (seasons 2025, 2026, 2027):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -8 | 44222 | 81.5% | 82.0% | 0.0085 | 0.4363 | 0.0% | 0.0% |
+| reference -4 | 45949 | 65.7% | 65.4% | 0.0041 | 0.5983 | 0.0% | 0.0% |
+| reference -0.5 | 43768 | 48.6% | 48.8% | 0.0071 | 0.6453 | 4.9% | 4.6% |
+| reference | 46004 | 46.2% | 46.5% | 0.0076 | 0.6475 | 0.0% | 0.0% |
+| reference +0.5 | 43950 | 43.7% | 44.0% | 0.0083 | 0.6394 | 4.5% | 4.4% |
+| reference +4 | 46004 | 29.0% | 30.1% | 0.0125 | 0.5671 | 0.0% | 0.0% |
+| reference +8 | 46004 | 15.9% | 18.0% | 0.0220 | 0.4128 | 0.0% | 0.0% |
+
+
+Same-slate residual correlation (used by the combo builder): +0.0001 (95% interval -0.0004 to +0.0007, 14267602 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 46004 final-test events (minimum 300)
+- passed - development folds: 8 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.04285 (95% interval 0.03991 to 0.04551)
+- passed - calibration: final-test expected calibration error 0.0076 (maximum 0.03)
+- NOT met - market thresholds: scored against reference thresholds built from each player's earlier games; no history of bookmakers' thresholds is on file, so performance against a real market line is untested
+
+Limitations:
+
+- No history of bookmakers' thresholds is on file. Completed games are scored against a reference threshold: the half point just above the median points + rebounds + assists of the player's previous 15 appearances. Skill and calibration against it show the distribution is informative; they do not show an edge against a market threshold, which reflects information this model lacks.
+- The model is conditional on the player appearing (a statistic market is void when he does not play). A player who leaves a game early still counts, as he does when the market settles.
+- Only rotation players are modelled: at least 8 earlier appearances and 15 recent minutes per appearance.
+- Announced minutes limits, role changes and confirmed starting line-ups are not in the data.
+- A new prediction needs a threshold imported for that player and game; without one there is no selection.
+- Team-mates' absences come in two versions: who missed the team's previous game (all seasons) and the official injury report as it stood an hour before the day's first game (from 2018-12-17). Development folds decide which one the model uses.
+
+## nba - player_prop:rebounds
+
+397808 completed player-games from 2007-11-15 to 2026-11-12; 8 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `report_gbm` (lowest pooled development log loss (0.64720)).
+
+![calibration](charts/nba_player_prop_rebounds_calibration.svg)
+![by season](charts/nba_player_prop_rebounds_by_season.svg)
+
+Season by season on development folds the selected model beat `season_average_poisson` in 8 of 8 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 168646 | 58.7% | 0.6781 | 0.2425 |
+| season_average_poisson | 168646 | 60.2% | 0.6644 | 0.2353 |
+| recent_form_nb | 168646 | 61.3% | 0.6550 | 0.2315 |
+| two_stage_glm | 168646 | 62.0% | 0.6489 | 0.2287 |
+| two_stage_gbm | 168646 | 62.2% | 0.6480 | 0.2283 |
+| report_glm | 168646 | 62.1% | 0.6481 | 0.2284 |
+| report_gbm (selected) | 168646 | 62.3% | 0.6472 | 0.2279 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| report_gbm (selected) | 46004 | 63.0% | 0.6409 | 0.2251 |
+| baseline base_rate | 46004 | 59.0% | 0.6769 | 0.2419 |
+| baseline season_average_poisson | 46004 | 60.4% | 0.6624 | 0.2345 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 46004 | 100.0% | 63.0% (62.6-63.4) | 62.3% |
+| 0.55 | 35109 | 76.3% | 66.2% (65.7-66.7) | 65.4% |
+| 0.60 | 24824 | 54.0% | 69.6% (69.0-70.2) | 68.6% |
+| 0.65 | 15685 | 34.1% | 73.3% (72.6-74.0) | 72.3% |
+| 0.70 | 8764 | 19.1% | 77.1% (76.3-78.0) | 76.2% |
+| 0.75 | 4168 | 9.1% | 80.7% (79.5-81.9) | 80.4% |
+| 0.80 | 1719 | 3.7% | 86.2% (84.4-87.7) | 84.9% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| expected 15 to 28 minutes | 58.5% | 26910 | 63.6% | 0.6342 | 63.2% |
+| expected 28 minutes or more | 41.5% | 19094 | 62.1% | 0.6503 | 61.1% |
+
+Thresholds away from the reference. The selected model scored at thresholds shifted from the reference threshold. A shift of half a point gives a whole-number threshold, where an exact tie is a push: over and under are then read from the calibrated probabilities at the half points either side, the tie is what remains, ties are left out of the over/under score, and the predicted and observed tie rates are compared.
+
+Last development fold (seasons 2024):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -3 | 16742 | 83.8% | 83.4% | 0.0084 | 0.4040 | 0.0% | 0.0% |
+| reference -1.5 | 16766 | 68.1% | 67.3% | 0.0039 | 0.5747 | 16.3% | 16.7% |
+| reference -0.5 | 17584 | 49.7% | 48.7% | 0.0060 | 0.6470 | 16.7% | 16.7% |
+| reference | 21140 | 41.4% | 40.6% | 0.0086 | 0.6482 | 0.0% | 0.0% |
+| reference +0.5 | 18246 | 32.1% | 31.2% | 0.0116 | 0.5922 | 13.7% | 13.7% |
+| reference +1.5 | 18891 | 19.1% | 18.9% | 0.0027 | 0.4577 | 10.6% | 9.9% |
+| reference +3 | 21140 | 10.4% | 10.4% | 0.0039 | 0.3139 | 0.0% | 0.0% |
+
+Final test (seasons 2025, 2026, 2027):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -3 | 36703 | 83.0% | 82.5% | 0.0058 | 0.4118 | 0.0% | 0.0% |
+| reference -1.5 | 36830 | 67.5% | 66.8% | 0.0065 | 0.5717 | 16.2% | 15.9% |
+| reference -0.5 | 38327 | 49.1% | 49.2% | 0.0068 | 0.6398 | 16.6% | 15.7% |
+| reference | 46004 | 41.0% | 41.5% | 0.0068 | 0.6409 | 0.0% | 0.0% |
+| reference +0.5 | 39755 | 31.7% | 32.7% | 0.0099 | 0.5835 | 13.6% | 13.1% |
+| reference +1.5 | 41371 | 19.3% | 20.6% | 0.0133 | 0.4579 | 10.1% | 9.8% |
+| reference +3 | 46004 | 10.6% | 11.8% | 0.0122 | 0.3156 | 0.0% | 0.0% |
+
+
+Same-slate residual correlation (used by the combo builder): +0.0005 (95% interval +0.0000 to +0.0011, 14267602 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 46004 final-test events (minimum 300)
+- passed - development folds: 8 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.03606 (95% interval 0.03386 to 0.03813)
+- passed - calibration: final-test expected calibration error 0.0068 (maximum 0.03)
+- NOT met - market thresholds: scored against reference thresholds built from each player's earlier games; no history of bookmakers' thresholds is on file, so performance against a real market line is untested
+
+Limitations:
+
+- No history of bookmakers' thresholds is on file. Completed games are scored against a reference threshold: the half point just above the median rebounds of the player's previous 15 appearances. Skill and calibration against it show the distribution is informative; they do not show an edge against a market threshold, which reflects information this model lacks.
+- The model is conditional on the player appearing (a statistic market is void when he does not play). A player who leaves a game early still counts, as he does when the market settles.
+- Only rotation players are modelled: at least 8 earlier appearances and 15 recent minutes per appearance.
+- Announced minutes limits, role changes and confirmed starting line-ups are not in the data.
+- A new prediction needs a threshold imported for that player and game; without one there is no selection.
+- Team-mates' absences come in two versions: who missed the team's previous game (all seasons) and the official injury report as it stood an hour before the day's first game (from 2018-12-17). Development folds decide which one the model uses.
+
+## nba - player_prop:threes
+
+397808 completed player-games from 2007-11-15 to 2026-11-12; 8 walk-forward folds; final test blocks 2025, 2026, 2027. Selected: `report_gbm` (lowest pooled development log loss (0.55661)).
+
+![calibration](charts/nba_player_prop_threes_calibration.svg)
+![by season](charts/nba_player_prop_threes_by_season.svg)
+
+Season by season on development folds the selected model beat `season_average_poisson` in 8 of 8 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 168646 | 68.7% | 0.6294 | 0.2182 |
+| season_average_poisson | 168646 | 69.4% | 0.5777 | 0.1971 |
+| recent_form_nb | 168646 | 69.8% | 0.5636 | 0.1937 |
+| two_stage_glm | 168646 | 69.9% | 0.5615 | 0.1925 |
+| two_stage_gbm | 168646 | 70.2% | 0.5570 | 0.1911 |
+| report_glm | 168646 | 69.9% | 0.5611 | 0.1923 |
+| report_gbm (selected) | 168646 | 70.3% | 0.5566 | 0.1909 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| report_gbm (selected) | 46004 | 68.8% | 0.5732 | 0.1976 |
+| baseline base_rate | 46004 | 67.5% | 0.6366 | 0.2219 |
+| baseline season_average_poisson | 46004 | 68.0% | 0.5958 | 0.2041 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 46004 | 100.0% | 68.8% (68.4-69.2) | 69.1% |
+| 0.55 | 39560 | 86.0% | 71.6% (71.2-72.1) | 71.8% |
+| 0.60 | 33064 | 71.9% | 74.5% (74.0-74.9) | 74.6% |
+| 0.65 | 26366 | 57.3% | 77.4% (76.9-77.9) | 77.7% |
+| 0.70 | 19680 | 42.8% | 81.1% (80.6-81.7) | 81.1% |
+| 0.75 | 13604 | 29.6% | 85.0% (84.4-85.6) | 85.0% |
+| 0.80 | 8650 | 18.8% | 89.7% (89.0-90.3) | 89.4% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| expected 15 to 28 minutes | 58.5% | 26910 | 70.3% | 0.5541 | 70.8% |
+| expected 28 minutes or more | 41.5% | 19094 | 66.7% | 0.6002 | 66.8% |
+
+Thresholds away from the reference. The selected model scored at thresholds shifted from the reference threshold. A shift of half a point gives a whole-number threshold, where an exact tie is a push: over and under are then read from the calibrated probabilities at the half points either side, the tie is what remains, ties are left out of the over/under score, and the predicted and observed tie rates are compared.
+
+Last development fold (seasons 2024):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -1 | 15723 | 61.6% | 62.8% | 0.0163 | 0.6320 | 0.0% | 0.0% |
+| reference -0.5 | 11389 | 47.0% | 47.2% | 0.0237 | 0.6384 | 27.6% | 29.7% |
+| reference | 21140 | 32.7% | 32.1% | 0.0140 | 0.5740 | 0.0% | 0.0% |
+| reference +0.5 | 17343 | 18.0% | 16.7% | 0.0150 | 0.4157 | 18.0% | 18.8% |
+| reference +1 | 21140 | 14.8% | 13.3% | 0.0155 | 0.3815 | 0.0% | 0.0% |
+
+Final test (seasons 2025, 2026, 2027):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -1 | 35112 | 60.9% | 62.4% | 0.0140 | 0.6329 | 0.0% | 0.0% |
+| reference -0.5 | 25714 | 46.6% | 47.6% | 0.0122 | 0.6379 | 26.8% | 28.2% |
+| reference | 46004 | 32.5% | 33.1% | 0.0059 | 0.5732 | 0.0% | 0.0% |
+| reference +0.5 | 37977 | 18.2% | 18.0% | 0.0055 | 0.4213 | 17.4% | 18.5% |
+| reference +1 | 46004 | 15.0% | 14.6% | 0.0062 | 0.3881 | 0.0% | 0.0% |
+
+
+Same-slate residual correlation (used by the combo builder): +0.0005 (95% interval -0.0000 to +0.0011, 14267602 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 46004 final-test events (minimum 300)
+- passed - development folds: 8 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.06338 (95% interval 0.06068 to 0.06625)
+- passed - calibration: final-test expected calibration error 0.0059 (maximum 0.03)
+- NOT met - market thresholds: scored against reference thresholds built from each player's earlier games; no history of bookmakers' thresholds is on file, so performance against a real market line is untested
+
+Limitations:
+
+- No history of bookmakers' thresholds is on file. Completed games are scored against a reference threshold: the half point just above the median three-pointers made of the player's previous 15 appearances. Skill and calibration against it show the distribution is informative; they do not show an edge against a market threshold, which reflects information this model lacks.
+- The model is conditional on the player appearing (a statistic market is void when he does not play). A player who leaves a game early still counts, as he does when the market settles.
+- Only rotation players are modelled: at least 8 earlier appearances and 15 recent minutes per appearance.
+- Announced minutes limits, role changes and confirmed starting line-ups are not in the data.
+- A new prediction needs a threshold imported for that player and game; without one there is no selection.
+- Team-mates' absences come in two versions: who missed the team's previous game (all seasons) and the official injury report as it stood an hour before the day's first game (from 2018-12-17). Development folds decide which one the model uses.
 
 ## nba - winner
 
@@ -282,6 +758,457 @@ Limitations:
 - No pregame injury reports or confirmed lineups exist in the historical data, so the backtest cannot include late availability news. Roster features infer availability only from who played in earlier games.
 - Travel distance is city-level and missing for venues outside the built-in city table.
 - Betting odds are not an input and no timestamped market benchmark is available from this source.
+
+## wnba - player_prop:assists
+
+59660 completed player-games from 2008-06-08 to 2026-10-29; 8 walk-forward folds; final test blocks 2025, 2026. Selected: `two_stage_glm` (lowest pooled development log loss (0.63095)).
+
+![calibration](charts/wnba_player_prop_assists_calibration.svg)
+![by season](charts/wnba_player_prop_assists_by_season.svg)
+
+Season by season on development folds the selected model beat `season_average_poisson` in 8 of 8 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 23941 | 61.8% | 0.6654 | 0.2362 |
+| season_average_poisson | 23941 | 62.5% | 0.6525 | 0.2291 |
+| recent_form_nb | 23941 | 63.5% | 0.6393 | 0.2242 |
+| two_stage_glm (selected) | 23941 | 64.5% | 0.6310 | 0.2204 |
+| two_stage_gbm | 23941 | 64.6% | 0.6317 | 0.2206 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| two_stage_glm (selected) | 8800 | 64.4% | 0.6325 | 0.2210 |
+| baseline base_rate | 8800 | 61.5% | 0.6665 | 0.2368 |
+| baseline season_average_poisson | 8800 | 62.3% | 0.6512 | 0.2282 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 8800 | 100.0% | 64.4% (63.4-65.4) | 64.0% |
+| 0.55 | 7097 | 80.6% | 67.1% (66.0-68.2) | 66.8% |
+| 0.60 | 5478 | 62.3% | 69.9% (68.7-71.1) | 69.6% |
+| 0.65 | 3888 | 44.2% | 73.0% (71.5-74.3) | 72.5% |
+| 0.70 | 2391 | 27.2% | 76.9% (75.1-78.5) | 75.7% |
+| 0.75 | 1119 | 12.7% | 79.4% (76.9-81.6) | 79.4% |
+| 0.80 | 382 | 4.3% | 83.0% (78.9-86.4) | 83.6% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| expected 15 to 28 minutes | 63.2% | 5560 | 65.4% | 0.6250 | 64.6% |
+| expected 28 minutes or more | 36.8% | 3240 | 62.6% | 0.6453 | 63.2% |
+
+Thresholds away from the reference. The selected model scored at thresholds shifted from the reference threshold. A shift of half a point gives a whole-number threshold, where an exact tie is a push: over and under are then read from the calibrated probabilities at the half points either side, the tie is what remains, ties are left out of the over/under score, and the predicted and observed tie rates are compared.
+
+Last development fold (seasons 2024):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -2 | 2502 | 76.6% | 78.7% | 0.0288 | 0.5204 | 0.0% | 0.0% |
+| reference -1 | 3331 | 58.8% | 61.6% | 0.0244 | 0.6430 | 0.0% | 0.0% |
+| reference -0.5 | 2573 | 46.6% | 49.4% | 0.0207 | 0.6494 | 22.8% | 24.0% |
+| reference | 3487 | 36.7% | 38.6% | 0.0056 | 0.6307 | 0.0% | 0.0% |
+| reference +0.5 | 2898 | 23.8% | 25.1% | 0.0122 | 0.5160 | 16.9% | 18.1% |
+| reference +1 | 3487 | 19.8% | 20.5% | 0.0086 | 0.4750 | 0.0% | 0.0% |
+| reference +2 | 3487 | 9.4% | 10.0% | 0.0122 | 0.2933 | 0.0% | 0.0% |
+
+Final test (seasons 2025, 2026):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -2 | 5628 | 77.0% | 74.8% | 0.0222 | 0.5034 | 0.0% | 0.0% |
+| reference -1 | 8236 | 61.0% | 59.2% | 0.0133 | 0.6289 | 0.0% | 0.0% |
+| reference -0.5 | 6307 | 49.0% | 47.8% | 0.0172 | 0.6390 | 23.4% | 21.9% |
+| reference | 8800 | 38.5% | 38.5% | 0.0065 | 0.6325 | 0.0% | 0.0% |
+| reference +0.5 | 7233 | 25.2% | 26.1% | 0.0118 | 0.5236 | 17.8% | 16.6% |
+| reference +1 | 8800 | 20.7% | 21.8% | 0.0142 | 0.4823 | 0.0% | 0.0% |
+| reference +2 | 8800 | 10.4% | 11.7% | 0.0133 | 0.3105 | 0.0% | 0.0% |
+
+
+Same-slate residual correlation (used by the combo builder): -0.0013 (95% interval -0.0035 to +0.0010, 688310 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 8800 final-test events (minimum 300)
+- passed - development folds: 8 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.03398 (95% interval 0.02914 to 0.03819)
+- passed - calibration: final-test expected calibration error 0.0065 (maximum 0.03)
+- NOT met - market thresholds: scored against reference thresholds built from each player's earlier games; no history of bookmakers' thresholds is on file, so performance against a real market line is untested
+
+Limitations:
+
+- No history of bookmakers' thresholds is on file. Completed games are scored against a reference threshold: the half point just above the median assists of the player's previous 15 appearances. Skill and calibration against it show the distribution is informative; they do not show an edge against a market threshold, which reflects information this model lacks.
+- The model is conditional on the player appearing (a statistic market is void when he does not play). A player who leaves a game early still counts, as he does when the market settles.
+- Only rotation players are modelled: at least 8 earlier appearances and 15 recent minutes per appearance.
+- Announced minutes limits, role changes and confirmed starting line-ups are not in the data.
+- A new prediction needs a threshold imported for that player and game; without one there is no selection.
+
+## wnba - player_prop:points
+
+59660 completed player-games from 2008-06-08 to 2026-10-29; 8 walk-forward folds; final test blocks 2025, 2026. Selected: `two_stage_glm` (lowest pooled development log loss (0.65917)).
+
+![calibration](charts/wnba_player_prop_points_calibration.svg)
+![by season](charts/wnba_player_prop_points_by_season.svg)
+
+Season by season on development folds the selected model beat `season_average_poisson` in 8 of 8 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 23941 | 55.3% | 0.6875 | 0.2472 |
+| season_average_poisson | 23941 | 58.2% | 0.6764 | 0.2403 |
+| recent_form_nb | 23941 | 59.0% | 0.6679 | 0.2377 |
+| two_stage_glm (selected) | 23941 | 60.2% | 0.6592 | 0.2336 |
+| two_stage_gbm | 23941 | 60.1% | 0.6597 | 0.2338 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| two_stage_glm (selected) | 8800 | 59.9% | 0.6636 | 0.2355 |
+| baseline base_rate | 8800 | 54.0% | 0.6903 | 0.2486 |
+| baseline season_average_poisson | 8800 | 56.5% | 0.6786 | 0.2422 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 8800 | 100.0% | 59.9% (58.9-60.9) | 60.8% |
+| 0.55 | 6383 | 72.5% | 63.3% (62.1-64.5) | 64.0% |
+| 0.60 | 4168 | 47.4% | 66.1% (64.6-67.5) | 67.4% |
+| 0.65 | 2395 | 27.2% | 68.6% (66.7-70.4) | 71.2% |
+| 0.70 | 1179 | 13.4% | 72.0% (69.4-74.5) | 75.3% |
+| 0.75 | 465 | 5.3% | 77.4% (73.4-81.0) | 80.0% |
+| 0.80 | 184 | 2.1% | 81.0% (74.7-86.0) | 84.5% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| expected 15 to 28 minutes | 63.2% | 5560 | 60.1% | 0.6606 | 61.0% |
+| expected 28 minutes or more | 36.8% | 3240 | 59.5% | 0.6688 | 60.6% |
+
+Thresholds away from the reference. The selected model scored at thresholds shifted from the reference threshold. A shift of half a point gives a whole-number threshold, where an exact tie is a push: over and under are then read from the calibrated probabilities at the half points either side, the tie is what remains, ties are left out of the over/under score, and the predicted and observed tie rates are compared.
+
+Last development fold (seasons 2024):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -6 | 2737 | 79.8% | 82.7% | 0.0307 | 0.4801 | 0.0% | 0.0% |
+| reference -3 | 3330 | 65.0% | 66.2% | 0.0156 | 0.6186 | 0.0% | 0.0% |
+| reference -0.5 | 3203 | 46.7% | 48.3% | 0.0196 | 0.6619 | 7.5% | 7.2% |
+| reference | 3487 | 43.2% | 44.9% | 0.0026 | 0.6588 | 0.0% | 0.0% |
+| reference +0.5 | 3261 | 39.3% | 41.1% | 0.0070 | 0.6404 | 6.5% | 6.6% |
+| reference +3 | 3487 | 26.0% | 27.1% | 0.0141 | 0.5444 | 0.0% | 0.0% |
+| reference +6 | 3487 | 13.9% | 15.3% | 0.0161 | 0.3824 | 0.0% | 0.0% |
+
+Final test (seasons 2025, 2026):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -6 | 7111 | 81.6% | 80.1% | 0.0255 | 0.4561 | 0.0% | 0.0% |
+| reference -3 | 8554 | 66.8% | 63.6% | 0.0158 | 0.6098 | 0.0% | 0.0% |
+| reference -0.5 | 8161 | 49.5% | 46.7% | 0.0084 | 0.6624 | 7.0% | 6.5% |
+| reference | 8800 | 46.0% | 43.6% | 0.0091 | 0.6636 | 0.0% | 0.0% |
+| reference +0.5 | 8249 | 42.4% | 40.1% | 0.0131 | 0.6523 | 6.3% | 6.0% |
+| reference +3 | 8800 | 28.5% | 27.6% | 0.0065 | 0.5739 | 0.0% | 0.0% |
+| reference +6 | 8800 | 15.8% | 16.5% | 0.0125 | 0.4173 | 0.0% | 0.0% |
+
+
+Same-slate residual correlation (used by the combo builder): -0.0009 (95% interval -0.0030 to +0.0015, 688310 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 8800 final-test events (minimum 300)
+- passed - development folds: 8 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.02665 (95% interval 0.02163 to 0.03173)
+- passed - calibration: final-test expected calibration error 0.0091 (maximum 0.03)
+- NOT met - market thresholds: scored against reference thresholds built from each player's earlier games; no history of bookmakers' thresholds is on file, so performance against a real market line is untested
+
+Limitations:
+
+- No history of bookmakers' thresholds is on file. Completed games are scored against a reference threshold: the half point just above the median points of the player's previous 15 appearances. Skill and calibration against it show the distribution is informative; they do not show an edge against a market threshold, which reflects information this model lacks.
+- The model is conditional on the player appearing (a statistic market is void when he does not play). A player who leaves a game early still counts, as he does when the market settles.
+- Only rotation players are modelled: at least 8 earlier appearances and 15 recent minutes per appearance.
+- Announced minutes limits, role changes and confirmed starting line-ups are not in the data.
+- A new prediction needs a threshold imported for that player and game; without one there is no selection.
+
+## wnba - player_prop:pra
+
+59660 completed player-games from 2008-06-08 to 2026-10-29; 8 walk-forward folds; final test blocks 2025, 2026. Selected: `two_stage_gbm` (lowest pooled development log loss (0.65495)).
+
+![calibration](charts/wnba_player_prop_pra_calibration.svg)
+![by season](charts/wnba_player_prop_pra_by_season.svg)
+
+Season by season on development folds the selected model beat `season_average_poisson` in 8 of 8 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 23941 | 54.2% | 0.6897 | 0.2483 |
+| season_average_poisson | 23941 | 58.1% | 0.6730 | 0.2395 |
+| recent_form_nb | 23941 | 59.4% | 0.6664 | 0.2370 |
+| two_stage_glm | 23941 | 60.7% | 0.6559 | 0.2322 |
+| two_stage_gbm (selected) | 23941 | 60.8% | 0.6550 | 0.2318 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| two_stage_gbm (selected) | 8800 | 60.2% | 0.6585 | 0.2333 |
+| baseline base_rate | 8800 | 52.9% | 0.6918 | 0.2493 |
+| baseline season_average_poisson | 8800 | 57.0% | 0.6738 | 0.2403 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 8800 | 100.0% | 60.2% (59.2-61.2) | 61.2% |
+| 0.55 | 6406 | 72.8% | 63.3% (62.1-64.5) | 64.5% |
+| 0.60 | 4187 | 47.6% | 67.3% (65.9-68.7) | 68.2% |
+| 0.65 | 2448 | 27.8% | 70.6% (68.8-72.4) | 72.4% |
+| 0.70 | 1306 | 14.8% | 74.9% (72.5-77.2) | 76.8% |
+| 0.75 | 671 | 7.6% | 78.8% (75.6-81.8) | 81.1% |
+| 0.80 | 322 | 3.7% | 83.2% (78.8-86.9) | 85.1% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| expected 15 to 28 minutes | 63.2% | 5560 | 61.1% | 0.6513 | 61.7% |
+| expected 28 minutes or more | 36.8% | 3240 | 58.6% | 0.6708 | 60.3% |
+
+Thresholds away from the reference. The selected model scored at thresholds shifted from the reference threshold. A shift of half a point gives a whole-number threshold, where an exact tie is a push: over and under are then read from the calibrated probabilities at the half points either side, the tie is what remains, ties are left out of the over/under score, and the predicted and observed tie rates are compared.
+
+Last development fold (seasons 2024):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -8 | 3201 | 81.9% | 82.9% | 0.0232 | 0.4415 | 0.0% | 0.0% |
+| reference -4 | 3471 | 65.8% | 65.9% | 0.0194 | 0.6108 | 0.0% | 0.0% |
+| reference -0.5 | 3294 | 46.4% | 47.9% | 0.0229 | 0.6547 | 5.5% | 5.0% |
+| reference | 3487 | 43.8% | 45.5% | 0.0091 | 0.6533 | 0.0% | 0.0% |
+| reference +0.5 | 3299 | 40.6% | 42.8% | 0.0192 | 0.6396 | 5.4% | 4.8% |
+| reference +4 | 3487 | 25.7% | 28.1% | 0.0267 | 0.5380 | 0.0% | 0.0% |
+| reference +8 | 3487 | 13.2% | 15.8% | 0.0291 | 0.3690 | 0.0% | 0.0% |
+
+Final test (seasons 2025, 2026):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -8 | 8123 | 84.1% | 81.9% | 0.0194 | 0.4078 | 0.0% | 0.0% |
+| reference -4 | 8784 | 67.5% | 64.7% | 0.0086 | 0.5964 | 0.0% | 0.0% |
+| reference -0.5 | 8366 | 49.6% | 46.9% | 0.0104 | 0.6560 | 4.9% | 4.8% |
+| reference | 8800 | 47.1% | 44.6% | 0.0101 | 0.6585 | 0.0% | 0.0% |
+| reference +0.5 | 8327 | 44.1% | 42.0% | 0.0077 | 0.6494 | 5.4% | 4.6% |
+| reference +4 | 8800 | 27.7% | 28.0% | 0.0084 | 0.5603 | 0.0% | 0.0% |
+| reference +8 | 8800 | 14.5% | 16.2% | 0.0217 | 0.3961 | 0.0% | 0.0% |
+
+
+Same-slate residual correlation (used by the combo builder): -0.0004 (95% interval -0.0029 to +0.0022, 688310 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 8800 final-test events (minimum 300)
+- passed - development folds: 8 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.03334 (95% interval 0.02797 to 0.03896)
+- passed - calibration: final-test expected calibration error 0.0101 (maximum 0.03)
+- NOT met - market thresholds: scored against reference thresholds built from each player's earlier games; no history of bookmakers' thresholds is on file, so performance against a real market line is untested
+
+Limitations:
+
+- No history of bookmakers' thresholds is on file. Completed games are scored against a reference threshold: the half point just above the median points + rebounds + assists of the player's previous 15 appearances. Skill and calibration against it show the distribution is informative; they do not show an edge against a market threshold, which reflects information this model lacks.
+- The model is conditional on the player appearing (a statistic market is void when he does not play). A player who leaves a game early still counts, as he does when the market settles.
+- Only rotation players are modelled: at least 8 earlier appearances and 15 recent minutes per appearance.
+- Announced minutes limits, role changes and confirmed starting line-ups are not in the data.
+- A new prediction needs a threshold imported for that player and game; without one there is no selection.
+
+## wnba - player_prop:rebounds
+
+59660 completed player-games from 2008-06-08 to 2026-10-29; 8 walk-forward folds; final test blocks 2025, 2026. Selected: `two_stage_glm` (lowest pooled development log loss (0.64189)).
+
+![calibration](charts/wnba_player_prop_rebounds_calibration.svg)
+![by season](charts/wnba_player_prop_rebounds_by_season.svg)
+
+Season by season on development folds the selected model beat `season_average_poisson` in 8 of 8 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 23941 | 59.2% | 0.6763 | 0.2416 |
+| season_average_poisson | 23941 | 60.7% | 0.6620 | 0.2340 |
+| recent_form_nb | 23941 | 61.9% | 0.6513 | 0.2298 |
+| two_stage_glm (selected) | 23941 | 63.2% | 0.6419 | 0.2254 |
+| two_stage_gbm | 23941 | 63.0% | 0.6423 | 0.2256 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| two_stage_glm (selected) | 8800 | 63.1% | 0.6404 | 0.2249 |
+| baseline base_rate | 8800 | 59.6% | 0.6744 | 0.2407 |
+| baseline season_average_poisson | 8800 | 61.4% | 0.6597 | 0.2324 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 8800 | 100.0% | 63.1% (62.1-64.1) | 63.3% |
+| 0.55 | 6999 | 79.5% | 66.0% (64.9-67.1) | 66.1% |
+| 0.60 | 5162 | 58.7% | 68.7% (67.4-69.9) | 69.2% |
+| 0.65 | 3426 | 38.9% | 71.8% (70.2-73.3) | 72.6% |
+| 0.70 | 1977 | 22.5% | 76.1% (74.1-77.9) | 76.3% |
+| 0.75 | 989 | 11.2% | 80.8% (78.2-83.1) | 80.5% |
+| 0.80 | 424 | 4.8% | 85.8% (82.2-88.8) | 84.8% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| expected 15 to 28 minutes | 63.2% | 5560 | 63.9% | 0.6361 | 63.9% |
+| expected 28 minutes or more | 36.8% | 3240 | 61.9% | 0.6478 | 62.2% |
+
+Thresholds away from the reference. The selected model scored at thresholds shifted from the reference threshold. A shift of half a point gives a whole-number threshold, where an exact tie is a push: over and under are then read from the calibrated probabilities at the half points either side, the tie is what remains, ties are left out of the over/under score, and the predicted and observed tie rates are compared.
+
+Last development fold (seasons 2024):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -3 | 2449 | 81.7% | 85.2% | 0.0365 | 0.4349 | 0.0% | 0.0% |
+| reference -1.5 | 2588 | 65.1% | 70.6% | 0.0460 | 0.5953 | 16.5% | 16.9% |
+| reference -0.5 | 2890 | 47.8% | 52.6% | 0.0280 | 0.6425 | 16.9% | 18.4% |
+| reference | 3487 | 39.8% | 43.1% | 0.0133 | 0.6381 | 0.0% | 0.0% |
+| reference +0.5 | 3002 | 30.1% | 32.8% | 0.0224 | 0.5690 | 13.9% | 15.3% |
+| reference +1.5 | 3151 | 18.0% | 19.2% | 0.0107 | 0.4312 | 9.6% | 10.9% |
+| reference +3 | 3487 | 9.3% | 10.0% | 0.0083 | 0.2794 | 0.0% | 0.0% |
+
+Final test (seasons 2025, 2026):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -3 | 6038 | 83.1% | 82.3% | 0.0134 | 0.4157 | 0.0% | 0.0% |
+| reference -1.5 | 6517 | 67.4% | 66.8% | 0.0144 | 0.5786 | 16.9% | 17.4% |
+| reference -0.5 | 7192 | 49.0% | 48.2% | 0.0092 | 0.6426 | 17.9% | 17.9% |
+| reference | 8800 | 40.4% | 39.6% | 0.0050 | 0.6404 | 0.0% | 0.0% |
+| reference +0.5 | 7530 | 30.3% | 29.6% | 0.0061 | 0.5749 | 14.4% | 14.3% |
+| reference +1.5 | 7946 | 18.0% | 17.2% | 0.0073 | 0.4402 | 9.7% | 9.9% |
+| reference +3 | 8800 | 9.9% | 9.1% | 0.0078 | 0.3010 | 0.0% | 0.0% |
+
+
+Same-slate residual correlation (used by the combo builder): +0.0003 (95% interval -0.0021 to +0.0029, 688310 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 8800 final-test events (minimum 300)
+- passed - development folds: 8 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.03400 (95% interval 0.02881 to 0.03909)
+- passed - calibration: final-test expected calibration error 0.0050 (maximum 0.03)
+- NOT met - market thresholds: scored against reference thresholds built from each player's earlier games; no history of bookmakers' thresholds is on file, so performance against a real market line is untested
+
+Limitations:
+
+- No history of bookmakers' thresholds is on file. Completed games are scored against a reference threshold: the half point just above the median rebounds of the player's previous 15 appearances. Skill and calibration against it show the distribution is informative; they do not show an edge against a market threshold, which reflects information this model lacks.
+- The model is conditional on the player appearing (a statistic market is void when he does not play). A player who leaves a game early still counts, as he does when the market settles.
+- Only rotation players are modelled: at least 8 earlier appearances and 15 recent minutes per appearance.
+- Announced minutes limits, role changes and confirmed starting line-ups are not in the data.
+- A new prediction needs a threshold imported for that player and game; without one there is no selection.
+
+## wnba - player_prop:threes
+
+59660 completed player-games from 2008-06-08 to 2026-10-29; 8 walk-forward folds; final test blocks 2025, 2026. Selected: `two_stage_gbm` (lowest pooled development log loss (0.52234)).
+
+![calibration](charts/wnba_player_prop_threes_calibration.svg)
+![by season](charts/wnba_player_prop_threes_by_season.svg)
+
+Season by season on development folds the selected model beat `season_average_poisson` in 8 of 8 seasons.
+
+| Model | Development n | Dev accuracy | Dev log loss | Dev Brier |
+|---|---|---|---|---|
+| base_rate | 23941 | 72.1% | 0.5957 | 0.2026 |
+| season_average_poisson | 23941 | 72.3% | 0.5493 | 0.1836 |
+| recent_form_nb | 23941 | 72.7% | 0.5285 | 0.1792 |
+| two_stage_glm | 23941 | 72.9% | 0.5246 | 0.1776 |
+| two_stage_gbm (selected) | 23941 | 73.1% | 0.5223 | 0.1771 |
+
+Final test:
+
+| Model | n | Accuracy | Log loss | Brier |
+|---|---|---|---|---|
+| two_stage_gbm (selected) | 8800 | 71.0% | 0.5599 | 0.1911 |
+| baseline base_rate | 8800 | 69.2% | 0.6251 | 0.2162 |
+| baseline season_average_poisson | 8800 | 69.4% | 0.5839 | 0.1988 |
+
+After the PASS rule (final test):
+
+| Minimum probability | Selections | Coverage | Accuracy (95% interval) | Mean predicted |
+|---|---|---|---|---|
+| 0.50 | 8800 | 100.0% | 71.0% (70.0-71.9) | 72.3% |
+| 0.55 | 7955 | 90.4% | 72.8% (71.8-73.8) | 74.4% |
+| 0.60 | 7072 | 80.4% | 74.6% (73.6-75.6) | 76.5% |
+| 0.65 | 6105 | 69.4% | 76.9% (75.8-77.9) | 78.7% |
+| 0.70 | 4900 | 55.7% | 79.9% (78.8-81.0) | 81.5% |
+| 0.75 | 3633 | 41.3% | 83.2% (82.0-84.4) | 84.6% |
+| 0.80 | 2462 | 28.0% | 87.2% (85.8-88.5) | 88.0% |
+
+By kind of game (final test). The headline pools these; they are very different to predict:
+
+| Kind of game | Share | n | Accuracy | Log loss | Mean probability of the pick |
+|---|---|---|---|---|---|
+| expected 15 to 28 minutes | 63.2% | 5560 | 72.4% | 0.5439 | 73.2% |
+| expected 28 minutes or more | 36.8% | 3240 | 68.5% | 0.5875 | 70.8% |
+
+Thresholds away from the reference. The selected model scored at thresholds shifted from the reference threshold. A shift of half a point gives a whole-number threshold, where an exact tie is a push: over and under are then read from the calibrated probabilities at the half points either side, the tie is what remains, ties are left out of the over/under score, and the predicted and observed tie rates are compared.
+
+Last development fold (seasons 2024):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -1 | 1943 | 58.4% | 60.6% | 0.0294 | 0.6550 | 0.0% | 0.0% |
+| reference -0.5 | 1393 | 42.0% | 44.8% | 0.0250 | 0.6306 | 28.3% | 29.3% |
+| reference | 3487 | 28.3% | 30.4% | 0.0122 | 0.5438 | 0.0% | 0.0% |
+| reference +0.5 | 2905 | 13.9% | 14.8% | 0.0087 | 0.3549 | 16.7% | 18.5% |
+| reference +1 | 3487 | 11.6% | 11.9% | 0.0062 | 0.3254 | 0.0% | 0.0% |
+
+Final test (seasons 2025, 2026):
+
+| Threshold | n (ties left out) | Went over | Predicted over | Calibration error | Log loss | Tied | Predicted tie |
+|---|---|---|---|---|---|---|---|
+| reference -1 | 5441 | 58.8% | 56.9% | 0.0100 | 0.6518 | 0.0% | 0.0% |
+| reference -0.5 | 3941 | 43.1% | 40.7% | 0.0179 | 0.6386 | 27.6% | 27.9% |
+| reference | 8800 | 30.8% | 28.7% | 0.0201 | 0.5599 | 0.0% | 0.0% |
+| reference +0.5 | 7211 | 15.6% | 14.1% | 0.0144 | 0.3802 | 18.1% | 17.0% |
+| reference +1 | 8800 | 12.8% | 11.7% | 0.0125 | 0.3477 | 0.0% | 0.0% |
+
+
+Same-slate residual correlation (used by the combo builder): +0.0010 (95% interval -0.0018 to +0.0039, 688310 event pairs).
+
+Gates:
+
+- passed - real data: real events
+- passed - point in time features: features use only information available before each event
+- passed - final test sample: 8800 final-test events (minimum 300)
+- passed - development folds: 8 walk-forward folds (minimum 3)
+- passed - skill over baseline: final-test log-loss improvement over base_rate: 0.06517 (95% interval 0.05862 to 0.07189)
+- passed - calibration: final-test expected calibration error 0.0201 (maximum 0.03)
+- NOT met - market thresholds: scored against reference thresholds built from each player's earlier games; no history of bookmakers' thresholds is on file, so performance against a real market line is untested
+
+Limitations:
+
+- No history of bookmakers' thresholds is on file. Completed games are scored against a reference threshold: the half point just above the median three-pointers made of the player's previous 15 appearances. Skill and calibration against it show the distribution is informative; they do not show an edge against a market threshold, which reflects information this model lacks.
+- The model is conditional on the player appearing (a statistic market is void when he does not play). A player who leaves a game early still counts, as he does when the market settles.
+- Only rotation players are modelled: at least 8 earlier appearances and 15 recent minutes per appearance.
+- Announced minutes limits, role changes and confirmed starting line-ups are not in the data.
+- A new prediction needs a threshold imported for that player and game; without one there is no selection.
 
 ## wnba - winner
 
@@ -1597,6 +2524,13 @@ Every validation run recorded in the store, oldest first. A re-run replaces the 
 | `mlb` | winner | 2026-11-13 00:06 | core_logit | 4949 | 56.5% | 0.6798 | yes |
 | `mlb` | winner | 2026-11-13 11:26 | core_logit | 4949 | 56.5% | 0.6798 | yes |
 | `mlb` | winner | 2026-11-13 12:06 (reported above) | core_logit | 4949 | 56.5% | 0.6798 | yes |
+| `nba` | player_prop:assists | 2026-11-13 22:41 (reported above) | report_gbm | 46004 | 64.9% | 0.6268 | no |
+| `nba` | player_prop:points | 2026-11-13 21:33 | report_gbm | 46004 | 61.0% | 0.6537 | no |
+| `nba` | player_prop:points | 2026-11-13 22:17 (reported above) | report_gbm | 46004 | 60.9% | 0.6538 | no |
+| `nba` | player_prop:pra | 2026-11-13 21:54 | report_gbm | 46004 | 61.9% | 0.6475 | no |
+| `nba` | player_prop:pra | 2026-11-13 22:17 (reported above) | report_gbm | 46004 | 61.9% | 0.6475 | no |
+| `nba` | player_prop:rebounds | 2026-11-13 22:30 (reported above) | report_gbm | 46004 | 63.0% | 0.6409 | no |
+| `nba` | player_prop:threes | 2026-11-13 22:30 (reported above) | report_gbm | 46004 | 68.8% | 0.5732 | no |
 | `nba` | winner | 2026-11-12 17:32 | full_logit | 2813 | 67.7% | 0.5999 | yes |
 | `nba` | winner | 2026-11-12 23:06 | full_logit | 2813 | 67.7% | 0.5999 | yes |
 | `nba` | winner | 2026-11-13 00:16 | full_logit | 2813 | 67.7% | 0.5999 | yes |
@@ -1651,6 +2585,16 @@ Every validation run recorded in the store, oldest first. A re-run replaces the 
 | `soccer_intl_women` | winner_3way | 2026-11-13 00:19 | full_logit | 1350 | 67.3% | 0.7719 | yes |
 | `soccer_intl_women` | winner_3way | 2026-11-13 11:37 | full_logit | 1350 | 67.3% | 0.7719 | yes |
 | `soccer_intl_women` | winner_3way | 2026-11-13 12:09 (reported above) | full_logit | 1350 | 67.3% | 0.7719 | yes |
+| `wnba` | player_prop:assists | 2026-11-13 21:50 | two_stage_glm | 8800 | 64.3% | 0.6324 | no |
+| `wnba` | player_prop:assists | 2026-11-13 22:15 (reported above) | two_stage_glm | 8800 | 64.4% | 0.6325 | no |
+| `wnba` | player_prop:points | 2026-11-13 21:48 | two_stage_glm | 8800 | 60.0% | 0.6637 | no |
+| `wnba` | player_prop:points | 2026-11-13 22:13 (reported above) | two_stage_glm | 8800 | 59.9% | 0.6636 | no |
+| `wnba` | player_prop:pra | 2026-11-13 21:54 | two_stage_gbm | 8800 | 60.0% | 0.6590 | no |
+| `wnba` | player_prop:pra | 2026-11-13 22:20 (reported above) | two_stage_gbm | 8800 | 60.2% | 0.6585 | no |
+| `wnba` | player_prop:rebounds | 2026-11-13 21:49 | two_stage_glm | 8800 | 63.1% | 0.6404 | no |
+| `wnba` | player_prop:rebounds | 2026-11-13 22:14 (reported above) | two_stage_glm | 8800 | 63.1% | 0.6404 | no |
+| `wnba` | player_prop:threes | 2026-11-13 21:51 | two_stage_gbm | 8800 | 70.9% | 0.5600 | no |
+| `wnba` | player_prop:threes | 2026-11-13 22:16 (reported above) | two_stage_gbm | 8800 | 71.0% | 0.5599 | no |
 | `wnba` | winner | 2026-11-12 22:48 | full_logit | 664 | 65.4% | 0.6261 | no |
 | `wnba` | winner | 2026-11-13 00:17 | full_logit | 664 | 65.4% | 0.6261 | no |
 | `wnba` | winner | 2026-11-13 11:25 | full_logit | 664 | 65.4% | 0.6261 | no |

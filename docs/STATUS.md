@@ -13,7 +13,8 @@ covered by the test suite but has not yet happened with real events.
 |---|---|---|
 | Shared foundations | UTC storage with Pacific/Honolulu display; stable IDs; entity matching by provider ID and normalised name; cross-provider event de-duplication; a source record behind every event and result (URL, collection time, content hash, and the publication time where the source states one); event change log; result corrections kept; append-only, hash-chained prediction ledger; synthetic data isolated under `demo_*` keys | real data |
 | Data adapters (public datasets, no key) | NBA, WNBA, NCAA men's and women's basketball; NFL; college football; NHL; MLB (through 2025); men's and women's international soccer; Premier League, La Liga, Bundesliga, Serie A, Ligue 1; tennis singles at eight levels (historical results to mid-2026, non-commercial licence); the official NBA injury report archive | real data |
-| Validation | 26 league-markets validated on real data with the walk-forward protocol and a reserved final test: 17 pass every gate, 9 are experimental (WNBA, NFL spread and total, ITF men, men's international soccer, Premier League, La Liga, Bundesliga, Serie A). Each has four or five recorded runs, because runs were repeated after fixes; every run is listed in the validation report's run history | real data |
+| Validation | 36 league-markets validated on real data with the walk-forward protocol and a reserved final test: 17 pass every gate; 9 event markets are experimental (WNBA, NFL spread and total, ITF men, men's international soccer, Premier League, La Liga, Bundesliga, Serie A); the 10 player-statistic markets are experimental by construction. Runs were repeated after fixes; every run is listed in the validation report's run history | real data |
+| Player statistics (NBA, WNBA) | points, rebounds, assists, three-pointers made and the combined statistic, over or under a threshold: point-in-time player-game inputs (minutes, per-minute production, opponent adjustment, absent team-mates), baselines and two-stage count models, validation against reference thresholds with a check at shifted and whole-number thresholds, trained models, a projection table | real data |
 | Point-in-time features | the as-of leakage test passes with zero difference for all 26 league-markets on the real store (`sportspred check-leakage`, and the opt-in test `tests/sportspred/test_real_store_leakage.py`) | real data |
 | NBA availability, point-in-time | the official injury report as published before each slate (archive since 2018-12-17) feeds the roster inputs; the report-aware model was selected on development folds and improves the final test (log loss 0.5959 against 0.5999) | real data |
 | Prediction engine | PROVISIONAL and PASS statuses with pregame checks, availability applied, bootstrap model-uncertainty intervals, validated confidence labels, explanations: 770 real pregame predictions in the ledger (446 current event-markets over seven slates: 338 PROVISIONAL, 108 PASS, none FINAL); the hash chain and the clock audit verify | real data |
@@ -22,10 +23,10 @@ covered by the test suite but has not yet happened with real events.
 | Combos that are recommended | a FINAL three-leg combo, alternatives, larger sizes, dependency handling | tests |
 | Ledger: grading and reviews | grading against results, linked correction grades, reviews (variance / model error / data issue / availability change): 59 real selections graded and reviewed on 2026-11-13 | real data (one day) |
 | Ledger: lessons and drift monitor | lessons with a validation-run requirement; calibration and input drift | tests |
-| CSV import | events, results, availability, check records; whole-file validation with line numbers | tests |
+| CSV import | events, results, availability, check records, thresholds of player-statistic markets; whole-file validation with line numbers | tests |
 | EV module | CSV price import, raw implied / no-vig / fair odds / edge / EV, fee schedules, settlement rules, eligibility presets, paper positions and resettlement | tests |
 | Dashboard and reports | static self-contained HTML dashboard; generated coverage table and validation results with charts | real data |
-| CLI | `coverage, ingest, import, templates, validate, train, check-leakage, predict, slate, combos, grade, review, lessons, monitor, live, ev, dashboard, report, ledger, demo` | real data for the commands above; tests for the rest |
+| CLI | `coverage, ingest, import, templates, validate, train, check-leakage, predict, props, slate, combos, grade, review, lessons, monitor, live, ev, dashboard, report, ledger, demo` | real data for the commands above; tests for the rest |
 
 ## Works in tests only (not exercised on real events yet)
 
@@ -48,6 +49,14 @@ covered by the test suite but has not yet happened with real events.
   models.
 - **EV evaluation with real prices.** Maths and rules are tested against hand
   calculations; no real quotes were available.
+- **Player-statistic predictions at real thresholds.** No source of market
+  thresholds is reachable, so none has been imported and the real ledger
+  holds no such prediction. The path - import, pricing over / under / push,
+  availability, the ledger record, withdrawal, grading from the box score - is
+  covered by tests on a synthetic league, and was dry-run on a scratch copy of
+  the real store with each player's reference threshold standing in for a
+  line (16 players in 8 games on 13 and 14 November; nothing was written to
+  the real store).
 
 ## Written but not run against the live service
 
@@ -58,9 +67,12 @@ covered by the test suite but has not yet happened with real events.
 
 ## Not built
 
-- **Player props.** Not implemented in this platform (the coverage table says
-  unavailable). The earlier `evmodel` package still has its own prop
-  projection and scanner.
+- **A history or feed of market thresholds for player statistics.** Thresholds
+  come in by CSV only. Until a history of real ones has been collected and
+  scored, the player-statistic markets stay experimental and unrated, and
+  nothing is known about how they fare against a bookmaker's line. Statistics
+  beyond the five modelled ones (steals, blocks, turnovers and other
+  combinations) and props for other sports are not built.
 - **NBA / WNBA / college spreads and totals, NHL and MLB totals.** No
   historical lines exist in the reachable sources; not implemented.
 - **Golf and motorsport.** Declared so the coverage table is complete; they
@@ -224,13 +236,67 @@ reschedule rule's window for a date-only event (14 hours before to 36 hours
 after its stored instant) does not know the league's time zone, so a game
 moved to the next local day can fall inside it; a source that stopped less
 than 1.5 typical off-seasons ago, with no unplayed fixtures listed, still
-counts as current; "latest prediction per event and market" would keep only
-one of two players' props for one event (props are not generated yet); two
+counts as current; two
 candidates written to share state with each other could distort selection
 on development folds (not the final test) - candidates come from plugin
 code, not from users; a tennis match's features are complete only from the
 Monday of its week, so a prediction made earlier uses less than the backtest
 did.
+
+**6. The player-statistic markets**, reviewed after they were built and
+again after each round of fixes; every reviewer was read-only and had to prove
+a defect by experiment.
+
+*Confirmed correct:* the point-in-time inputs. One reviewer recomputed twelve
+of them by brute force on about 300 rows; a second recomputed every input,
+with no code shared with the builder, on synthetic leagues (including a day
+on which every team plays twice, a trade between the two games and a missing
+box score) and on 2,292 rows of the real NBA tables, among them the real
+double day of 2020-03-01 and the games after each finished game without a
+box score - exact agreement. The distribution maths matched an independent
+library to 1e-14 on 20,000 thresholds.
+
+*Found and fixed* (each with a regression test):
+
+- a finished game with no box score on file counted as a game the whole
+  rotation had missed, and every statistic market on it was graded void; such
+  a game is now neither, a prediction waits while a recent box score is
+  missing, and nothing is graded until both teams' box scores are in;
+- availability edited the report-based inputs whatever the trained model
+  read, treated one stray statement - or a check from another week or another
+  game - as the team's whole report, matched team-mates by name only, and
+  described a player listed out as someone the selection "holds only if he
+  plays". Inputs are now replaced only when the model reads them and the
+  team's report is on file and fresh for that game; everything else is a
+  condition recorded in words with its direction; matching goes by id, then
+  name, then joined initials, and a mere surname match is a condition;
+- at a whole-number threshold a calibrated over/under was mixed with an
+  uncalibrated tie, so "over 23" and "over 23.5" differed; both sides are now
+  read from the calibrated half points and the tie is the remainder, and the
+  selection rules use the probability given a decision;
+- a threshold read after tip-off was attached to the team's next game; two
+  thresholds for one market at one instant were both kept; zero was accepted;
+- inputs of a second game on one day saw the first; the frame cache could
+  serve a build from before a report version or a schedule change; the frame's
+  columns depended on when it was built; a played row without statistics
+  counted as an "under"; opening night had no rows; a selection about a
+  player who had left the frame stayed current.
+
+The ten validations were run again after the first round of fixes (the first
+runs stay in the run history). The second round changed no validated row:
+the completed rows of all ten frames hash identically before and after it.
+
+VERIFIER_OUTCOME
+
+*Found and not fixed:* the report-based history matches names exactly, and
+thirteen player-seasons were found in which the official report and the box
+score name a rotation player differently (for example a nickname), so his
+absences are missing from team-mates' report-based inputs there - the live
+path matches more loosely; a player's first game for a new team cannot be
+predicted although such games are in the history; the correlation between
+team-mates' outcomes in one game is not measured (same-game combinations are
+not offered); the winner model has no "box score missing" check, so its
+roster inputs can be a game behind without saying so.
 
 **Not independently audited:** the results-only CSV model beyond its feature
 builder, the EV module's maths, the dashboard, and the adapters written for
@@ -269,28 +335,35 @@ current slates, and `sportspred ledger verify`.
 
 ## Next steps, in order of value
 
-1. **Use the later versions of the NBA report.** The availability backtest
-   (done; see the model card) takes the report as it stood an hour before the
-   day's first game. The versions published later in the day, before each
-   game's own tip-off, would capture late scratches; using them needs a
-   per-game information time in the leakage test.
-2. **Collect what history cannot give.** Snapshot injury reports, starting
+1. **Collect market thresholds for player statistics.** The prop models are
+   built and calibrated against reference thresholds; whether they hold up
+   against a bookmaker's line is unknown and cannot be learned from history
+   that does not exist here. Import real thresholds from now on
+   (`sportspred import prop-lines`), let the ledger and grading accumulate,
+   then score the recorded predictions against results - that is the only
+   route to a rated, validated prop market.
+2. **Use the later versions of the NBA report.** The availability backtest
+   takes the report as it stood an hour before the day's first game. The
+   versions published later in the day, before each game's own tip-off, would
+   capture late scratches; using them needs a per-game information time in
+   the leakage test.
+3. **Collect what history cannot give.** Snapshot injury reports, starting
    goalies, probable pitchers, line-ups and prices with collection timestamps
    from now on, so future validation can use them.
-3. **A timestamped market benchmark.** Odds snapshots at prediction time, to
+4. **A timestamped market benchmark.** Odds snapshots at prediction time, to
    test whether any edge exists against an executable price.
-4. **Tennis for live use**: a schedule / order-of-play and withdrawal feed
+5. **Tennis for live use**: a schedule / order-of-play and withdrawal feed
    with real match dates, so in-tournament form and fatigue can be used and
    predictions can be made; a commercially licensed results source if the
    platform is ever used commercially; doubles.
-5. **Player props and NBA spreads/totals**, with playing-time, opportunity and
-   outcome-distribution models, validated against real lines once a line
-   history exists.
-6. **Finish-distribution models** for golf and motorsport.
-7. **Close the items listed as found and not fixed**, and have the parts no
+6. **NBA spreads and totals**, and props for other sports, validated against
+   real lines once a line history exists; a mapping of report names to
+   box-score names for the handful of players the exact match misses.
+7. **Finish-distribution models** for golf and motorsport.
+8. **Close the items listed as found and not fixed**, and have the parts no
    reviewer covered looked at: the EV module's arithmetic, the dashboard, and
    the adapters for hosts that could not be reached here (ESPN, The Odds API)
    against the live services.
-8. Keep grading and reviewing. One day of results is on file; calibration
+9. Keep grading and reviewing. One day of results is on file; calibration
    monitoring and lessons need weeks of them before they mean anything. Turn
    review patterns into lessons and test them before promoting any change.

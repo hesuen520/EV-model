@@ -57,7 +57,9 @@ def write_validation_docs(store, out_dir: Path) -> Path:
         stab = d.get("stability_vs_baselines") or {}
         ref = next((k for k in stab if k != "base_rate"), next(iter(stab), None))
         lines += ["", f"## {r['league']} - {r['market']}", "",
-                  f"{r['data']['n_completed']} completed events from {r['data']['first_event'][:10]} to "
+                  f"{r['data']['n_completed']} completed "
+                  f"{'player-games' if r['market'].startswith('player_prop:') else 'events'} from "
+                  f"{r['data']['first_event'][:10]} to "
                   f"{r['data']['last_event'][:10]}; {len(r['protocol']['dev_folds'])} walk-forward folds; final test "
                   f"blocks {', '.join(f['blocks'])}. Selected: `{r['selected_model']}` ({r['selection_note']}).", "",
                   f"![calibration](charts/{key}_calibration.svg)"]

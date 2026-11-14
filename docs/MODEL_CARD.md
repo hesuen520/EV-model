@@ -202,6 +202,144 @@ The WNBA and college leagues have no archived report history, so for them the
 availability rule remains what it was: checked against who actually played,
 not against results.
 
+### Player statistics (NBA, WNBA)
+
+**What is predicted.** For a player and a threshold: the probability that he
+finishes over it, under it, or exactly on it (a push, possible only at a whole
+number), for points, rebounds, assists, three-pointers made, and points +
+rebounds + assists. The model is conditional on the player appearing - a
+statistic market is void when he does not play - and covers rotation players
+only (at least 8 earlier appearances and 15 recent minutes per appearance).
+
+**Three parts, as a threshold market needs.**
+
+1. *Playing time.* Expected minutes from his recent minutes (exponentially
+   weighted, last three games, this season, longer run), starting role, rest,
+   back-to-backs, games he has just missed, the gap between the two teams'
+   recent scoring margins (lopsided games shorten minutes) and the minutes of
+   team-mates expected to be absent.
+2. *Production per minute.* The statistic per minute, recent and longer-run;
+   how much of it the opponent has allowed relative to the league (the
+   opponent adjustment); shot volume per minute as opportunity; and the share
+   of a typical team total produced by team-mates expected to be absent - all
+   of them, and separately those whose absence is new.
+3. *The distribution.* A negative binomial around minutes x rate, with a
+   spread learned from history as a function of the mean. Reading it at the
+   threshold gives over, under and push.
+
+Every input of a player-game comes from earlier Pacific/Honolulu days. The
+as-of test rebuilds the frame at past instants - including the two days in the
+data on which a team played twice - and finds zero difference.
+
+Candidates, simplest first: the base rate; the player's season average with a
+Poisson spread ("a projected average and nothing else"); recent minutes x
+recent rate with a negative binomial; the two-stage model, log-linear; the
+two-stage model with gradient-boosted trees; and, for the NBA, the last two
+with team-mates' absences taken from the official injury report as published
+before the slate instead of from who missed the previous game.
+
+**How it is validated - and what that cannot show.** No history of
+bookmakers' thresholds is reachable. Each completed player-game is therefore
+scored against a *reference threshold* built only from that player's earlier
+games: the half point just above the median of his previous 15 appearances.
+The protocol is the shared one (walk-forward folds, calibration on a later
+block, selection on development folds, the final two seasons read once).
+Beating a naive threshold shows the distribution is informative and honest
+about its spread. It does not show an edge against a market threshold, which
+already contains most of what this model knows and news it does not have.
+A gate (`market_thresholds`) records that, so these markets are
+**experimental** whatever the other gates say, and a prop selection carries
+no confidence label.
+
+<!-- results:start props -->
+| League | Statistic | Status | Selected model | Final-test player-games | Accuracy | Log loss | Base rate | Season average + Poisson | Calibration error | Worst calibration error at a shifted threshold |
+|---|---|---|---|---|---|---|---|---|---|---|
+| NBA | assists | experimental | report_gbm | 46,004 | 64.9% | 0.627 | 0.668 | 0.652 | 0.009 | 0.013 |
+| NBA | points | experimental | report_gbm | 46,004 | 60.9% | 0.654 | 0.690 | 0.678 | 0.006 | 0.016 |
+| NBA | pra | experimental | report_gbm | 46,004 | 61.9% | 0.647 | 0.690 | 0.675 | 0.008 | 0.022 |
+| NBA | rebounds | experimental | report_gbm | 46,004 | 63.0% | 0.641 | 0.677 | 0.662 | 0.007 | 0.013 |
+| NBA | threes | experimental | report_gbm | 46,004 | 68.8% | 0.573 | 0.637 | 0.596 | 0.006 | 0.014 |
+| WNBA | assists | experimental | two_stage_glm | 8,800 | 64.4% | 0.633 | 0.666 | 0.651 | 0.007 | 0.022 |
+| WNBA | points | experimental | two_stage_glm | 8,800 | 59.9% | 0.664 | 0.690 | 0.679 | 0.009 | 0.026 |
+| WNBA | pra | experimental | two_stage_gbm | 8,800 | 60.2% | 0.658 | 0.692 | 0.674 | 0.010 | 0.022 |
+| WNBA | rebounds | experimental | two_stage_glm | 8,800 | 63.1% | 0.640 | 0.674 | 0.660 | 0.005 | 0.014 |
+| WNBA | threes | experimental | two_stage_gbm | 8,800 | 71.0% | 0.560 | 0.625 | 0.584 | 0.020 | 0.018 |
+<!-- results:end -->
+
+**What the runs show (NBA).** On development folds (eight seasons, 2016-17
+to 2023-24, about 169,000 player-games) every step down the candidate list
+helped, for every statistic. For points, pooled log loss: base rate 0.690;
+season average with a Poisson spread 0.678; recent minutes x recent rate
+0.671; two-stage log-linear 0.664; two-stage trees 0.662; and the same with
+absences from the official report 0.661 - the model selected for all five
+statistics. It beat the season-average baseline in 8 of 8 development
+seasons. On the final test (2024-25, 2025-26 and the start of 2026-27; 46,004
+player-games) points score 0.654 against 0.690 for the base rate and 0.678 for
+the season average, with a calibration error of 0.006.
+
+Accuracy differs between statistics mostly because the reference threshold
+splits outcomes differently: "over" happens 46% of the time for points but
+about 32% for three-pointers, where saying "under" every time is already
+right 67.5% of the time. Log loss against the base rate is the comparison that
+means something. Starters are harder than the rest of the rotation: for
+points, 59.1% for players expected to play 28 minutes or more against 62.2%
+for those expected to play 15 to 28 (log loss 0.665 and 0.646).
+
+**WNBA.** The history is seven times smaller (59,660 player-games) and has no
+report archive. Development folds select the log-linear two-stage model for
+points, rebounds and assists and the tree version for three-pointers and the
+combined statistic; calibration is looser (0.005 to 0.020 at the reference
+threshold).
+
+Across all pairs of players on one day the residual correlation is zero
+(points: -0.0003, interval -0.0008 to +0.0002). Within one game it has not
+been measured.
+
+**Thresholds away from the reference.** A real threshold need not sit at the
+player's recent median, and the calibration step is fitted at the reference
+threshold only. So each run also scores the selected model at thresholds
+moved up and down (for points by 0.5, 3 and 6), on the last development fold
+and on the final test. A half-point shift gives a whole number, where a tie is
+a push: over and under are then read from the calibrated model at the half
+points either side, and the tie is what remains.
+
+On the NBA final test, points: at the reference threshold 45.8% went over
+against 45.4% predicted; three points lower 64.8% against 64.4%; three points
+higher 29.1% against 29.6%; six lower 79.6% against 80.4%; six higher 16.7%
+against 18.2%. The probability stays within about a point and a half out to
+six points either side, and the error grows with distance - the fitted
+distribution's upper tail is a little heavy. Over the five statistics the
+worst calibration error at any shifted threshold is 0.013 to 0.022 for the
+NBA and 0.014 to 0.026 for the WNBA (last column of the table). Predicted and
+observed tie rates at whole-number thresholds agree to within about a point
+and a half (NBA: points 6.2% predicted against 6.5% observed just below the
+reference, rebounds 15.7% against 16.6%, assists 22.5% against 21.9%,
+three-pointers 28.2% against 26.8%).
+
+**Live use.** A prediction needs a threshold you import
+(`sportspred import prop-lines`); without one there is no selection, and
+`sportspred props` only lists projections. The player himself listed out:
+PASS. Listed doubtful, questionable or probable: conditional on him playing.
+Team-mates' statements change the model's inputs only when the trained model
+reads the report-based inputs (the NBA models do; the WNBA models take
+absences from who missed the previous game) *and* the team's report is on file
+and fresh for that game. Otherwise nothing is changed, and each difference
+between what the inputs assume and what is listed is a condition recorded in
+words with its direction - "computed as if he plays, but he is listed out",
+"computed as if he sits, but he is not on the team's report". A statement is
+matched to a player by id, then name, then name with initials joined; one that
+only shares a surname with a rotation player is a condition, never an
+application. A prediction waits (PROVISIONAL) while the box score of either
+team's last two finished games is missing, and a selection about a player who
+has since left the modelled rotation is withdrawn. A team's first game of a
+season is served from last season's rotation; a player's first game for a new
+team has no row until he has played it.
+
+*Not in the model:* confirmed starting line-ups, announced minutes limits,
+foul trouble, garbage time beyond the margin-gap input, the opponent's
+absences, position-specific defence, and any price. Same-game combinations of
+these markets are not offered: team-mates' outcomes are not independent.
+
 ### American football (NFL, college FBS)
 
 Data: nflverse schedules, team and quarterback statistics; college schedules
@@ -441,8 +579,14 @@ FINAL-status filter, combos across leagues, or the dependency handling.
 - Tennis is validated only on tournament-week dates and has no live schedule
   feed. Tennis doubles, combat sports, cricket, rugby, volleyball, racket
   sports and esports have no validated model; golf and motorsport have no
-  model; player props and NBA spreads/totals are not implemented in this
-  platform.
+  model; NBA spreads and totals are not implemented in this platform.
+- Player-statistic markets have never been scored against a market
+  threshold, only against reference thresholds built from each player's own
+  earlier games. They are experimental by construction and carry no
+  confidence label. Thirteen player-seasons were found in which the official
+  report and the box score spell a rotation player differently (a nickname or
+  a different first name); for those the report-based history does not see
+  his absences.
 - The calibration gate (0.03) is unstable for final tests of under about
   1,000 events: Serie A and the WNBA sit within a few thousandths of it.
 - Known and not fixed, from the code audit: MLB's live path has never run on

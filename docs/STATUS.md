@@ -310,9 +310,9 @@ be proved from the record; the run history shows what every run produced.
 
 ## Tests run
 
-`pytest` on 2026-11-13: **4,432 passed, 13 expected failures, 2 skipped** (the
+`pytest` on 2026-11-14: **4,473 passed, 13 expected failures, 2 skipped** (the
 expected failures are in the earlier `evmodel` suite; the two skipped are the
-opt-in real-data tests below). 193 of those are the `tests/sportspred` suite:
+opt-in real-data tests below). 234 of those are the `tests/sportspred` suite:
 time zones and HST display, stable IDs and de-duplication, ledger
 immutability, tamper detection, the clock rule and concurrent writers,
 synthetic isolation, point-in-time availability and report supersession,
@@ -322,20 +322,29 @@ publishing), CSV validation, the results-only builder, tennis, the official
 injury report parser and which archived version counts before a slate,
 combo dependencies and the three-leg rule, grading,
 reschedules and correction grades, EV maths and settlement rules, dashboard
-rendering, a regression test for every defect the audits and verifiers
-found, and an end-to-end smoke test.
+rendering, the player-statistic markets (the count distribution and pushes,
+point-in-time inputs including two games on one day and a missing box score,
+threshold import, pricing, availability, withdrawal and grading), a
+regression test for every defect the audits and verifiers found, and an
+end-to-end smoke test.
 
 Opt-in tests on the real store (`SPORTSPRED_REAL_STORE=data/store python -m
 pytest tests/sportspred/test_real_store_leakage.py`), run on 2026-11-13 after
-the last change to any feature builder: **52 passed** - for each of the 26
-league-markets, features rebuilt as of past instants equal the full-history
-values, and every candidate predicts the same on blinded rows.
+the last change to any of their feature builders: **52 passed** - for each of
+the 26 event league-markets, features rebuilt as of past instants equal the
+full-history values, and every candidate predicts the same on blinded rows.
+The same two tests for the ten player-statistic markets were run on
+2026-11-14, after the last change to their builder: **20 passed**.
 
 Also run on 2026-11-13, on real data: ingest for every league over 12-13
 November, validation and training for all 26 league-markets (logs under
 `data/logs/`, which is not committed), the NBA combo backtest, grading and
 reviews of the first decided predictions, predictions and combos for the
-current slates, and `sportspred ledger verify`.
+current slates, and `sportspred ledger verify`. On 13-14 November:
+validation and training of the ten player-statistic markets (twice for
+most - before and after the first round of review fixes), and
+`sportspred ledger verify` again (784 predictions, chain intact; none of them
+a player-statistic prediction).
 
 ## Next steps, in order of value
 
